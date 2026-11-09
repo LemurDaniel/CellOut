@@ -1,0 +1,16 @@
+# Godot 4
+.godot/
+/android/
+
+# Exporte
+/build/
+/export/
+*.pck
+*.exe
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Font-Generator
+tools/font/node_modules/

@@ -1,0 +1,4 @@
+# Godot-Dateien immer mit LF
+* text=auto eol=lf
+*.png binary
+*.svg text

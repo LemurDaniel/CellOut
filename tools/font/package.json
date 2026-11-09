@@ -1,0 +1,16 @@
+{
+    "name": "cellout-font",
+    "version": "1.0.0",
+    "description": "Generator for the Cell Out game font: glyph skeletons stroked into organic, membrane-like outlines.",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "build": "node build.font.js",
+        "test": "mocha test/unit"
+    },
+    "devDependencies": {
+        "mocha": "10.4.0",
+        "opentype.js": "1.3.4",
+        "polygon-clipping": "0.15.7"
+    }
+}
