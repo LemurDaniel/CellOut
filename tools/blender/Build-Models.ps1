@@ -4,6 +4,7 @@
 #
 #   ./tools/blender/Build-Models.ps1
 #   ./tools/blender/Build-Models.ps1 -BlenderPath 'D:\Blender\blender.exe'
+#   ./tools/blender/Build-Models.ps1 -Only tree/          # only the trees
 
 #
 #   Chapters:
@@ -12,15 +13,18 @@
 
 <#
 .SYNOPSIS
-    Builds the part models (.glb) of Cell Out with Blender: creature and cell parts.
+    Builds the models (.glb) of Cell Out with Blender: creature parts, cell parts and trees.
 
 .DESCRIPTION
     Runs tools/blender/build.models.py in a headless Blender with factory settings and
-    writes one .glb per part to assets/models/creature/ and assets/models/cell/. Godot
-    imports them on the next start or with --import.
+    writes one .glb per model to assets/models/creature/, assets/models/cell/ and
+    assets/models/tree/. Godot imports them on the next start or with --import.
 
 .EXAMPLE
     PS> ./tools/blender/Build-Models.ps1
+
+.EXAMPLE
+    PS> ./tools/blender/Build-Models.ps1 -Only tree/, cell/cell.jaw.glb
 #>
 [CmdletBinding()]
 param (
@@ -30,7 +34,16 @@ param (
     #>
     [Parameter()]
     [System.String]
-    $BlenderPath = $env:BLENDER
+    $BlenderPath = $env:BLENDER,
+
+    <#
+    [Optional]
+    Builds only the models whose path below assets/models starts with one of these,
+    e.g. 'tree/' or 'creature/creature.paw.glb'. Defaults to every model.
+    #>
+    [Parameter()]
+    [System.String[]]
+    $Only = @()
 )
 
 Set-StrictMode -Version 1.0
@@ -67,8 +80,8 @@ if (-NOT (Test-Path -Path $BlenderPath -PathType Leaf)) {
 #   Runs the generator headless, fails on a Python error.
 # ---------------------------------------------------------------------------
 
-Write-Verbose "[Build-Models] Building with '$BlenderPath' into '$OUTPUT_DIR'."
-$output = & $BlenderPath --background --factory-startup --python-exit-code 1 --python $SCRIPT_PATH -- $OUTPUT_DIR 2>&1
+Write-Verbose "[Build-Models] Building with '$BlenderPath' into '$OUTPUT_DIR' (only: '$($Only -join ', ')')."
+$output = & $BlenderPath --background --factory-startup --python-exit-code 1 --python $SCRIPT_PATH -- $OUTPUT_DIR @Only 2>&1
 if (0 -NE $LASTEXITCODE -OR ($output -match 'Traceback')) {
     $output | Select-Object -Last 30 | ForEach-Object { Write-Warning $_ }
     throw [System.InvalidOperationException]::new("Blender must build every part without error, exit code '$LASTEXITCODE'.")

@@ -514,6 +514,7 @@ public sealed class CreatureDesign
         [CreaturePartKind.Legs]       = LEG_JOINTS,
         [CreaturePartKind.StubbyLegs] = LEG_JOINTS,
         [CreaturePartKind.ClawLegs]   = LEG_JOINTS,
+        [CreaturePartKind.CrabLegs]   = LEG_JOINTS,
         [CreaturePartKind.Hands]      = ARM_JOINTS,
         [CreaturePartKind.Claws]      = ARM_JOINTS,
     };

@@ -2,9 +2,10 @@
 //   Water surface around the islands: a faint tint that thins out towards the wobbling
 //   water line, wave crests rolling in to every shore, broken by noise, and a foam
 //   fringe that follows the swash. Same water line as coast_ground.gdshader.
-//   open_sea (0 top view .. 1 third person) turns the tint into a real sea: blue, more
-//   opaque at grazing angles (fresnel) and towards the horizon, clearer right around the
-//   player, so a swimming body stays visible. Bends with the planet.
+//   open_sea (0 top view .. 1 third person) turns the tint into a real sea: turquoise and
+//   see-through in the shallows, fading over SHALLOW_REACH into deep blue, more opaque at
+//   grazing angles (fresnel) and towards the horizon, clearer right around the player, so
+//   a swimming body stays visible. Bends with the planet.
 //   Set by World/Coast.cs.
 
 shader_type spatial;
@@ -17,6 +18,8 @@ uniform float unit = 14.0;
 uniform vec4 water_color : source_color = vec4(0.25, 0.6, 0.7, 0.18);
 uniform float open_sea = 0.0;
 uniform vec3 sea_color : source_color = vec3(0.07, 0.3, 0.42);
+uniform vec3 shallow_tint : source_color = vec3(0.25, 0.68, 0.66);
+const float SHALLOW_REACH = 14.0;            // shallows to deep blue, in unit
 uniform vec3 sky_tint : source_color = vec3(0.62, 0.8, 0.92);
 uniform vec2 focus = vec2(0.0);              // player on the plane
 uniform float focus_size = 14.0;             // player size
@@ -49,8 +52,10 @@ void fragment() {
 	float grazing = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 2.5);
 	float around = 1.0 - smoothstep(focus_size * 1.5, focus_size * 6.0, distance(world_pos.xz, focus));
 	float glint = smoothstep(0.78, 0.95, coast_noise(q * 2.5 + vec2(TIME * 0.3, 0.0)) * coast_noise(q * 3.1 - vec2(0.0, TIME * 0.25) + 4.0) * 1.6);
-	vec3 sea = mix(sea_color, sky_tint, grazing * 0.7) + glint * 0.35;
-	float sea_alpha = mix(0.45, 0.97, grazing) * (1.0 - 0.75 * around) * body;
+	float deep = smoothstep(0.0, SHALLOW_REACH * unit, to_shore);
+	vec3 sea = mix(mix(shallow_tint, sea_color, deep), sky_tint, grazing * 0.7) + glint * 0.35;
+	float sea_alpha = mix(0.15, 1.0, deep) * mix(0.5, 0.97, grazing) * (1.0 - 0.75 * around);
+	sea_alpha *= smoothstep(-0.2 * unit, 0.6 * unit, to_shore);
 
 	float in_water = step(-0.4 * unit, to_shore);
 	vec3 tint = mix(water_color.rgb, sea, open_sea);

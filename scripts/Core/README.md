@@ -8,3 +8,4 @@ Shared helpers without game rules.
 | `Rand.cs` | Random ranges, angles, chances and indices. |
 | `Log.cs` | Verbose decision log, enabled with `CELLOUT_VERBOSE=1`. |
 | `PartModels.cs` | Loads the generated part models (`assets/models`), recolors them by material name, starts their loop animation. |
+| `TreeModels.cs` | Loads the generated trees (`assets/models/tree`) as one mesh per species with the wind shader, trunk sizes for collisions. |

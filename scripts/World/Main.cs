@@ -8,7 +8,7 @@
 //   Chapters:
 //     BUILD WORLD          Environment, light, camera, layers, player and HUD.
 //     MENU AND INTRO       Title menu over the paused soup, then the birth of the protocell.
-//     FOLLOW CAMERA        Tilted chase camera with wheel zoom, light and backdrop grow along.
+//     FOLLOW CAMERA        Tilted chase camera with wheel zoom, third person over the islands, sky and planet.
 //     RESOLVE CONTACTS     Food, player vs. cells and cells vs. cells per physics frame.
 //     SPAWN                Food and cells around the view.
 //     REACT TO EVENTS      Pops, the cell editor, stage changes and deaths.
@@ -33,6 +33,10 @@ public partial class Main : Node2D
     private const float CAM_DISTANCE = 14f;         // camera distance in player sizes
     private const float CRITTER_GROWTH_CAP = 3f;    // critters grow up to this many player sizes
     private static readonly Color BACKGROUND_COLOR = new(0.04f, 0.13f, 0.17f);
+    private static readonly Color SOUP_AMBIENT = new(0.5f, 0.8f, 0.85f);
+    private static readonly Color SKY_AMBIENT = new(0.78f, 0.84f, 0.92f);
+    private const float SOUP_AMBIENT_ENERGY = 0.6f;
+    private const float SKY_AMBIENT_ENERGY = 0.8f;
 
     public Player Player { get; private set; }
     public Hud Hud { get; private set; }
@@ -71,8 +75,8 @@ public partial class Main : Node2D
             BackgroundMode     = Godot.Environment.BGMode.Color,
             BackgroundColor    = BACKGROUND_COLOR,
             AmbientLightSource = Godot.Environment.AmbientSource.Color,
-            AmbientLightColor  = new Color(0.5f, 0.8f, 0.85f),
-            AmbientLightEnergy = 0.6f,
+            AmbientLightColor  = SOUP_AMBIENT,
+            AmbientLightEnergy = SOUP_AMBIENT_ENERGY,
             GlowEnabled        = true,
             GlowIntensity      = 0.7f,
             GlowBloom          = 0.05f,
@@ -277,22 +281,53 @@ public partial class Main : Node2D
     // ============================   FOLLOW CAMERA   ============================
     // ===========================================================================
     //
-    //   _UnhandledInput   Mouse wheel zooms in and out, E opens the cell editor.
+    //   _UnhandledInput   Mouse wheel zooms, E opens the editor, a right drag orbits the third person camera.
     //   ZoomBy            Changes the zoom factor by steps, clamped.
     //   _Process          Updates the camera once per frame.
-    //   UpdateCamera      Eases distance and focus, then moves camera, shadow range and backdrop.
+    //   ThirdPerson       0 top view .. 1 third person, the land animal blends over TP_BLEND_SECONDS.
+    //   YawBehind         Camera yaw behind a facing.
+    //   FollowFacing      Swings the third person camera behind the walking creature.
+    //   UpdateCamera      Eases view, distance and focus, then moves camera, planet, sky and backdrop.
+    //   UpdateSky         From the dark soup to sky, sunlight and haze over the open sea.
+    //
+    //   Top view: tilted CAM_TILT from vertical, screen up = -y on the plane.
+    //   Third person: behind and above the land animal, swinging behind it while it walks,
+    //   orbited by a right drag (yaw, tilt), the keys turn with it (Player.InputTurn), the
+    //   world bends to a planet (Plane3D.SetCurve).
     //
 
     private const float ZOOM_STEP = 1.15f;
     public const float MIN_ZOOM = 0.5f;
     public const float MAX_ZOOM = 2.5f;
+    private const float TP_BLEND_SECONDS = 2.2f;
+    private const float TP_TILT = 1.2f;              // third person: tilt from vertical, low over the ground
+    private const float TP_MIN_TILT = 0.6f;
+    private const float TP_MAX_TILT = 1.45f;
+    private const float TP_DISTANCE = 6f;            // in player sizes
+    private const float TP_LOOK_UP = 0.9f;           // the camera looks this far above the body, in player sizes
+    private const float TP_CLEARANCE = 0.35f;        // the camera stays this far above the ground, in player sizes
+    private const float TP_FAR = 700f;               // draw distance in player sizes, the horizon is nearer
+    private const float TP_VIEW_RADIUS = 28f;        // spawning and props around the player, in player sizes
+    private const float ORBIT_SPEED = 0.006f;        // radians per pixel of a right drag
+    private const float FOLLOW_SPEED = 2.2f;         // third person: how fast the camera swings behind the walking creature
+    private const float FOLLOW_BACKWARD_LIMIT = -0.3f;   // facing this much towards the camera: no swing
+    private const float TP_SEA_SINK = 0.95f;         // third person: swimmers sink this many sizes, just below the low sea (Coast.OPEN_SEA_HEIGHT)
+    private const float TP_SHADOW_DISTANCE = 90f;   // third person: tall trees throw shadows this far, in player sizes
+    private const float PLANET_RADIUS = 8000f;       // in Unit of the coast, the islands are ~260 Unit across
 
     /// <summary>Wheel zoom on top of the automatic distance, 1 = default, bigger = farther away.</summary>
     public float ZoomFactor { get; private set; } = 1f;
 
+    /// <summary>0 top view .. 1 third person, eased with SmoothStep when used.</summary>
+    public float ThirdPerson { get; private set; }
+
     private float _camDistance;
     private const float SSAO_RADIUS = 0.35f;         // contact shadow reach in body sizes
     private Vector3 _camFocus = Vector3.Zero;
+    private float _camYaw;                           // third person: 0 = camera south of the player (+z)
+    private float _camTilt = TP_TILT;
+    private float _view;                             // SmoothStep of ThirdPerson, the blend everything uses
+    private bool _isOrbiting;
 
     public override void _UnhandledInput(InputEvent @event)
     {
@@ -302,6 +337,23 @@ public partial class Main : Node2D
             GetViewport().SetInputAsHandled();
             return;
         }
+
+        // Third person: a right drag orbits the camera, the cursor hides meanwhile
+        if (@event is InputEventMouseButton { ButtonIndex: MouseButton.Right } orbit && (_view > 0.5f || !orbit.Pressed))
+        {
+            _isOrbiting     = orbit.Pressed;
+            Input.MouseMode = _isOrbiting ? Input.MouseModeEnum.Captured : Input.MouseModeEnum.Visible;
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+        if (@event is InputEventMouseMotion motion && _isOrbiting)
+        {
+            _camYaw  = Mathf.Wrap(_camYaw - motion.Relative.X * ORBIT_SPEED, -Mathf.Pi, Mathf.Pi);
+            _camTilt = Mathf.Clamp(_camTilt - motion.Relative.Y * ORBIT_SPEED, TP_MIN_TILT, TP_MAX_TILT);
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+
         if (@event is not InputEventMouseButton button || !button.Pressed)
         {
             return;
@@ -334,28 +386,141 @@ public partial class Main : Node2D
         UpdateCamera((float)delta);
     }
 
-    /// <summary>Tilted chase camera, its distance relative to the player size.</summary>
-    /// <param name="dt">(Required) Frame time, 0 snaps the focus to the player.</param>
+    /// <summary>The camera yaw of a creature looking in a direction: the camera behind it.</summary>
+    private static float YawBehind(float facing)
+    {
+        Vector2 behind = -Vector2.FromAngle(facing);
+        return Mathf.Atan2(behind.X, behind.Y);
+    }
+
+    /*
+      Third person, the camera swings behind the walking creature, faster the faster it walks:
+      > Orbiting with the right mouse button: the hand of the player wins, no swing
+      > Standing still: the camera stays where it is, the player may look around
+      > Walking towards the camera (S): no swing, else it would whip around 180 degrees
+      > Otherwise: the yaw eases towards behind the facing, A/D turn into a curve
+    */
+    /// <summary>Swings the third person camera behind the facing of the walking creature.</summary>
+    private void FollowFacing(float dt)
+    {
+        if (_view < 0.5f || _isOrbiting || dt <= 0f)
+        {
+            return;
+        }
+        float speedShare = Mathf.Clamp(Player.Velocity.Length() / Mathf.Max(Player.CurrentSpeed(), 0.001f), 0f, 1f);
+        if (speedShare < 0.1f)
+        {
+            return;
+        }
+        Vector2 cameraForward = -new Vector2(Mathf.Sin(_camYaw), Mathf.Cos(_camYaw));
+        if (Vector2.FromAngle(Player.Facing).Dot(cameraForward) < FOLLOW_BACKWARD_LIMIT)
+        {
+            return;
+        }
+        _camYaw = Mathf.LerpAngle(_camYaw, YawBehind(Player.Facing), Mathf.Clamp(dt * FOLLOW_SPEED * speedShare, 0f, 1f));
+    }
+
+    /*
+      1. View      Blends towards third person once the player is a land animal; the
+                   blend starts with the camera yaw behind the creature, then swings
+                   behind it while it walks (FollowFacing).
+      2. Pose      Yaw and tilt from the top view pose to the orbit pose, distance and the
+                   look-up point eased, the camera never dips into a hill.
+      3. Planet    Curvature with the blend, flat around the camera.
+      4. Scenery   Shadows, contact shadows, sky and backdrop grow along.
+    */
+    /// <summary>Chase camera, top view or third person, its distance relative to the player size.</summary>
+    /// <param name="dt">(Required) Frame time, 0 snaps focus and view to the player.</param>
     private void UpdateCamera(float dt)
     {
-        float   playerSize = Player.BodySize();
-        Vector3 focus      = Plane3D.To3D(Player.GlobalPosition);
+        float playerSize = Player.BodySize();
+
+        // View
+        float target = Player.IsLandAnimal ? 1f : 0f;
+        if (target > 0f && ThirdPerson <= 0f)
+        {
+            _camYaw  = YawBehind(Player.Facing);
+            _camTilt = TP_TILT;
+            Log.Verbose("Main", "Camera turns into the third person view.");
+        }
+        ThirdPerson = dt <= 0f ? target : Mathf.MoveToward(ThirdPerson, target, dt / TP_BLEND_SECONDS);
+        _view       = Mathf.SmoothStep(0f, 1f, ThirdPerson);
+        FollowFacing(dt);
+
+        // Pose
+        float   yaw   = Mathf.LerpAngle(0f, _camYaw, _view);
+        float   tilt  = Mathf.Lerp(CAM_TILT, _camTilt, _view);
+        float   sink  = Player.IsOnLand ? 0f : playerSize * TP_SEA_SINK;
+        Vector3 focus = Plane3D.To3D(Player.GlobalPosition, (TP_LOOK_UP * playerSize + Player.GroundLift - sink) * _view);
         if (dt <= 0f)
         {
             _camFocus = focus;
         }
-        _camDistance = Mathf.Lerp(_camDistance, playerSize * CAM_DISTANCE * ZoomFactor, Mathf.Clamp(dt * 1.5f, 0f, 1f));
+        float distance = playerSize * Mathf.Lerp(CAM_DISTANCE, TP_DISTANCE, _view) * ZoomFactor;
+        _camDistance = Mathf.Lerp(_camDistance, distance, Mathf.Clamp(dt * 1.5f, 0f, 1f));
         _camFocus    = _camFocus.Lerp(focus, Mathf.Clamp(dt * 5f, 0f, 1f));
 
-        _camera.Position = _camFocus + new Vector3(0f, Mathf.Cos(CAM_TILT), Mathf.Sin(CAM_TILT)) * _camDistance;
+        Vector3 offset   = new Vector3(Mathf.Sin(yaw) * Mathf.Sin(tilt), Mathf.Cos(tilt), Mathf.Cos(yaw) * Mathf.Sin(tilt)) * _camDistance;
+        Vector3 position = _camFocus + offset;
+        if (null != Coast && _view > 0f)
+        {
+            var   ground = new Vector2(position.X, position.Z);
+            float floor  = (Coast.GroundHeight(ground) + TP_CLEARANCE) * playerSize;
+            position.Y   = Mathf.Max(position.Y, floor);
+        }
+        _camera.Position = position;
         _camera.LookAt(_camFocus, Vector3.Up);
-        _camera.Near = _camDistance * 0.05f;
-        _camera.Far  = _camDistance * 8f;
+        _camera.Near     = _camDistance * 0.05f;
+        _camera.Far      = Mathf.Lerp(_camDistance * 8f, playerSize * TP_FAR, _view);
+        Player.InputTurn = -yaw;
 
-        // Light, contact shadows and backdrop grow along, so shadows and motes fit at every size
-        _sun.DirectionalShadowMaxDistance = _camDistance * 3f;
+        // Planet
+        float unit = null == Coast ? playerSize : Coast.Unit;
+        Plane3D.SetCurve(_view / (2f * PLANET_RADIUS * unit), position);
+        Plane3D.SeaDrop = _view * playerSize * TP_SEA_SINK;
+
+        // Scenery: light, contact shadows and backdrop grow along, so shadows and motes fit at every size
+        _sun.DirectionalShadowMaxDistance = Mathf.Lerp(_camDistance * 3f, playerSize * TP_SHADOW_DISTANCE, _view);
         _environment.SsaoRadius           = playerSize * SSAO_RADIUS;
+        UpdateSky(playerSize);
+        _backdrop.IsMotesShown = _view < 0.5f;
         _backdrop.Follow(new Vector2(_camFocus.X, _camFocus.Z), playerSize, ViewRadius());
+    }
+
+    private static readonly Color SKY_TOP = new(0.24f, 0.5f, 0.86f);
+    private static readonly Color SKY_HORIZON = new(0.7f, 0.84f, 0.95f);
+    private static readonly Color SEA_BELOW = new(0.07f, 0.3f, 0.42f);
+    private const float FOG_DENSITY = 0.0025f;       // per player size, half the light at ~280 sizes
+    private ProceduralSkyMaterial _sky;
+
+    /// <summary>Background, ambient light and haze between the soup (view 0) and the open sky (view 1).</summary>
+    private void UpdateSky(float playerSize)
+    {
+        if (_view <= 0f)
+        {
+            _environment.BackgroundMode     = Godot.Environment.BGMode.Color;
+            _environment.FogEnabled         = false;
+            _environment.AmbientLightColor  = SOUP_AMBIENT;
+            _environment.AmbientLightEnergy = SOUP_AMBIENT_ENERGY;
+            return;
+        }
+
+        if (null == _sky)
+        {
+            _sky = new ProceduralSkyMaterial { SunAngleMax = 20f };
+            _environment.Sky = new Sky { SkyMaterial = _sky };
+        }
+        _sky.SkyTopColor                = BACKGROUND_COLOR.Lerp(SKY_TOP, _view);
+        _sky.SkyHorizonColor            = BACKGROUND_COLOR.Lerp(SKY_HORIZON, _view);
+        _sky.GroundHorizonColor         = BACKGROUND_COLOR.Lerp(SKY_HORIZON, _view);
+        _sky.GroundBottomColor          = BACKGROUND_COLOR.Lerp(SEA_BELOW, _view);
+        _environment.BackgroundMode     = Godot.Environment.BGMode.Sky;
+        _environment.FogEnabled         = true;
+        _environment.FogLightColor      = SKY_HORIZON;
+        _environment.FogDensity         = FOG_DENSITY * _view / playerSize;
+        _environment.FogSkyAffect       = 0f;
+        _environment.AmbientLightColor  = SOUP_AMBIENT.Lerp(SKY_AMBIENT, _view);
+        _environment.AmbientLightEnergy = Mathf.Lerp(SOUP_AMBIENT_ENERGY, SKY_AMBIENT_ENERGY, _view);
     }
 
     // ===========================================================================
@@ -386,7 +551,11 @@ public partial class Main : Node2D
         foreach (Node node in FoodLayer.GetChildren())
         {
             var   food     = (Food)node;
-            if (null != Coast)
+            if (null != Coast && FoodHabitat.Land == food.Habitat)
+            {
+                food.GroundHeight = Coast.GroundHeight(food.Position) * playerSize;
+            }
+            else if (null != Coast)
             {
                 food.Position = Coast.ToSea(food.Position, food.Size);
             }
@@ -678,12 +847,14 @@ public partial class Main : Node2D
     //
     //   StartPopulating   Queues the starting food and cells, the soup is empty before.
     //   UpdatePopulating  Spawns the queue bit by bit inside the view, cells with a plop.
-    //   SpawnFood         One molecule, size and value relative to the player.
+    //   SpawnFood         One piece of food (molecule, sea or land food), size and value relative to the player.
     //   SpawnCritter      One cell, kind and size depend on the stage, never right on top of the player.
-    //   SpawnPosition     A point inside the view or in a ring just outside it.
+    //   SpawnPosition     A point inside the view or in a ring just outside it, in the sea if asked.
     //
 
     private const float POPULATE_SECONDS = 5f;     // the starting soup fills over this time
+    private const float SEA_FOOD_LOOK = 2.2f;      // sea and land food are drawn bigger than their value size,
+    private const float LAND_FOOD_LOOK = 2.6f;     // next to a creature a molecule sized apple looked lost
 
     private int _pendingFood;
     private int _pendingCritters;
@@ -725,11 +896,33 @@ public partial class Main : Node2D
         return true;
     }
 
+    // Off for now (decision of the user): land food popping out of nothing looked wrong,
+    // it comes back with a source (e.g. fruit growing on trees and falling down)
+    private static readonly bool IS_LAND_FOOD_SPAWNED = false;    // readonly, not const: no unreachable code warning
+
+    /*
+      Habitat by stage and spot:
+      - Up to the cluster: molecules of the soup
+      - Organism: sea food in the water, land food (fruit, mushrooms, berries) on the islands
+        only with IS_LAND_FOOD_SPAWNED, else that spot stays empty
+    */
     private void SpawnFood(bool isInView)
     {
-        var food = new Food();
-        food.Setup(Player.BodySize() * Rand.Range(0.15f, 0.28f), (FoodKind)Rand.Index(3));
-        food.Position = SpawnPosition(isInView);
+        float   size     = Player.BodySize();
+        Vector2 position = SpawnPosition(isInView, isSeaOnly: false);
+        var     food     = new Food { Habitat = Player.IsOrganism ? FoodHabitat.Sea : FoodHabitat.Soup };
+        if (Player.IsOrganism && null != Coast && Coast.IsOnLand(position))
+        {
+            if (!IS_LAND_FOOD_SPAWNED)
+            {
+                return;
+            }
+            food.Habitat      = FoodHabitat.Land;
+            food.GroundHeight = Coast.GroundHeight(position) * size;
+        }
+        food.Setup(size * Rand.Range(0.15f, 0.28f), (FoodKind)Rand.Index(3));
+        food.LookScale = FoodHabitat.Land == food.Habitat ? LAND_FOOD_LOOK : FoodHabitat.Sea == food.Habitat ? SEA_FOOD_LOOK : 1f;
+        food.Position = position;
         FoodLayer.AddChild(food);
     }
 
@@ -789,12 +982,26 @@ public partial class Main : Node2D
         return critter;
     }
 
-    private Vector2 SpawnPosition(bool isInView)
+    private const int SEA_SPOT_TRIES = 8;
+
+    /// <summary>A random spawn point around the player.</summary>
+    /// <param name="isInView">(Required) Inside the view instead of the ring just outside it.</param>
+    /// <param name="isSeaOnly">(Optional) Tries a few points for one in the sea (deep on an island
+    /// the coast would pile them up at the shore), else pushes the last one out. Defaults to true.</param>
+    private Vector2 SpawnPosition(bool isInView, bool isSeaOnly = true)
     {
-        float viewRadius = ViewRadius();
-        float   distance   = isInView ? Rand.Range(0.1f, 1f) * viewRadius : Rand.Range(1.05f, 1.6f) * viewRadius;
-        Vector2 position   = Player.GlobalPosition + Vector2.FromAngle(Rand.Angle()) * distance;
-        return null == Coast ? position : Coast.ToSea(position, Player.BodySize() * 2f);
+        float   viewRadius = ViewRadius();
+        Vector2 position   = Player.GlobalPosition;
+        for (int i = 0; i < SEA_SPOT_TRIES; i++)
+        {
+            float distance = isInView ? Rand.Range(0.1f, 1f) * viewRadius : Rand.Range(1.05f, 1.6f) * viewRadius;
+            position = Player.GlobalPosition + Vector2.FromAngle(Rand.Angle()) * distance;
+            if (null == Coast || !isSeaOnly || !Coast.IsOnLand(position))
+            {
+                break;
+            }
+        }
+        return null == Coast || !isSeaOnly ? position : Coast.ToSea(position, Player.BodySize() * 2f);
     }
 
     // ===========================================================================
@@ -821,8 +1028,9 @@ public partial class Main : Node2D
         SpawnSplash(position, radius * 1.8f, color);
         for (int i = 0; i < POP_FOOD; i++)
         {
-            var food = new Food { IsMeat = true };
+            var food = new Food { IsMeat = true, Habitat = Player.IsOrganism ? FoodHabitat.Sea : FoodHabitat.Soup };
             food.Setup(radius * Rand.Range(0.2f, 0.3f), (FoodKind)Rand.Index(3));
+            food.LookScale = FoodHabitat.Sea == food.Habitat ? SEA_FOOD_LOOK : 1f;
             food.Position = position + Vector2.FromAngle(Rand.Angle()) * radius * 0.6f;
             food.Value   *= POP_FOOD_BONUS;
             FoodLayer.CallDeferred(Node.MethodName.AddChild, food);
@@ -1026,11 +1234,15 @@ public partial class Main : Node2D
         Hud.Visible     = true;
         SpawnSplash(Player.GlobalPosition, Player.BodySize() * 1.6f, Player.BodyColor);
 
-        // Creatures pop up like the cells after the start (UpdatePopulating)
-        _pendingFood     = 0;
+        // Creatures and sea food pop up like the soup after the start (UpdatePopulating), the molecules go
+        foreach (Node food in FoodLayer.GetChildren())
+        {
+            food.QueueFree();
+        }
+        _pendingFood     = START_FOOD;
         _pendingCritters = START_CRITTERS;
         _populateTime    = 0f;
-        Log.Verbose("Main", "Organism released, the sea fills with creatures.");
+        Log.Verbose("Main", "Organism released, the sea fills with creatures and sea food.");
     }
 
     // ===========================================================================
@@ -1038,12 +1250,13 @@ public partial class Main : Node2D
     // ===========================================================================
     //
     //   CoastAt       Biomass from which the coast shows up, the next step after the organism.
-    //   UpdateCoast   Spawns the coast once, slides it along, tells the player where land is.
-    //   SpawnCoast    A shore ahead of the player, far off or right in front.
+    //   UpdateCoast   Spawns the coast once, keeps it around the player, tells the player where land is.
+    //   SpawnCoast    An archipelago ahead of the player, its first shore far off or right in front.
     //   CheatTo       F10 menu: jumps forward to a stage, the coast or more points.
     //
 
     private const float COAST_GROWTH = 2f;           // the coast needs twice the biomass of the evolution
+    private const float TRUNK_CONTACT = 0.5f;        // the body touches a trunk this many sizes from its center
 
     public Coast Coast { get; private set; }
 
@@ -1059,11 +1272,19 @@ public partial class Main : Node2D
         {
             return;
         }
-        Coast.Follow(Player.GlobalPosition, Player.BodySize(), ViewRadius());
-        Player.IsOnLand = Coast.IsOnLand(Player.GlobalPosition);
+        float size = Player.BodySize();
+        Coast.Follow(Player.GlobalPosition, size, ViewRadius(), _camera.Far, _view);
+        Player.IsOnLand   = Coast.IsOnLand(Player.GlobalPosition);
+        Player.GroundLift = Player.IsOnLand ? Coast.SurfaceLift(Player.GlobalPosition, size) : 0f;
+
+        // Trunks block the way, the body slides around them
+        if (Player.IsOnLand)
+        {
+            Player.Position = Coast.PushOutOfTrees(Player.Position, size * TRUNK_CONTACT);
+        }
     }
 
-    /// <summary>A straight shore ahead of the player (its facing), land beyond it.</summary>
+    /// <summary>An archipelago ahead of the player (its facing), the landing island first.</summary>
     /// <param name="isNear">(Required) Right in front (cheat) instead of just outside the view.</param>
     /// <returns>The coast, also when it already existed.</returns>
     public Coast SpawnCoast(bool isNear)
@@ -1075,7 +1296,7 @@ public partial class Main : Node2D
         float   size      = Player.BodySize();
         Vector2 direction = Vector2.FromAngle(Player.Facing);
         float   distance  = isNear ? size * 4f : ViewRadius() * 1.1f;
-        Coast = new Coast { Origin = Player.GlobalPosition + direction * distance, Normal = direction, Unit = size };
+        Coast = Coast.Scatter(Player.GlobalPosition, direction, distance, size, GD.Randi());
         AddChild(Coast);
         Coast.Follow(Player.GlobalPosition, size, ViewRadius());
         Hud.ShowBanner("BANNER_COAST_TITLE", "BANNER_COAST_TEXT");
@@ -1167,10 +1388,10 @@ public partial class Main : Node2D
         return radius * radius * KILL_REWARD_FACTOR;
     }
 
-    /// <summary>Radius of the visible area on the plane at the current camera distance.</summary>
+    /// <summary>Radius of the visible area on the plane at the current camera distance, in third person a fixed reach.</summary>
     private float ViewRadius()
     {
-        return ViewRadiusAt(_camDistance);
+        return Mathf.Lerp(ViewRadiusAt(_camDistance), Player.BodySize() * TP_VIEW_RADIUS, _view);
     }
 
     /// <summary>Radius of the visible area on the plane at a camera distance, with a margin for the camera tilt.</summary>

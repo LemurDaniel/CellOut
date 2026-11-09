@@ -42,7 +42,9 @@ public partial class Backdrop : Node3D
         // ---------------------------------------------------------------------------
 
         _floorMaterial = new ShaderMaterial { Shader = OCEAN_SHADER };
-        _floor = CellVisual3D.AddMesh(this, new PlaneMesh { Size = Vector2.One }, _floorMaterial, Vector3.Zero, Vector3.One);
+        // Subdivided, so it bends with the planet (planet.gdshaderinc)
+        var floorMesh = new PlaneMesh { Size = Vector2.One, SubdivideWidth = 48, SubdivideDepth = 48 };
+        _floor = CellVisual3D.AddMesh(this, floorMesh, _floorMaterial, Vector3.Zero, Vector3.One);
         _floor.CastShadow = GeometryInstance3D.ShadowCastingSetting.Off;
 
         // ---------------------------------------------------------------------------
@@ -64,12 +66,28 @@ public partial class Backdrop : Node3D
             InstanceCount        = MAX_MOTES,
             VisibleInstanceCount = 0,
         };
-        AddChild(new MultiMeshInstance3D
+        _moteInstance = new MultiMeshInstance3D
         {
             Multimesh        = _motes,
             MaterialOverride = moteMaterial,
             CastShadow       = GeometryInstance3D.ShadowCastingSetting.Off,
-        });
+        };
+        AddChild(_moteInstance);
+    }
+
+    private MultiMeshInstance3D _moteInstance;
+
+    /// <summary>Motes float in the soup, over the open sea of the third person view they would hang in the air.</summary>
+    public bool IsMotesShown
+    {
+        get => null == _moteInstance || _moteInstance.Visible;
+        set
+        {
+            if (null != _moteInstance)
+            {
+                _moteInstance.Visible = value;
+            }
+        }
     }
 
     // ===========================================================================

@@ -2,7 +2,7 @@
 //   Headless smoke test: starts the main scene, boosts biomass through all stages,
 //   places parts in every cell editor, kills and respawns the player, lets a hunter
 //   eat a bacterium, grows the full cluster and evolves it into an organism in the
-//   creature editor, walks it onto the coast with the F10 cheats, and checks swim speed, wheel zoom, the German/English texts and
+//   creature editor, walks it onto the island coast with the F10 cheats (third person), and checks swim speed, wheel zoom, the German/English texts and
 //   the editor rules (direction, thrust, diet, unlocks, refunds).
 //   Exit code 0 = all checks passed, 1 = a check failed. A frame cap prevents endless runs.
 //   Run by tools/Test-CellOut.ps1 after `dotnet build`.
@@ -520,6 +520,9 @@ public partial class SmokeTest : Node
             ("Texte Kreatur", ProbeCreatureTexts("en") && ProbeCreatureTexts("de")),
             ("Küste", ProbeCoast()),
             ("Landtier per Cheat", _isCheatPointsOk && player.IsLandAnimal && player.IsOnLand),
+            ("Third Person", ProbeThirdPerson()),
+            ("Futter Meer/Land", ProbeFoodHabitats()),
+            ("Bäume", ProbeTrees()),
             ("Luft an Land", ProbeAir()),
             ("Laufen an Land", ProbeWalking()),
             ("Gewicht", ProbeWeight()),
@@ -935,15 +938,103 @@ public partial class SmokeTest : Node
         return isOk;
     }
 
+    /*
+      One island at the origin, radius 10, seed 0: towards angle 0 every bulge is sin(0) = 0,
+      so the shore lies exactly at (10, 0). The archipelago of the game: several islands,
+      shores at least MIN_GAP apart, the landing point on the shore of the first one.
+    */
     private bool ProbeCoast()
     {
-        var  coast       = new Coast { Origin = Vector2.Zero, Normal = Vector2.Right, Unit = 1f };
-        bool isSidesOk   = Mathf.IsEqualApprox(coast.LandDepth(new Vector2(5f, 3f)), 5f)
-            && coast.IsOnLand(new Vector2(1f, 0f)) && !coast.IsOnLand(new Vector2(-1f, 0f));
-        bool isToSeaOk   = coast.ToSea(new Vector2(4f, 2f), 1f).IsEqualApprox(new Vector2(-1f, 2f))
-            && coast.ToSea(new Vector2(-9f, 2f), 1f).IsEqualApprox(new Vector2(-9f, 2f));
+        var coast = new Coast { Unit = 1f };
+        coast.AddIsland(new Coast.Island(Vector2.Zero, 10f, 0f), new Vector2(-20f, 0f));
+        bool isSidesOk = Mathf.IsEqualApprox(coast.LandDepth(new Vector2(2f, 0f)), 8f)
+            && coast.IsOnLand(new Vector2(9f, 0f)) && !coast.IsOnLand(new Vector2(11f, 0f));
+        bool isToSeaOk = coast.ToSea(new Vector2(4f, 0f), 1f).IsEqualApprox(new Vector2(11f, 0f))
+            && coast.ToSea(new Vector2(30f, 2f), 1f).IsEqualApprox(new Vector2(30f, 2f));
+        bool isLandingOk = Mathf.IsZeroApprox(coast.LandDepth(coast.Origin)) && coast.Normal.IsEqualApprox(Vector2.Right);
         coast.Free();
-        return isSidesOk && isToSeaOk && null != _main.Coast;
+
+        Coast game        = _main.Coast;
+        bool  isScattered = null != game && game.Islands.Count >= 3;
+        for (int i = 0; isScattered && i < game.Islands.Count; i++)
+        {
+            for (int j = i + 1; j < game.Islands.Count; j++)
+            {
+                Coast.Island a = game.Islands[i];
+                Coast.Island b = game.Islands[j];
+                isScattered = isScattered && a.Center.DistanceTo(b.Center) > (a.Radius + b.Radius) * 1.25f;
+            }
+        }
+        if (!isSidesOk || !isToSeaOk || !isLandingOk || !isScattered)
+        {
+            GD.Print($"  coast: sides {isSidesOk}, to sea {isToSeaOk}, landing {isLandingOk}, archipelago {isScattered}");
+        }
+        return isSidesOk && isToSeaOk && isLandingOk && isScattered;
+    }
+
+    /// <summary>After the evolution no soup molecules are left: food is sea food, on the islands land food on the ground.</summary>
+    private bool ProbeFoodHabitats()
+    {
+        List<Food> foods  = _main.FoodLayer.GetChildren().OfType<Food>().Where(food => !food.IsQueuedForDeletion()).ToList();
+        bool       isOk   = foods.Count > 0 && foods.All(food => FoodHabitat.Soup != food.Habitat);
+        bool       isLand = foods.Where(food => FoodHabitat.Land == food.Habitat).All(food => _main.Coast.IsOnLand(food.Position) || food.IsMeat);
+        GD.Print($"  food: {foods.Count(food => FoodHabitat.Sea == food.Habitat)} sea, {foods.Count(food => FoodHabitat.Land == food.Habitat)} land");
+        return isOk && isLand;
+    }
+
+    /*
+      The landing island holds trees: seeded (the same cell twice gives the same trees),
+      on land, sizes from young to giant, several species, and a trunk pushes a body out.
+    */
+    private bool ProbeTrees()
+    {
+        Coast coast = _main.Coast;
+        var   trees = new List<Coast.Tree>();
+        for (int x = -15; x <= 15; x++)
+        {
+            for (int y = -15; y <= 15; y++)
+            {
+                var cell = new Vector2I(Mathf.FloorToInt(coast.Islands[0].Center.X / (16f * coast.Unit)) + x, Mathf.FloorToInt(coast.Islands[0].Center.Y / (16f * coast.Unit)) + y);
+                trees.AddRange(coast.TreesIn(cell));
+            }
+        }
+        var  probe       = new Vector2I(3, 5);
+        bool isSeeded    = coast.TreesIn(probe).SequenceEqual(coast.TreesIn(probe));
+        bool isOnLand    = trees.All(tree => coast.IsOnLand(tree.Position));
+        int  species     = trees.Select(tree => tree.Species).Distinct().Count();
+        bool isSized     = trees.All(tree => tree.Height >= 1.5f * Coast.NATURE_SCALE * coast.Unit && tree.Height <= 25f * Coast.NATURE_SCALE * coast.Unit);
+        // Trees standing close push a body back and forth, so most (not all) trunks must clear it
+        int  blocked     = trees.Count(tree => coast.PushOutOfTrees(tree.Position + new Vector2(0.1f, 0f), coast.Unit).DistanceTo(tree.Position) >= tree.TrunkRadius + coast.Unit * 0.99f);
+        bool isBlocking  = trees.Count > 0 && blocked >= trees.Count * 0.95f;
+        GD.Print($"  trees: {trees.Count} on the landing island, {species} species, seeded {isSeeded}, on land {isOnLand}, sized {isSized}, blocking {blocked}/{trees.Count}");
+        return trees.Count > 40 && isSeeded && isOnLand && species >= 4 && isSized && isBlocking;
+    }
+
+    /// <summary>The land animal sees the world from behind: camera blending, the planet bends, keys turn with the camera.</summary>
+    private bool ProbeThirdPerson()
+    {
+        bool isBlending = _main.ThirdPerson > 0f && Plane3D.Curve > 0f && Plane3D.Drop(Plane3D.CurveOrigin + new Vector2(1000f, 0f)) > 0f;
+        // Camera east of the player (yaw pi/2, InputTurn -pi/2): W walks west
+        bool isTurned = new Vector2(0f, -1f).Rotated(-Mathf.Pi * 0.5f).IsEqualApprox(new Vector2(-1f, 0f));
+
+        // Walking a curve: after a few seconds the camera sits behind the new facing (keys turn with it)
+        Player player = _main.Player;
+        _main._Process(5.0);
+        float facing = player.Facing + 0.8f;
+        for (int i = 0; i < 60; i++)
+        {
+            player.Facing   = facing;
+            player.Velocity = Vector2.FromAngle(facing) * player.CurrentSpeed();
+            _main._Process(0.1);
+        }
+        Vector2 behind      = -Vector2.FromAngle(facing);
+        float   yawBehind   = Mathf.Atan2(behind.X, behind.Y);
+        bool    isFollowing = Mathf.Abs(Mathf.Wrap(player.InputTurn + yawBehind, -Mathf.Pi, Mathf.Pi)) < 0.05f;
+        if (!isFollowing)
+        {
+            GD.Print($"  camera follow: input turn {player.InputTurn:F2}, expected {-yawBehind:F2}");
+        }
+        return isBlending && isTurned && isFollowing;
     }
 
     private static bool ProbeAir()

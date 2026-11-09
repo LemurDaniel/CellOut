@@ -221,6 +221,7 @@ public sealed class CreatureStats
                 case CreaturePartKind.Legs:
                 case CreaturePartKind.StubbyLegs:
                 case CreaturePartKind.ClawLegs:
+                case CreaturePartKind.CrabLegs:
                     stats.SwimSpeed *= Scaled(LIMB_DRAG);
                     break;
                 // Hands grab food, claws scratch at both front flanks (a single claw at its own flank,

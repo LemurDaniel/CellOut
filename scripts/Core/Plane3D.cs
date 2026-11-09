@@ -80,10 +80,15 @@ public static class Plane3D
     //   Origin     Plane point around which the world stays flat (the camera).
     //   SetCurve   Sets both here and as shader globals planet_curve / planet_origin.
     //   Drop       How far a plane point sinks below the flat plane.
+    //   SeaDrop    How far swimming bodies sink below the plane, so they stay under the low
+    //              sea of the third person view. Set by Main, 0 in the top view.
     //
 
     public static float Curve { get; private set; }
     public static Vector2 CurveOrigin { get; private set; }
+
+    /// <summary>World units swimming bodies and sea food sink, set by Main.</summary>
+    public static float SeaDrop { get; set; }
 
     /// <summary>Sets the curvature for the CPU (Drop) and the shaders (planet.gdshaderinc).</summary>
     /// <param name="curve">(Required) 1 / (2 * planet radius) in 1 / world units, 0 = flat.</param>

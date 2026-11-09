@@ -11,6 +11,11 @@
 >
 > Play at your own risk. For risks and side effects, consult your prompt or your GPU. 🔥🖥️
 
+> [!CAUTION]
+> **🚧 EARLY ALPHA 🚧**
+>
+> Work in progress: features are incomplete, balancing is rough, there is no saving yet, and stages and controls can change or break at any time. 🧪
+
 > From primordial soup to multicellular life. An evolution game in Godot 4 (C#), realistically inspired, cartoony in 3D.
 
 <p align="center"><img src="docs/images/cell.hero.png" alt="A cell built in the editor: humped back with two spikes, jaws, eyes, a flagellum and cilia" width="720"></p>
@@ -27,6 +32,17 @@ You start as a **protocell**, a lipid bubble with a floating DNA helix, collecti
 | 🔭 **Scout**: five eyes, two flagella, cilia | 🧬 **Protocell**: a lipid bubble with a DNA helix |
 
 Every part is placed freely on the membrane in the cell editor (around, on top, underneath), and the cell itself can be stretched and raised into any shape.
+
+## 🐾 Creature gallery
+
+Shaped in the creature editor: bend and stretch the spine, pull limbs out by their joints, branch them, stick feet and hands on the tips, paint patterns and spray your own. Results may vary. 🧪
+
+| | |
+|:---:|:---:|
+| ![Squid](docs/creatures/squid.png) | ![Crab](docs/creatures/crab.png) |
+| **Squid** 🦑<br>Four tentacles that fork into eight, eyes the size of its worries. | **Crab** 🦀<br>Six pointy crab feet for sideways sprints, two claws per arm because one is never enough. |
+| ![Giraffe sausage](docs/creatures/giraffe-sausage.png) | ![Muscle whale](docs/creatures/muscle-whale.png) |
+| **Giraffe sausage** 🦒🌭<br>A neck pulled up for the high plankton, paws for the beach, one very curious stalk eye. | **Muscle whale** 💪🐳<br>Never skips arm day. Big brain, bigger grin, sprayed-on racing stripes. |
 
 ## ▶️ Getting started
 

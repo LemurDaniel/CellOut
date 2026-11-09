@@ -155,6 +155,7 @@ public partial class CreatureVisual3D : Node3D
             [CreaturePartKind.Legs]          = ("creature.paw.glb", null),
             [CreaturePartKind.StubbyLegs]    = ("creature.columnfoot.glb", null),
             [CreaturePartKind.ClawLegs]      = ("creature.talonfoot.glb", null),
+            [CreaturePartKind.CrabLegs]      = ("creature.crabtip.glb", null),
             [CreaturePartKind.Hands]         = ("creature.hand.glb", "Grab"),
             [CreaturePartKind.Claws]         = ("creature.clawpaw.glb", "Grab"),
             [CreaturePartKind.MembraneWings] = ("creature.membranewings.glb", "Flap"),
@@ -216,6 +217,7 @@ public partial class CreatureVisual3D : Node3D
     private readonly List<Node3D> _eyes = new();
     private readonly List<MeshInstance3D> _spouts = new();
     private float _lift;
+    private float _sink;                             // eases to Plane3D.SeaDrop in the water, 0 on land
     private ShaderMaterial _clay;
     private int _signature;
     private float _time;
@@ -264,9 +266,10 @@ public partial class CreatureVisual3D : Node3D
         float speedShare = 0f;
         bool  isOnLand   = null != Body && Body.IsOnLand;
         _lift = Mathf.Lerp(_lift, isOnLand && design.LegPairs > 0 ? LAND_LIFT : 0f, Mathf.Clamp(dt * 4f, 0f, 1f));
+        _sink = Mathf.Lerp(_sink, isOnLand ? 0f : Plane3D.SeaDrop, Mathf.Clamp(dt * 4f, 0f, 1f));
         if (null != Body)
         {
-            GlobalPosition = Plane3D.To3D(Body.GlobalPosition, _lift * Body.Radius + Body.GroundLift - Plane3D.Drop(Body.GlobalPosition));
+            GlobalPosition = Plane3D.To3D(Body.GlobalPosition, _lift * Body.Radius + Body.GroundLift - _sink - Plane3D.Drop(Body.GlobalPosition));
             Rotation       = new Vector3(0f, Plane3D.FacingToYaw(Body.Facing), 0f);
             Scale          = Vector3.One * Body.Radius;
             Visible        = !Body.IsHidden && !(Body.IsGhost && _time % 0.2f < 0.1f);
@@ -638,6 +641,7 @@ public partial class CreatureVisual3D : Node3D
             case CreaturePartKind.Legs:
             case CreaturePartKind.StubbyLegs:
             case CreaturePartKind.ClawLegs:
+            case CreaturePartKind.CrabLegs:
             case CreaturePartKind.Hands:
             case CreaturePartKind.Claws:
                 BuildLimb(design, part, color);

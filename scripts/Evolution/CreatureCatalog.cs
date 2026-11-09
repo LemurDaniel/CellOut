@@ -53,7 +53,7 @@ public enum CreaturePartKind
     // Limbs: sculpted, 1 to 4 joints
     StubLimb, BentLimb, Limb, Tentacle,
     // Feet
-    Legs, StubbyLegs, ClawLegs,
+    Legs, StubbyLegs, ClawLegs, CrabLegs,
     // Hands
     Hands, Claws,
     // Brain
@@ -160,6 +160,7 @@ public static class CreatureCatalog
         new(CreaturePartKind.Legs,          CreatureCategory.Feet,    2, 1.5f, CreatureMount.Limb,  null, Carry: 14f, Stride: 1f),
         new(CreaturePartKind.StubbyLegs,    CreatureCategory.Feet,    2, 1.8f, CreatureMount.Limb,  null, Carry: 20f, Stride: 0.75f),
         new(CreaturePartKind.ClawLegs,      CreatureCategory.Feet,    3, 2.0f, CreatureMount.Limb,  null, Carry: 12f, Stride: 1.15f),
+        new(CreaturePartKind.CrabLegs,      CreatureCategory.Feet,    2, 0.9f, CreatureMount.Limb,  null, Carry: 10f, Stride: 1.1f),
         // Hands
         new(CreaturePartKind.Hands,         CreatureCategory.Hands,   2, 0.8f, CreatureMount.Limb,  null),
         new(CreaturePartKind.Claws,         CreatureCategory.Hands,   3, 1.0f, CreatureMount.Limb,  null),
