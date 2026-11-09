@@ -14,7 +14,8 @@
 //   air runs out, without legs it only crawls. The first step onto land with both makes
 //   it a land animal.
 //   Created by Main, which listens to its signals. Steered with WASD, arrows or the held
-//   mouse, divides or evolves with Space or the HUD buttons.
+//   mouse, divides or evolves with Space or the HUD buttons. In the third person view of
+//   the land animal Main turns the keys with the camera (InputTurn): W walks away from it.
 
 //
 //   Chapters:
@@ -71,10 +72,11 @@ public partial class Player : CellBody
     //   Evolution points and the diet.
     // ---------------------------------------------------------------------------
 
-    private const int EP_PER_LEVEL = 2;              // parts cost 2-6 EP, a level buys about half a part
+    public const int EP_PER_LEVEL = 2;               // parts cost 2-6 EP, a level buys about half a part
     private const int EP_PER_STAGE = 2;
 
     public int EvolutionPoints { get; private set; }
+    private int _epPerLevel = EP_PER_LEVEL;          // a brain adds to it (CreatureStats)
     public float Diet { get; private set; }          // -1 herbivore .. 1 carnivore
     private readonly DietTracker _diet = new();
 
@@ -99,11 +101,10 @@ public partial class Player : CellBody
     private const float START_INVULNERABILITY = 3f;
     private const float HIT_INVULNERABILITY = 0.5f;
     private const float RESPAWN_INVULNERABILITY = 2.5f;
-    private const float DEATH_BIOMASS_KEPT = 0.6f;    // dying costs 40% biomass
     private const float CELLS_LOST_ON_DEATH = 0.25f;  // a cluster loses a quarter of its cells instead
     private const float REGEN_PER_SECOND = 0.02f;     // share of MaxHp
     private const float BASE_ACCELERATION = 2.5f;
-    private const float BASE_MAGNET_RANGE = 1.6f;
+    public const float BASE_MAGNET_RANGE = 1.6f;
 
     public float MaxHp { get; private set; } = 50f;
     public float Hp { get; private set; } = 50f;
@@ -124,10 +125,14 @@ public partial class Player : CellBody
     // ================================   MOVE   =================================
     // ===========================================================================
     //
+    //   InputTurn         Turn of the key directions, set by Main from the camera yaw.
     //   _Ready            Protocell look and a short grace period.
     //   _PhysicsProcess   Steers by keys or mouse, regenerates, photosynthesizes, fades the diet.
     //   _Process          Blinks while invulnerable.
     //
+
+    /// <summary>Turn of the key directions in radians, 0 in the top view (W = screen up).</summary>
+    public float InputTurn { get; set; }
 
     public override void _Ready()
     {
@@ -143,6 +148,10 @@ public partial class Player : CellBody
     public override void _PhysicsProcess(double delta)
     {
         float dt = (float)delta;
+        if (IsDead)
+        {
+            return;
+        }
 
         // Keys, the held mouse button overrides them
         var input = Vector2.Zero;
@@ -150,6 +159,7 @@ public partial class Player : CellBody
         if (Input.IsPhysicalKeyPressed(Key.S) || Input.IsPhysicalKeyPressed(Key.Down))  input.Y += 1f;
         if (Input.IsPhysicalKeyPressed(Key.A) || Input.IsPhysicalKeyPressed(Key.Left))  input.X -= 1f;
         if (Input.IsPhysicalKeyPressed(Key.D) || Input.IsPhysicalKeyPressed(Key.Right)) input.X += 1f;
+        input = input.Rotated(InputTurn);
         if (Input.IsMouseButtonPressed(MouseButton.Left))
         {
             Vector2 toMouse = Plane3D.MouseOnPlane(GetViewport(), GlobalPosition) - GlobalPosition;
@@ -351,13 +361,11 @@ public partial class Player : CellBody
     //   Main sets CellBody.IsOnLand every physics frame from the Coast.
     //
 
-    public const float CRAWL_SPEED = 0.3f;           // share of the swim speed without legs on land
-    public const float WALK_SPEED = 0.85f;           // with the first pair of legs
     private const float AIR_SECONDS = 8f;            // a full breath lasts this long on land
     private const float AIR_REFILL = 0.5f;           // per second in the water
     private const float SUFFOCATE_DAMAGE = 0.1f;     // share of MaxHp per second without air
 
-    private float _landSpeed = CRAWL_SPEED;
+    private float _landSpeed = CreatureStats.CRAWL_SPEED;    // from CreatureStats, see ApplyCreature
 
     public bool IsLandAnimal => LAND_STAGE == Stage;
 
@@ -423,12 +431,6 @@ public partial class Player : CellBody
     //   HasThorns             Whether any spike or jaw exists.
     //
 
-    private const float SPIKE_ARC = 0.7f;      // half angle a spike covers, radians
-    private const float JAW_ARC = 0.8f;
-    private const float PLATE_ARC = 0.9f;
-    private const float SPIKE_DAMAGE = 8f;
-    private const float JAW_DAMAGE = 10f;
-    private const float PLATE_DAMAGE_FACTOR = 0.5f;
     private const float JAW_EAT_RATIO = 0.95f;           // with a jaw towards it, cells up to 95% of the own size
     private const float EAT_RATIO_PER_DIVISION = 0.05f;  // every division swallows 5% bigger prey
     private const float MIN_EAT_RATIO = 0.75f;           // at most prey a third bigger than the own body
@@ -459,22 +461,13 @@ public partial class Player : CellBody
     /// <param name="worldAngle">(Required) Direction from the player to the other cell.</param>
     public float ContactDamageToward(float worldAngle)
     {
-        float damage = 0f;
-        foreach (float angle in _spikeAngles)
-        {
-            if (IsWithin(worldAngle, angle, SPIKE_ARC)) damage += SPIKE_DAMAGE;
-        }
-        foreach (float angle in _jawAngles)
-        {
-            if (IsWithin(worldAngle, angle, JAW_ARC)) damage += JAW_DAMAGE;
-        }
-        return damage * _toxin;
+        return CellStats.ContactDamage(_spikeAngles, _jawAngles, _toxin, worldAngle - Facing);
     }
 
     /// <summary>Whether a jaw points towards the given world direction.</summary>
     public bool CanBiteToward(float worldAngle)
     {
-        return _jawAngles.Exists(angle => IsWithin(worldAngle, angle, JAW_ARC));
+        return _jawAngles.Exists(angle => IsWithin(worldAngle, angle, CellStats.JAW_ARC));
     }
 
     /// <summary>
@@ -493,8 +486,8 @@ public partial class Player : CellBody
     /// <summary>Share of the damage taken from the given world direction, plates halve it.</summary>
     public float DamageFactorFrom(float worldAngle)
     {
-        bool isShielded = _plateAngles.Exists(angle => IsWithin(worldAngle, angle, PLATE_ARC));
-        return isShielded ? PLATE_DAMAGE_FACTOR : 1f;
+        bool isShielded = _plateAngles.Exists(angle => IsWithin(worldAngle, angle, CellStats.PLATE_ARC));
+        return isShielded ? CellStats.PLATE_DAMAGE_FACTOR : 1f;
     }
 
     public bool HasThorns()
@@ -505,8 +498,7 @@ public partial class Player : CellBody
     /// <summary>Whether a world direction lies within arc of a part angle given relative to the facing.</summary>
     private bool IsWithin(float worldAngle, float partAngle, float arc)
     {
-        float local = worldAngle - Facing;
-        return Mathf.Abs(Mathf.Wrap(local - partAngle, -Mathf.Pi, Mathf.Pi)) <= arc;
+        return CellStats.IsWithin(worldAngle - Facing, partAngle, arc);
     }
 
     // ===========================================================================
@@ -515,9 +507,11 @@ public partial class Player : CellBody
     //
     //   AddBiomass     Grows, counts the diet, advances stages and pays EP per level (the
     //                  player opens the editor when it wants, only a stage opens it).
-    //   TakeDamage     Hurts and pushes back, a death costs biomass (Die),
+    //   TakeDamage     Hurts and pushes back, zero health is game over (Die),
     //                  a cluster loses a quarter of its cells instead (LoseCells).
-    //   Die            Biomass loss, full health and air, grace period; Main respawns at sea if on land.
+    //   Digest         Steady damage inside a bigger cell: no push back, no grace period.
+    //   CheckDeath     Dies or loses cells at zero health, shared by both.
+    //   Die            Game over: the body stops, Main shows the game over screen.
     //   LoseCells      The cluster survives a deadly hit by bursting a quarter of its cells.
     //   CommitDesign   Takes over the design and points left from the editor.
     //
@@ -552,7 +546,7 @@ public partial class Player : CellBody
         while (Biomass >= NextLevelAt)
         {
             Level++;
-            EvolutionPoints += EP_PER_LEVEL;
+            EvolutionPoints += _epPerLevel;
             _levelStart      = NextLevelAt;
             NextLevelAt      = NextLevelAt * LEVEL_GROWTH + LEVEL_STEP;
             Log.Verbose("Player", $"Biomass {Biomass:F0} reached level {Level} -> {EvolutionPoints} EP, next at {NextLevelAt:F0}.");
@@ -566,7 +560,7 @@ public partial class Player : CellBody
     /// <returns>True when the hit landed, false while invulnerable.</returns>
     public bool TakeDamage(float amount, Vector2 from)
     {
-        if (Invulnerable > 0f)
+        if (Invulnerable > 0f || IsDead)
         {
             return false;
         }
@@ -575,7 +569,27 @@ public partial class Player : CellBody
         HurtFlash     = 1f;
         Invulnerable  = HIT_INVULNERABILITY;
         Velocity     -= toAttacker.Normalized() * CurrentSpeed() * 2.5f;
+        CheckDeath();
+        return true;
+    }
 
+    /// <summary>Steady damage while a bigger cell digests the player: armor towards it halves it, no push back.</summary>
+    /// <param name="amount">(Required) Damage of this frame before armor.</param>
+    /// <param name="from">(Required) Plane point of the eater.</param>
+    /// <example><code>player.Digest(12f * dt, critter.Position);</code></example>
+    public void Digest(float amount, Vector2 from)
+    {
+        if (Invulnerable > 0f || IsDead)
+        {
+            return;
+        }
+        Hp        -= amount * DamageFactorFrom((from - GlobalPosition).Angle());
+        HurtFlash  = Mathf.Max(HurtFlash, 0.6f);
+        CheckDeath();
+    }
+
+    private void CheckDeath()
+    {
         if (Hp <= 0f && CellCount > 1)
         {
             LoseCells();
@@ -585,18 +599,22 @@ public partial class Player : CellBody
             Die();
         }
         EmitSignal(SignalName.StatsChanged);
-        return true;
     }
 
-    /// <summary>Costs biomass, refills health and starts a grace period, Main moves the player if needed.</summary>
+    /// <summary>Game over: true once health hit zero as a single cell or organism.</summary>
+    public bool IsDead { get; private set; }
+
+    /// <summary>Game over: the body stops for good, Main pauses and shows the game over screen.</summary>
     private void Die()
     {
-        Biomass     *= DEATH_BIOMASS_KEPT;
-        Hp           = MaxHp;
-        Air          = 1f;
-        Invulnerable = RESPAWN_INVULNERABILITY;
-        UpdateRadius();
-        Log.Verbose("Player", $"Died, biomass down to {Biomass:F0}, respawning.");
+        if (IsDead)
+        {
+            return;
+        }
+        IsDead   = true;
+        Hp       = 0f;
+        Velocity = Vector2.Zero;
+        Log.Verbose("Player", $"Died at stage {Stage} with biomass {Biomass:F0} -> game over.");
         EmitSignal(SignalName.Died);
     }
 
@@ -642,6 +660,9 @@ public partial class Player : CellBody
 
     private static readonly Color PROTOCELL_COLOR = new(0.55f, 0.85f, 0.95f);
     private static readonly Color SINGLE_CELL_COLOR = new(0.45f, 0.85f, 0.65f);
+
+    /// <summary>Default coral of the clay, the creature keeps it until the editor picks another color.</summary>
+    public static readonly Color ORGANISM_COLOR = new(0.98f, 0.5f, 0.45f);
     private Color _stageColor;
 
     /// <summary>Color of the current stage, used when the design has no custom color.</summary>
@@ -676,7 +697,7 @@ public partial class Player : CellBody
         float hpRatio      = MaxHp > 0f ? Hp / MaxHp : 1f;
         float hpMultiplier = 1f;
         _speedMultiplier = 1f;
-        _landSpeed       = CRAWL_SPEED;
+        _landSpeed       = CreatureStats.CRAWL_SPEED;
         _acceleration    = BASE_ACCELERATION;
         _digestAll       = 1f;
         _digestPlant     = 1f;
@@ -684,6 +705,7 @@ public partial class Player : CellBody
         _photosynthesis  = 0f;
         _toxin           = 1f;
         MagnetRange      = BASE_MAGNET_RANGE;
+        _epPerLevel      = EP_PER_LEVEL;
         _spikeAngles.Clear();
         _jawAngles.Clear();
         _plateAngles.Clear();
@@ -693,135 +715,45 @@ public partial class Player : CellBody
         {
             hpMultiplier = ApplyCreature();
         }
-        IReadOnlyList<PlacedPart> cellParts = IsOrganism ? System.Array.Empty<PlacedPart>() : Design.Parts;
-        foreach (PlacedPart part in cellParts)
+        else
         {
-            switch (part.Kind)
-            {
-                // Herbivore
-                case PartKind.Chloroplast:
-                    _photosynthesis += 0.4f;
-                    break;
-                case PartKind.FilterMouth:
-                    MagnetRange  += 0.4f;
-                    _digestPlant *= 1.25f;
-                    break;
-                case PartKind.ArmorPlate:
-                    hpMultiplier *= 1.1f;
-                    _plateAngles.Add(part.Angle);
-                    break;
-                // Omnivore: a flagellum pushes with 30% from the front up to 100% from the back
-                case PartKind.Flagellum:
-                    float thrust = Mathf.Lerp(0.3f, 1f, (1f - Mathf.Cos(part.Angle)) * 0.5f);
-                    _speedMultiplier *= 1f + 0.22f * thrust;
-                    break;
-                case PartKind.Eyespot:
-                    MagnetRange += 0.5f;
-                    break;
-                case PartKind.Vacuole:
-                    _digestAll *= 1.2f;
-                    break;
-                case PartKind.Cilia:
-                    _acceleration *= 1.4f;
-                    break;
-                // Carnivore
-                case PartKind.Spike:
-                    _spikeAngles.Add(part.Angle);
-                    break;
-                case PartKind.Jaw:
-                    _jawAngles.Add(part.Angle);
-                    _digestMeat *= 1.2f;
-                    break;
-                case PartKind.Toxin:
-                    _toxin *= 1.6f;
-                    break;
-                default:
-                    throw new System.ArgumentOutOfRangeException(nameof(part), $"part must be a known PartKind, got '{part.Kind}'.");
-            }
+            // A cell takes its traits from the placed parts, the same formula as the NPC cells
+            CellStats cell = CellStats.From(Design);
+            hpMultiplier     *= cell.Health;
+            _speedMultiplier *= cell.Speed;
+            _acceleration    *= cell.Acceleration;
+            _digestAll       *= cell.DigestAll;
+            _digestPlant     *= cell.DigestPlant;
+            _digestMeat      *= cell.DigestMeat;
+            _photosynthesis  += cell.Photosynthesis;
+            _toxin           *= cell.Toxin;
+            MagnetRange      += cell.MagnetBonus;
+            _spikeAngles.AddRange(cell.SpikeAngles);
+            _jawAngles.AddRange(cell.JawAngles);
+            _plateAngles.AddRange(cell.PlateAngles);
         }
 
         hpMultiplier *= 1f + HP_PER_DIVISION * Divisions;
-        if (!IsOrganism)
-        {
-            // An organism keeps the clay color Main gave it
-            BodyColor = Design.Color ?? _stageColor;
-        }
+        BodyColor = IsOrganism ? Creature.Color ?? ORGANISM_COLOR : Design.Color ?? _stageColor;
         MaxHp = (0 == Stage ? PROTOCELL_HP : CELL_HP) * hpMultiplier;
         Hp    = hpRatio * MaxHp;
         Diet  = _diet.Value(Design.Lean(), Design.Parts.Count > 0);
     }
 
-    /*
-      Traits of an organism, multiplied together:
-      - Type:      fish +10% speed, marine mammal +30% health
-      - Girth:     thick bodies are tougher and slower (mean girth 0.25 .. 1)
-      - Length:    every vertebra above five +3% speed and +5% health
-      - Parts:     caudal fin +30% speed, fluke +25% speed and quicker turns, dorsal and
-                   pectoral fins quicker turns, eyes pull food from farther away, the jaw
-                   bites forward, spines hurt at both flanks and the back, the blowhole
-                   adds air (+25% health), legs -5% swim speed each pair
-      - On land:   without legs CRAWL_SPEED, the first pair WALK_SPEED, every further
-                   pair 15% more
-    */
-    /// <summary>Sets speed, turning, senses and weapons from the creature.</summary>
+    /// <summary>Sets speed, turning, senses and weapons from the creature (CreatureStats).</summary>
     /// <returns>The health multiplier of the creature.</returns>
     private float ApplyCreature()
     {
-        const int BASE_VERTEBRAE = 5;
-        float hpMultiplier = CreatureType.MarineMammal == Creature.Type ? 1.3f : 1f;
-        _speedMultiplier   = CreatureType.Fish == Creature.Type ? 1.1f : 1f;
-
-        float girth   = Creature.MeanGirth;
-        int   extra   = Creature.Girths.Count - BASE_VERTEBRAE;
-        hpMultiplier     *= (0.7f + 0.6f * girth) * (1f + 0.05f * extra);
-        _speedMultiplier *= (1.15f - 0.3f * girth) * (1f + 0.03f * extra);
-
-        foreach (CreaturePart part in Creature.Parts)
-        {
-            switch (part.Kind)
-            {
-                case CreaturePartKind.CaudalFin:
-                    _speedMultiplier *= 1.3f;
-                    break;
-                case CreaturePartKind.Fluke:
-                    _speedMultiplier *= 1.25f;
-                    _acceleration    *= 1.2f;
-                    break;
-                case CreaturePartKind.DorsalFin:
-                    _acceleration *= 1.25f;
-                    break;
-                case CreaturePartKind.PectoralFin:
-                    _acceleration *= 1.3f;
-                    break;
-                case CreaturePartKind.Eye:
-                    MagnetRange += 0.5f;
-                    break;
-                case CreaturePartKind.Jaw:
-                    _jawAngles.Add(0f);
-                    _digestMeat *= 1.2f;
-                    break;
-                case CreaturePartKind.Spines:
-                    _spikeAngles.Add(Mathf.Pi * 0.5f);
-                    _spikeAngles.Add(-Mathf.Pi * 0.5f);
-                    _spikeAngles.Add(Mathf.Pi);
-                    break;
-                case CreaturePartKind.Blowhole:
-                    hpMultiplier *= 1.25f;
-                    break;
-                // Legs drag a little in the water, they carry the body on land (below)
-                case CreaturePartKind.Legs:
-                    _speedMultiplier *= 0.95f;
-                    break;
-                // The lung only matters on land, see LAND
-                case CreaturePartKind.Lung:
-                    break;
-                default:
-                    throw new System.ArgumentOutOfRangeException(nameof(part), $"part must be a known CreaturePartKind, got '{part.Kind}'.");
-            }
-        }
-        int legPairs = Creature.LegPairs;
-        _landSpeed = legPairs > 0 ? WALK_SPEED * (1f + 0.15f * (legPairs - 1)) : CRAWL_SPEED;
-        return hpMultiplier;
+        CreatureStats stats = CreatureStats.From(Creature);
+        _speedMultiplier = stats.SwimSpeed;
+        _acceleration   *= stats.Acceleration;
+        _digestMeat     *= stats.DigestMeat;
+        _landSpeed       = stats.LandSpeed;
+        _epPerLevel      = EP_PER_LEVEL + stats.EpPerLevelBonus;
+        MagnetRange     += stats.MagnetBonus;
+        _jawAngles.AddRange(stats.JawAngles);
+        _spikeAngles.AddRange(stats.SpikeAngles);
+        return stats.Health;
     }
 
     /// <summary>

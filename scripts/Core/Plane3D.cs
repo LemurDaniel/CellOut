@@ -4,10 +4,12 @@
 //   screen up is -y in logic and -z in 3D.
 //
 //   Vector3 pos = Plane3D.To3D(cell.GlobalPosition);
+//   pos.Y -= Plane3D.Drop(cell.GlobalPosition);     // the planet curvature, 0 in the soup
 
 //
 //   Chapters:
 //     CONVERSIONS   Plane to 3D, facing to yaw and the mouse on the plane.
+//     PLANET        The curvature of the planet, the same as shaders/planet.gdshaderinc.
 //
 
 using Godot;
@@ -68,5 +70,36 @@ public static class Plane3D
 
         Vector3 hit = origin + direction * (-origin.Y / direction.Y);
         return new Vector2(hit.X, hit.Z);
+    }
+
+    // ===========================================================================
+    // ===============================   PLANET   ================================
+    // ===========================================================================
+    //
+    //   Curve      1 / (2 * planet radius), 0 = flat. Set by Main with the shader global.
+    //   Origin     Plane point around which the world stays flat (the camera).
+    //   SetCurve   Sets both here and as shader globals planet_curve / planet_origin.
+    //   Drop       How far a plane point sinks below the flat plane.
+    //
+
+    public static float Curve { get; private set; }
+    public static Vector2 CurveOrigin { get; private set; }
+
+    /// <summary>Sets the curvature for the CPU (Drop) and the shaders (planet.gdshaderinc).</summary>
+    /// <param name="curve">(Required) 1 / (2 * planet radius) in 1 / world units, 0 = flat.</param>
+    /// <param name="origin">(Required) 3D point the world bends away from, the camera.</param>
+    public static void SetCurve(float curve, Vector3 origin)
+    {
+        Curve       = curve;
+        CurveOrigin = new Vector2(origin.X, origin.Z);
+        RenderingServer.GlobalShaderParameterSet("planet_curve", curve);
+        RenderingServer.GlobalShaderParameterSet("planet_origin", origin);
+    }
+
+    /// <summary>How far a plane point sinks below the plane through the curvature.</summary>
+    /// <example><code>Plane3D.Drop(point)  // 0 while the world is flat</code></example>
+    public static float Drop(Vector2 point)
+    {
+        return point.DistanceSquaredTo(CurveOrigin) * Curve;
     }
 }

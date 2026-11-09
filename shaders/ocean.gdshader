@@ -2,12 +2,13 @@
 //   Sea floor of the primordial soup: soft patches, moving caustics and an edge fade.
 //   The pattern runs in world coordinates / world_scale, so it grows with the player.
 //   Pattern from ocean_floor.gdshaderinc, the coast ground fades into the same one.
-//   Set per frame by World/Backdrop.cs (world_scale).
+//   Bends with the planet. Set per frame by World/Backdrop.cs (world_scale).
 
 shader_type spatial;
 render_mode cull_disabled;
 
 #include "res://shaders/ocean_floor.gdshaderinc"
+#include "res://shaders/planet.gdshaderinc"
 
 uniform vec3 shallow_color : source_color = vec3(0.10, 0.32, 0.34);
 uniform vec3 deep_color : source_color = vec3(0.03, 0.11, 0.15);
@@ -19,6 +20,7 @@ varying vec3 world_pos;
 
 void vertex() {
 	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	VERTEX = planet_bend(VERTEX, MODEL_MATRIX);
 }
 
 void fragment() {

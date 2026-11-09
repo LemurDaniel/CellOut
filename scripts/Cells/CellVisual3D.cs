@@ -14,6 +14,7 @@
 //
 
 using System.Collections.Generic;
+using System.Linq;
 using Godot;
 
 namespace CellOut;
@@ -21,8 +22,6 @@ namespace CellOut;
 public partial class CellVisual3D : Node3D
 {
     public const float FLATTEN = 0.6f;               // cells are flattened spheres, also used by the editor raycast
-    private const int FLAGELLUM_BEADS = 16;
-    private const int CILIA_COUNT = 22;
     private const int FULL_PARTS_LIMIT = 4;          // up to 4 cells every cell shows every part
     private const int FULL_DETAIL_LIMIT = 32;        // above 32 cells inner cells drop face, organelles and shadow
     private const float OUTER_BAND = 1.6f;           // cells this close to the cluster edge (cell radii) count as outer
@@ -151,10 +150,9 @@ public partial class CellVisual3D : Node3D
     //   1. Rebuild    Rebuilds the visual when the traits of the body changed.
     //   2. Transform  Follows position, facing and size of the body, blinks when ghosted,
     //                 moves divided cells out of their mothers.
-    //   3. Animate    Membrane stretch and flash, threat ring, flagella, cilia, eyes and DNA.
+    //   3. Animate    Membrane stretch and flash, pseudopods, flagella, eyes and DNA.
     //
 
-    private sealed record Flagellum(Vector3 Direction, float Start, List<MeshInstance3D> Beads);
     private sealed record SplitCell(Node3D Root, Vector3 From, Vector3 To);
 
     private const float SPLIT_SECONDS = 0.7f;
@@ -162,16 +160,13 @@ public partial class CellVisual3D : Node3D
     private int _signature;
     private float _time;
     private readonly List<ShaderMaterial> _membranes = new();
-    private readonly List<Flagellum> _flagella = new();
-    private readonly List<(Node3D Pivot, float Angle)> _cilia = new();
+    private readonly List<AnimationPlayer> _whips = new();          // placed flagellum models, faster with the speed
     private readonly List<Node3D> _eyes = new();
     private readonly List<Node3D> _spinners = new();
     private Node3D _dna;
     private readonly List<SplitCell> _splitting = new();
     private float _splitTime = SPLIT_SECONDS;
     private int _builtCellCount;
-    private MeshInstance3D _ring;
-    private StandardMaterial3D _ringMaterial;
 
     public override void _Process(double delta)
     {
@@ -206,7 +201,7 @@ public partial class CellVisual3D : Node3D
         //   moves divided cells out of their mothers.
         // ---------------------------------------------------------------------------
 
-        GlobalPosition = Plane3D.To3D(Body.GlobalPosition);
+        GlobalPosition = Plane3D.To3D(Body.GlobalPosition, -Plane3D.Drop(Body.GlobalPosition));
         Rotation       = new Vector3(0f, Plane3D.FacingToYaw(Body.Facing), 0f);
         Scale          = Vector3.One * Body.Radius;
         Visible        = !Body.IsHidden && !(Body.IsGhost && _time % 0.2f < 0.1f);
@@ -226,22 +221,20 @@ public partial class CellVisual3D : Node3D
 
         // ---------------------------------------------------------------------------
         // Animate
-        //   Membrane stretch and flash, threat ring, flagella, cilia, eyes and DNA.
+        //   Membrane stretch and flash, flagella, cilia, eyes and DNA.
         // ---------------------------------------------------------------------------
 
         // Squash and stretch along the movement
         float stretch = Mathf.Clamp(Body.Velocity.Length() / (Body.Radius * 30f), 0f, 0.2f);
+        // Pseudopods towards a cell being swallowed, in the turned unit space of the body
+        Vector2 toPrey     = (Body.EngulfPoint - Body.GlobalPosition).Rotated(-Body.Facing);
+        var     engulfDir  = Body.EngulfReach > 0f && toPrey.LengthSquared() > 0.0001f ? toPrey.Normalized() : Vector2.Right;
         foreach (ShaderMaterial membrane in _membranes)
         {
             membrane.SetShaderParameter("stretch", stretch);
             membrane.SetShaderParameter("flash", Body.HurtFlash);
-        }
-
-        // Threat ring: red = dangerous, green = edible
-        _ring.Visible = 0 != Body.Threat;
-        if (_ring.Visible)
-        {
-            _ringMaterial.AlbedoColor = Body.Threat > 0 ? new Color(1f, 0.35f, 0.3f, 0.55f) : new Color(0.5f, 1f, 0.6f, 0.45f);
+            membrane.SetShaderParameter("engulf_dir", engulfDir);
+            membrane.SetShaderParameter("engulf", Body.EngulfReach);
         }
 
         AnimateParts();
@@ -252,10 +245,6 @@ public partial class CellVisual3D : Node3D
     {
         var hash = new System.HashCode();
         hash.Add(Body.IsProtocell);
-        hash.Add(Body.Flagella);
-        hash.Add(Body.HasCilia);
-        hash.Add(Body.HasSpikes);
-        hash.Add(Body.HasChloroplasts);
         hash.Add(Body.EyeCount);
         hash.Add(Body.IsPartsOnly);
         hash.Add(Body.CellCount);
@@ -268,25 +257,11 @@ public partial class CellVisual3D : Node3D
     /// <summary>Moves the animated parts built in BUILD CELLS.</summary>
     private void AnimateParts()
     {
-        // Flagella: a sine wave that runs faster with the speed
+        // Flagella: the whip runs faster with the speed
         float frequency = 8f + Body.Velocity.Length() / Mathf.Max(Body.Radius, 1f) * 0.6f;
-        foreach (Flagellum flagellum in _flagella)
+        foreach (AnimationPlayer whip in _whips)
         {
-            Vector3 dir  = flagellum.Direction;
-            var     perp = new Vector3(-dir.Z, 0f, dir.X);
-            for (int i = 0; i < flagellum.Beads.Count; i++)
-            {
-                float t = (float)i / (flagellum.Beads.Count - 1);
-                flagellum.Beads[i].Position = dir * (flagellum.Start + 1.8f * t)
-                    + perp * Mathf.Sin(t * 7f - _time * frequency) * 0.22f * t
-                    + Vector3.Up * Mathf.Sin(t * 5f - _time * frequency * 0.7f) * 0.08f * t;
-            }
-        }
-
-        // Cilia wave around their base angle
-        for (int i = 0; i < _cilia.Count; i++)
-        {
-            _cilia[i].Pivot.Rotation = new Vector3(0f, -_cilia[i].Angle + Mathf.Sin(_time * 10f + i * 0.9f) * 0.5f, 0f);
+            whip.SpeedScale = frequency / Mathf.Tau;
         }
 
         // Organelles drift slowly
@@ -319,18 +294,25 @@ public partial class CellVisual3D : Node3D
     //
     //   Rebuild           Clears all parts, builds every cell of the cluster plus the threat ring,
     //                     on a division the daughters start at their mothers.
-    //   BuildCell         Shadow proxy, membrane, inner life, appendages, face and parts of one cell.
-    //   BuildInnerLife    Organelles, chloroplasts and the nucleus.
+    //   BuildCell         Shadow proxy, membrane, inner life, face and parts of one cell.
+    //   BuildInnerLife    Organelles and the nucleus.
     //   BuildDna          The protocell's double helix with colored base pairs.
-    //   BuildFlagellum    A chain of beads, animated in FOLLOW THE BODY.
-    //   BuildCilia        Short rods along an arc of the rim.
-    //   BuildSpikes       Cones pointing outwards.
-    //   BuildFace         Eyes and a smile on the upper front.
+    //   BuildFace         Face eyes on the upper front (CellBody.EyeCount, 0 by default).
     //   BuildEye          One eye, pupil looking forward and up.
     //   IsOuterCell       Whether a cell sits at the edge of its cluster.
-    //   BuildPlacedParts  The placed parts on one cell, rim parts on the facing outer cells of big clusters.
-    //   BuildPlaced       A part placed in the editor at its position.
-    //   SurfaceY          Height of the flattened membrane at a unit point, outline included.
+    //   BuildPlacedParts  The placed parts on one cell, rim parts on the facing outer cells of big clusters,
+    //                     each on its own pose node.
+    //   PosePlaced        Shift and turn of a placed part (gizmo of the CellEditor).
+    //   PartAt            The placed part under a ray, for picking in the editor.
+    //   TryGetPartAnchor  Where the gizmo of a placed part sits.
+    //   CELL_MODELS       Model file and animation of every editor part (tools/blender, Core/PartModels.cs).
+    //   BuildPlaced       A part placed in the editor at its position, as its generated model.
+    //   BuildCiliaModels  A row of beating cilium models along an arc of the rim.
+    //   AttachPart        Adds a part model facing outwards along a rim angle, tilted to the membrane normal.
+    //   RimPoint          Point on the membrane for a rim angle and lift.
+    //   RimNormal         Outward normal of the membrane at a point on it.
+    //   RimTilt           Tilt of that normal above the horizon.
+    //   SurfaceY          Height of the membrane top at a unit point, outline and heights included.
     //   ShapeAt           Radius of the stretched outline at an angle.
     //
 
@@ -342,10 +324,10 @@ public partial class CellVisual3D : Node3D
             child.QueueFree();
         }
         _membranes.Clear();
-        _flagella.Clear();
-        _cilia.Clear();
+        _whips.Clear();
         _eyes.Clear();
         _spinners.Clear();
+        _poses.Clear();
         _dna = null;
         _splitting.Clear();
 
@@ -365,15 +347,6 @@ public partial class CellVisual3D : Node3D
         }
         _splitTime      = isDivision ? 0f : SPLIT_SECONDS;
         _builtCellCount = Body.CellCount;
-
-        _ringMaterial = new StandardMaterial3D
-        {
-            ShadingMode  = BaseMaterial3D.ShadingModeEnum.Unshaded,
-            Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
-        };
-        float extent = CellBody.ClusterExtent(Body.CellCount);
-        _ring = AddMesh(this, TorusMesh(), _ringMaterial, Vector3.Zero, new Vector3(1.3f * extent, 0.4f, 1.3f * extent));
-        _ring.CastShadow = GeometryInstance3D.ShadowCastingSetting.Off;
         Log.Verbose("CellVisual3D", $"Rebuilt '{Body.Name}' with {Body.CellLayout().Count} cell(s).");
     }
 
@@ -384,7 +357,6 @@ public partial class CellVisual3D : Node3D
         AddChild(root);
         Vector3 center  = root.Position;
         Color   color   = Body.BodyColor;
-        Color   outline = color.Darkened(0.45f);
 
         // Parts only (editor drag icon and placement ghost): no membrane, inner life or face
         if (Body.IsPartsOnly)
@@ -400,7 +372,7 @@ public partial class CellVisual3D : Node3D
         // Shadow proxy, the transparent membrane casts none itself
         if (isFullDetail)
         {
-            MeshInstance3D proxy = AddMesh(root, SphereMesh(true), Material(color), Vector3.Zero, new Vector3(0.9f, FLATTEN * 0.9f, 0.9f));
+            MeshInstance3D proxy = AddMesh(root, SphereMesh(true), Material(color), Vector3.Zero, new Vector3(0.9f, FLATTEN * 0.9f * Body.Design.Heights.Average(), 0.9f));
             proxy.CastShadow = GeometryInstance3D.ShadowCastingSetting.ShadowsOnly;
         }
 
@@ -408,13 +380,14 @@ public partial class CellVisual3D : Node3D
         Color membraneColor = color;
         if (Body.IsProtocell)
         {
-            membraneColor.A = 0.8f;
+            membraneColor.A *= 0.8f;
         }
         var membraneMaterial = new ShaderMaterial { Shader = MEMBRANE_SHADER };
         membraneMaterial.SetShaderParameter("body_color", membraneColor);
         membraneMaterial.SetShaderParameter("seed", Body.AnimSeed + center.X * 1.3f + center.Z * 0.7f);
         membraneMaterial.SetShaderParameter("core_alpha", Body.IsProtocell ? 0.2f : 0.42f);
         membraneMaterial.SetShaderParameter("shape", System.Linq.Enumerable.ToArray(Body.Design.Shape));
+        membraneMaterial.SetShaderParameter("heights", System.Linq.Enumerable.ToArray(Body.Design.Heights));
         MeshInstance3D membrane = AddMesh(root, SphereMesh(), membraneMaterial, Vector3.Zero, new Vector3(1f, FLATTEN, 1f));
         membrane.CastShadow = GeometryInstance3D.ShadowCastingSetting.Off;
         _membranes.Add(membraneMaterial);
@@ -429,23 +402,10 @@ public partial class CellVisual3D : Node3D
             BuildInnerLife(root, isFullDetail);
         }
 
-        // Appendages of critters, face and the placed parts on every cell
-        for (int f = 0; f < Body.Flagella; f++)
-        {
-            float offset = (f - (Body.Flagella - 1) * 0.5f) * 0.5f;
-            BuildFlagellum(root, Vector3.Left.Rotated(Vector3.Up, offset), outline);
-        }
-        if (Body.HasCilia)
-        {
-            BuildCilia(root, 0f, Mathf.Tau, CILIA_COUNT, outline);
-        }
-        if (Body.HasSpikes)
-        {
-            BuildSpikes(root, Vector3.Right, 5, 0.38f, outline);
-        }
+        // Face and the placed parts on every cell (NPC cells carry editor parts too)
         if (isFullDetail)
         {
-            BuildFace(root, outline);
+            BuildFace(root);
         }
         BuildPlacedParts(root, color, part);
         return root;
@@ -475,17 +435,89 @@ public partial class CellVisual3D : Node3D
         bool  isOuter = IsOuterCell(cell);
         bool  isAll   = Body.CellCount <= FULL_PARTS_LIMIT;
         float outward = new Vector2(cell.Position.X, cell.Position.Z).Angle();
-        foreach (PlacedPart placed in Body.Design.Parts)
+        for (int index = 0; index < Body.Design.Parts.Count; index++)
         {
-            bool isFacing = Mathf.Abs(Mathf.Wrap(placed.Angle - outward, -Mathf.Pi, Mathf.Pi)) <= RIM_PART_ARC;
-            bool isShown  = Placement.Rim == placed.Info.Placement
+            PlacedPart placed   = Body.Design.Parts[index];
+            bool       isFacing = Mathf.Abs(Mathf.Wrap(placed.Angle - outward, -Mathf.Pi, Mathf.Pi)) <= RIM_PART_ARC;
+            bool       isShown  = Placement.Rim == placed.Info.Placement
                 ? isAll || (isOuter && isFacing)
                 : Body.CellCount <= FULL_DETAIL_LIMIT || isOuter;
             if (isShown)
             {
-                BuildPlaced(root, placed, cellColor);
+                var pose = new Node3D();
+                root.AddChild(pose);
+                BuildPlaced(pose, placed, cellColor);
+                PosePlaced(index, pose, placed);
             }
         }
+    }
+
+    // Pose nodes of the placed parts per design index, for picking and the gizmo of the CellEditor
+    private readonly List<(int Part, Node3D Pose, Vector3 Anchor)> _poses = new();
+
+    /// <summary>
+    /// Turns the pose node of a placed part around the center of its pieces and shifts it
+    /// (PlacedPart.Offset, Rotation). The pieces keep their own animation (spinners, cilia)
+    /// below the pose node, so the pose survives every frame.
+    /// </summary>
+    private void PosePlaced(int index, Node3D pose, PlacedPart placed)
+    {
+        Vector3 anchor = Vector3.Zero;
+        int     count  = 0;
+        foreach (Node3D piece in pose.GetChildren().OfType<Node3D>())
+        {
+            anchor += piece.Position;
+            count++;
+        }
+        anchor = count > 0 ? anchor / count : Vector3.Zero;
+        Basis turn = Basis.FromEuler(placed.Rotation);
+        pose.Transform = new Transform3D(turn, anchor + placed.Offset - turn * anchor);
+        _poses.Add((index, pose, anchor));
+    }
+
+    /// <summary>The placed part whose mesh bounds a ray hits first (CreatureVisual3D.RayEntry).</summary>
+    /// <param name="from">(Required) Ray origin in global space.</param>
+    /// <param name="direction">(Required) Ray direction in global space.</param>
+    /// <returns>Index in Body.Design.Parts, -1 when the ray hits no part.</returns>
+    public int PartAt(Vector3 from, Vector3 direction)
+    {
+        int   closest  = -1;
+        float bestDist = float.PositiveInfinity;
+        foreach ((int part, Node3D pose, _) in _poses)
+        {
+            if (!IsInstanceValid(pose) || !pose.IsVisibleInTree())
+            {
+                continue;
+            }
+            foreach (MeshInstance3D mesh in pose.FindChildren("*", nameof(MeshInstance3D), true, false).OfType<MeshInstance3D>())
+            {
+                float? distance = CreatureVisual3D.RayEntry(mesh.GlobalTransform * mesh.GetAabb(), from, direction);
+                if (null != distance && distance.Value < bestDist)
+                {
+                    bestDist = distance.Value;
+                    closest  = part;
+                }
+            }
+        }
+        return closest;
+    }
+
+    /// <summary>Where the gizmo of a placed part sits: the shifted center of its first built copy.</summary>
+    /// <param name="index">(Required) Index in Body.Design.Parts.</param>
+    /// <param name="anchor">The anchor in global space.</param>
+    /// <returns>False when the part is not built (yet).</returns>
+    public bool TryGetPartAnchor(int index, out Vector3 anchor)
+    {
+        foreach ((int part, Node3D pose, Vector3 local) in _poses)
+        {
+            if (index == part && IsInstanceValid(pose) && pose.IsInsideTree())
+            {
+                anchor = pose.GlobalTransform * local;
+                return true;
+            }
+        }
+        anchor = Vector3.Zero;
+        return false;
     }
 
     /// <param name="isFullDetail">(Required) False for hidden inner cells of big clusters: nucleus only.</param>
@@ -501,21 +533,6 @@ public partial class CellVisual3D : Node3D
             {
                 var position = new Vector3(organelle.Position.X, organelle.Y, organelle.Position.Y);
                 AddMesh(spinner, SphereMesh(true), Material(organelle.Color, 0.35f), position, Vector3.One * organelle.Size);
-            }
-        }
-
-        // Chloroplasts of photosynthesizing critters
-        if (Body.HasChloroplasts)
-        {
-            var spinner = new Node3D();
-            root.AddChild(spinner);
-            _spinners.Add(spinner);
-            for (int i = 0; i < 4; i++)
-            {
-                float angle = Mathf.Tau * i / 4f + 0.6f;
-                MeshInstance3D chloroplast = AddMesh(spinner, SphereMesh(true), Material(new Color(0.25f, 0.7f, 0.3f), 0.3f),
-                    new Vector3(Mathf.Cos(angle), 0.05f, Mathf.Sin(angle)) * 0.55f, new Vector3(0.16f, 0.08f, 0.1f));
-                chloroplast.Rotation = new Vector3(0f, -angle, 0f);
             }
         }
 
@@ -553,52 +570,7 @@ public partial class CellVisual3D : Node3D
         return dna;
     }
 
-    /// <param name="start">(Optional) Distance of the first bead from the cell center. Defaults to 0.8.</param>
-    private void BuildFlagellum(Node3D root, Vector3 direction, Color color, float start = 0.8f)
-    {
-        var beads = new List<MeshInstance3D>();
-        for (int i = 0; i < FLAGELLUM_BEADS; i++)
-        {
-            float t = (float)i / (FLAGELLUM_BEADS - 1);
-            beads.Add(AddMesh(root, SphereMesh(true), Material(color), Vector3.Zero, Vector3.One * Mathf.Lerp(0.075f, 0.03f, t)));
-        }
-        _flagella.Add(new Flagellum(direction, start, beads));
-    }
-
-    /// <summary>Rods along an arc of the rim, a full turn for amoebas.</summary>
-    private void BuildCilia(Node3D root, float centerAngle, float span, int count, Color color)
-    {
-        bool isFullTurn = span >= Mathf.Tau - 0.01f;
-        for (int i = 0; i < count; i++)
-        {
-            float t     = isFullTurn ? (float)i / count : (float)i / (count - 1) - 0.5f;
-            float angle = centerAngle + t * span;
-            var pivot = new Node3D { Position = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * 0.93f * ShapeAt(angle) };
-            root.AddChild(pivot);
-
-            // The rod lies along Y, a -90° turn around Z points it outwards along +X
-            MeshInstance3D rod = AddMesh(pivot, RodMesh(), Material(color), new Vector3(0.11f, 0f, 0f), new Vector3(0.02f, 0.24f, 0.02f));
-            rod.Rotation = new Vector3(0f, 0f, -Mathf.Pi * 0.5f);
-            _cilia.Add((pivot, angle));
-        }
-    }
-
-    private void BuildSpikes(Node3D root, Vector3 direction, int count, float spread, Color color)
-    {
-        float baseAngle = Mathf.Atan2(direction.Z, direction.X);
-        for (int i = 0; i < count; i++)
-        {
-            float angle = baseAngle + (i - (count - 1) * 0.5f) * spread;
-            var pivot = new Node3D { Rotation = new Vector3(0f, -angle, 0f) };
-            root.AddChild(pivot);
-
-            // The cone tip lies at +Y, a -90° turn around Z points it outwards along +X
-            MeshInstance3D cone = AddMesh(pivot, ConeMesh(), Material(color.Lightened(0.25f), 0f, 0.35f), new Vector3(1.05f * ShapeAt(angle), 0f, 0f), Vector3.One);
-            cone.Rotation = new Vector3(0f, 0f, -Mathf.Pi * 0.5f);
-        }
-    }
-
-    private void BuildFace(Node3D root, Color outline)
+    private void BuildFace(Node3D root)
     {
         // Eyes side by side on the upper front, pupils look forward and up
         for (int e = 0; e < Body.EyeCount; e++)
@@ -608,19 +580,6 @@ public partial class CellVisual3D : Node3D
             position.Y = SurfaceY(position.X, position.Z) - 0.05f;
 
             BuildEye(root, position, 1f);
-        }
-
-        // Smile, only once a nucleus exists
-        if (Body.IsProtocell)
-        {
-            return;
-        }
-        for (int i = 0; i < 5; i++)
-        {
-            float angle = Mathf.Lerp(-1.1f, 1.1f, i / 4f);
-            var   point = new Vector3(0.56f + Mathf.Cos(angle) * 0.12f, 0f, Mathf.Sin(angle) * 0.12f);
-            point.Y = SurfaceY(point.X, point.Z) - 0.01f;
-            AddMesh(root, SphereMesh(true), Material(outline), point, Vector3.One * 0.035f);
         }
     }
 
@@ -634,79 +593,153 @@ public partial class CellVisual3D : Node3D
         _eyes.Add(eye);
     }
 
+    /*
+      Model space of the cell parts (tools/blender/build.models.py, CELL PARTS): unit
+      space of a cell. Rim parts have their base at the origin and point outwards along
+      +X, inner parts are centered. CELL_PART_SIZE makes them bold micro monsters.
+    */
+    public const string CELL_MODEL_DIR = "res://assets/models/cell/";
+    public static readonly IReadOnlyDictionary<PartKind, (string File, string Animation)> CELL_MODELS =
+        new Dictionary<PartKind, (string File, string Animation)>
+        {
+            [PartKind.Chloroplast] = ("cell.chloroplast.glb", null),
+            [PartKind.FilterMouth] = ("cell.filtermouth.glb", null),
+            [PartKind.ArmorPlate]  = ("cell.armorplate.glb", null),
+            [PartKind.Flagellum]   = ("cell.flagellum.glb", "Whip"),
+            [PartKind.Eyespot]     = ("cell.eyespot.glb", null),
+            [PartKind.Vacuole]     = ("cell.vacuole.glb", null),
+            [PartKind.Cilia]       = ("cell.cilium.glb", "Beat"),
+            [PartKind.Spike]       = ("cell.spike.glb", null),
+            [PartKind.Jaw]         = ("cell.jaw.glb", "Chomp"),
+            [PartKind.Toxin]       = ("cell.toxin.glb", null),
+        };
+
+    private const float CELL_PART_SIZE = 1.25f;
+    private const float CILIA_SPAN = 1.4f;           // radians of rim one cilia part covers
+    private const int CILIA_PER_PART = 9;
+    private const float BEAT_RATE = 1.6f;            // cilia beats per second
+    private const float CHOMP_RATE = 0.9f;
+
+    /// <summary>A new instance of a cell part model, recolored (Core/PartModels.cs).</summary>
+    /// <param name="kind">(Required) An editor part.</param>
+    /// <param name="cellColor">(Required) Color of the cell, the skin of the part follows it.</param>
+    /// <example><code>Node3D jaw = CellVisual3D.NewPartModel(PartKind.Jaw, color);</code></example>
+    public static Node3D NewPartModel(PartKind kind, Color cellColor)
+    {
+        return PartModels.New(CELL_MODEL_DIR + CELL_MODELS[kind].File, cellColor);
+    }
+
+    private const float EYE_SINK = 0.06f;            // the eyespot sits this deep in the membrane, along its normal
+
     /// <summary>
-    /// A part placed in the editor. Rim parts point outwards from their rim angle,
-    /// inner parts float at their position inside the membrane.
+    /// A part placed in the editor as its generated model. Rim parts stand on the membrane
+    /// at their angle and lift, pointing along its normal; inner parts float at their
+    /// position inside the membrane.
     /// </summary>
     private void BuildPlaced(Node3D root, PlacedPart part, Color cellColor)
     {
-        float angle    = part.Angle;
-        var   rimDir   = new Vector3(part.Position.X, 0f, part.Position.Y).Normalized() * ShapeAt(angle);   // to the stretched outline
-        var   inner    = new Vector3(part.Position.X, 0f, part.Position.Y);
-        var   yaw      = new Vector3(0f, -angle, 0f);
-        Color outline  = cellColor.Darkened(0.45f);
+        float   angle = part.Angle;
+        float   lift  = part.Lift;
+        float   tilt  = RimTilt(angle, lift);
+        var     inner = new Vector3(part.Position.X, 0f, part.Position.Y);
+        Color   skin  = cellColor.Darkened(0.2f);
 
         switch (part.Kind)
         {
-            // Herbivore
+            // Inner parts: centered at their spot, organelles drift
             case PartKind.Chloroplast:
-                MeshInstance3D chloroplast = AddMesh(root, SphereMesh(true), Material(new Color(0.25f, 0.7f, 0.3f), 0.35f), inner, new Vector3(0.17f, 0.09f, 0.11f));
-                chloroplast.Rotation = yaw;
-                break;
-            case PartKind.FilterMouth:
-                MeshInstance3D mouth = AddMesh(root, SphereMesh(true), Material(new Color(0.4f, 0.24f, 0.12f)), rimDir * 0.9f + Vector3.Up * 0.12f, new Vector3(0.12f, 0.1f, 0.26f));
-                mouth.Rotation = yaw;
-                BuildCilia(root, angle, 0.5f, 5, outline);
-                break;
-            case PartKind.ArmorPlate:
-                MeshInstance3D plate = AddMesh(root, SphereMesh(true), Material(new Color(0.5f, 0.55f, 0.62f), 0f, 0.25f), rimDir * 0.95f, new Vector3(0.14f, 0.4f, 0.55f));
-                plate.Rotation = yaw;
-                break;
-            // Omnivore
-            case PartKind.Flagellum:
-                BuildFlagellum(root, rimDir.Normalized(), outline, 0.8f * ShapeAt(angle));
-                break;
-            case PartKind.Eyespot:
-                Vector3 eyePosition = rimDir * 0.72f;
-                eyePosition.Y = SurfaceY(eyePosition.X, eyePosition.Z) - 0.04f;
-                BuildEye(root, eyePosition, 0.75f);
-                break;
             case PartKind.Vacuole:
-                AddMesh(root, SphereMesh(true), Material(new Color(0.55f, 0.8f, 1f, 0.55f), 0.3f, 0.1f), inner, Vector3.One * 0.17f);
+            case PartKind.Toxin:
+                _spinners.Add(AttachPart(root, part.Kind, skin, inner, angle, CELL_PART_SIZE));
                 break;
-            case PartKind.Cilia:
-                BuildCilia(root, angle, 1.4f, 9, outline);
-                break;
-            // Carnivore
+
+            // Rim parts: base on the membrane, pointing outwards along its normal
+            case PartKind.ArmorPlate:
             case PartKind.Spike:
-                BuildSpikes(root, rimDir.Normalized(), 1, 0f, outline);
+                AttachPart(root, part.Kind, skin, RimPoint(angle, lift, 0.97f), angle, CELL_PART_SIZE, tilt);
                 break;
             case PartKind.Jaw:
-                BuildJaw(root, angle);
+                Node3D jaw = AttachPart(root, part.Kind, skin, RimPoint(angle, lift, 0.97f), angle, CELL_PART_SIZE, tilt);
+                PartModels.PlayLoop(jaw, CELL_MODELS[part.Kind].Animation, Body.AnimSeed, CHOMP_RATE);
                 break;
-            case PartKind.Toxin:
-                AddMesh(root, SphereMesh(true), Material(new Color(0.6f, 0.25f, 0.75f, 0.7f), 0.6f, 0.1f), inner, Vector3.One * 0.15f);
+            case PartKind.Flagellum:
+                Node3D flagellum = AttachPart(root, part.Kind, skin, RimPoint(angle, lift, 0.92f), angle, CELL_PART_SIZE, tilt);
+                AnimationPlayer whip = PartModels.PlayLoop(flagellum, CELL_MODELS[part.Kind].Animation, angle / Mathf.Tau, 1f);
+                if (null != whip)
+                {
+                    _whips.Add(whip);
+                }
                 break;
+            case PartKind.FilterMouth:
+                AttachPart(root, part.Kind, skin, RimPoint(angle, lift, 0.95f), angle, CELL_PART_SIZE, tilt);
+                BuildCiliaModels(root, angle, lift, CILIA_SPAN * 0.4f, 5, skin);
+                break;
+            case PartKind.Cilia:
+                BuildCiliaModels(root, angle, lift, CILIA_SPAN, CILIA_PER_PART, skin);
+                break;
+
+            // Eyespot: the round eye sinks into the membrane and looks outwards along its normal, a wrapper node blinks
+            case PartKind.Eyespot:
+                Vector3 surface = RimPoint(angle, lift, 1f);
+                var blink = new Node3D { Position = surface - RimNormal(surface, angle) * EYE_SINK };
+                root.AddChild(blink);
+                AttachPart(blink, part.Kind, skin, Vector3.Zero, angle, CELL_PART_SIZE, tilt);
+                _eyes.Add(blink);
+                break;
+
+            default:
+                throw new System.ArgumentOutOfRangeException(nameof(part), $"part must be a known PartKind, got '{part.Kind}'.");
         }
     }
 
-    /// <summary>Two dark mandibles at the rim, tilted towards each other.</summary>
-    private void BuildJaw(Node3D root, float angle)
+    /// <summary>A row of cilium models along an arc of the rim at one lift, beating in a wave (metachronal).</summary>
+    private void BuildCiliaModels(Node3D root, float centerAngle, float lift, float span, int count, Color color)
     {
-        foreach (float side in new[] { -1f, 1f })
+        for (int i = 0; i < count; i++)
         {
-            var pivot = new Node3D { Rotation = new Vector3(0f, -(angle + side * 0.22f), 0f) };
-            root.AddChild(pivot);
-            MeshInstance3D mandible = AddMesh(pivot, ConeMesh(), Material(new Color(0.35f, 0.12f, 0.1f), 0f, 0.3f), new Vector3(1.1f * ShapeAt(angle), 0.05f, 0f), new Vector3(1.3f, 1.1f, 1.3f));
-            mandible.Basis = new Basis(Vector3.Up, side * 0.55f) * new Basis(Vector3.Back, -Mathf.Pi * 0.5f) * Basis.FromScale(new Vector3(1.3f, 1.1f, 1.3f));
+            float  angle  = centerAngle + ((float)i / (count - 1) - 0.5f) * span;
+            Node3D cilium = AttachPart(root, PartKind.Cilia, color, RimPoint(angle, lift, 0.95f), angle, CELL_PART_SIZE, RimTilt(angle, lift));
+            PartModels.PlayLoop(cilium, CELL_MODELS[PartKind.Cilia].Animation, i * 0.11f, BEAT_RATE);
         }
     }
 
-    /// <summary>Height of the membrane top above a unit point, the outline stretched by the design.</summary>
+    /// <summary>Adds a part model at a position, its +X turned to the rim angle and tilted up (or down) by tilt.</summary>
+    /// <param name="tilt">(Optional) Turn of +X towards +Y in radians, applied before the rim angle. Defaults to 0.</param>
+    private static Node3D AttachPart(Node3D parent, PartKind kind, Color color, Vector3 position, float angle, float size, float tilt = 0f)
+    {
+        Node3D model = NewPartModel(kind, color);
+        model.Position = position;
+        model.Basis    = (new Basis(Vector3.Up, -angle) * new Basis(Vector3.Back, tilt)).Scaled(Vector3.One * size);
+        parent.AddChild(model);
+        return model;
+    }
+
+    /// <summary>Point on the membrane for a rim angle and lift (CellDesign.SurfacePoint), pulled in by depth.</summary>
+    private Vector3 RimPoint(float angle, float lift, float depth)
+    {
+        return Body.Design.SurfacePoint(angle, lift) * depth;
+    }
+
+    /// <summary>Outward normal of the membrane at a point on it: the gradient (p.x / S^2, p.y / H^2, p.z / S^2).</summary>
+    private Vector3 RimNormal(Vector3 point, float angle)
+    {
+        float stretch = ShapeAt(angle);
+        float around  = new Vector2(point.X, point.Z).Length() / stretch;
+        float height  = Body.Design.MembraneHeight(angle, around);
+        return new Vector3(point.X / (stretch * stretch), point.Y / (height * height), point.Z / (stretch * stretch)).Normalized();
+    }
+
+    /// <summary>Tilt of the membrane normal above the horizon at a rim angle and lift, in radians.</summary>
+    private float RimTilt(float angle, float lift)
+    {
+        Vector3 normal = RimNormal(RimPoint(angle, lift, 1f), angle);
+        return Mathf.Atan2(normal.Y, new Vector2(normal.X, normal.Z).Length());
+    }
+
+    /// <summary>Height of the membrane top above a unit point, outline and heights of the design included.</summary>
     private float SurfaceY(float x, float z)
     {
-        float radius = ShapeAt(Mathf.Atan2(z, x));
-        return FLATTEN * Mathf.Sqrt(Mathf.Max(0f, 1f - (x * x + z * z) / (radius * radius)));
+        return Body.Design.TopHeight(new Vector2(x, z));
     }
 
     /// <summary>Radius of the outline at an angle, 1 for critters and round cells.</summary>

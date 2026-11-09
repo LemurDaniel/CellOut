@@ -53,6 +53,7 @@ public partial class Main : Node2D
 
     private Camera3D _camera;
     private DirectionalLight3D _sun;
+    private Godot.Environment _environment;
     private Backdrop _backdrop;
     private Node2D _fxLayer;
 
@@ -75,7 +76,10 @@ public partial class Main : Node2D
             GlowEnabled        = true,
             GlowIntensity      = 0.7f,
             GlowBloom          = 0.05f,
+            SsaoEnabled        = true,                   // contact shadows where parts meet the body, radius in UpdateCamera
+            SsaoIntensity      = 1.6f,
         };
+        _environment = environment;
         AddChild(new WorldEnvironment { Environment = environment });
 
         _sun = new DirectionalLight3D
@@ -137,6 +141,13 @@ public partial class Main : Node2D
         // ---------------------------------------------------------------------------
 
         ShowMenu();
+
+        // Try again after a game over: no title menu, straight into the intro
+        if (_isRestartQueued)
+        {
+            _isRestartQueued = false;
+            StartGame();
+        }
     }
 
     // ===========================================================================
@@ -280,6 +291,7 @@ public partial class Main : Node2D
     public float ZoomFactor { get; private set; } = 1f;
 
     private float _camDistance;
+    private const float SSAO_RADIUS = 0.35f;         // contact shadow reach in body sizes
     private Vector3 _camFocus = Vector3.Zero;
 
     public override void _UnhandledInput(InputEvent @event)
@@ -340,8 +352,9 @@ public partial class Main : Node2D
         _camera.Near = _camDistance * 0.05f;
         _camera.Far  = _camDistance * 8f;
 
-        // Light and backdrop grow along, so shadows and motes fit at every size
+        // Light, contact shadows and backdrop grow along, so shadows and motes fit at every size
         _sun.DirectionalShadowMaxDistance = _camDistance * 3f;
+        _environment.SsaoRadius           = playerSize * SSAO_RADIUS;
         _backdrop.Follow(new Vector2(_camFocus.X, _camFocus.Z), playerSize, ViewRadius());
     }
 
@@ -350,9 +363,11 @@ public partial class Main : Node2D
     // ===========================================================================
     //
     //   1. Food               Attracts, swallows and cleans up food.
-    //   2. Player vs. cells   Eat, get hurt or bump, cells far away despawn.
-    //   3. Cells vs. cells    Bigger cells eat smaller ones, equal ones push apart.
-    //   4. Refill             Fills the soup after the start, then keeps it topped up outside the view.
+    //   2. Engulf             Pulls swallowed cells into their eaters, digests them when done.
+    //   3. Player vs. cells   Swallow smaller cells, get swallowed by bigger ones, bump equal ones,
+    //                         cells far away despawn.
+    //   4. Cells vs. cells    Bigger cells start swallowing smaller ones, equal ones push apart.
+    //   5. Refill             Fills the soup after the start, then keeps it topped up outside the view.
     //
 
     public override void _PhysicsProcess(double delta)
@@ -394,15 +409,22 @@ public partial class Main : Node2D
         }
 
         // ---------------------------------------------------------------------------
+        // Engulf
+        //   Pulls swallowed cells into their eaters, digests them when done.
+        // ---------------------------------------------------------------------------
+
+        UpdateEngulfing(dt, playerSize);
+
+        // ---------------------------------------------------------------------------
         // Player vs. cells
-        //   Eat, get hurt or bump, cells far away despawn.
+        //   Swallow smaller cells, get swallowed by bigger ones, bump equal ones, cells far away despawn.
         // ---------------------------------------------------------------------------
 
         float thornScale = playerSize / CellBody.REFERENCE_SIZE;
         foreach (Node node in CritterLayer.GetChildren())
         {
             var critter = (Critter)node;
-            if (critter.IsQueuedForDeletion())
+            if (critter.IsQueuedForDeletion() || critter.IsEngulfed)
             {
                 continue;
             }
@@ -422,35 +444,31 @@ public partial class Main : Node2D
             float direction   = (critter.Position - playerPosition).Angle();
             float eatRatio    = Player.EatRatioToward(direction);
             bool  canEat      = Player.Stage >= Player.SINGLE_STAGE && playerSize > critter.Radius * eatRatio;
-            bool  isDangerous = critter.Radius > playerSize * Critter.EAT_RATIO && CritterKind.Bacterium != critter.Kind;
+            bool  isDangerous = critter.CanEat(playerSize);
             float thornHit    = Player.ContactDamageToward(direction) * thornScale;
-            critter.Threat   = canEat ? -1 : (isDangerous ? 1 : 0);
+            float critterHit  = critter.ContactDamageToward(direction + Mathf.Pi);   // its spikes and jaws towards the player
             if (distance > playerSize + critter.Radius)
             {
                 continue;
             }
 
-            // Smaller: swallowed once its center is inside the player
+            // Smaller: the membrane flows around it on contact, ENGULF finishes the meal
             if (canEat)
             {
-                if (distance < playerSize)
+                if (distance < playerSize + critter.Radius * ENGULF_CONTACT)
                 {
-                    Player.AddBiomass(KillReward(critter.Radius), BiomassSource.Meat);
-                    SpawnSplash(critter.Position, critter.Radius * 1.5f, critter.BodyColor);
-                    critter.QueueFree();
+                    // Spiky prey stings once while it is swallowed
+                    critter.StartEngulf(Player);
+                    Player.Digest(critterHit, critter.Position);
+                    Log.Verbose("Main", $"Player engulfs a {critter.Kind} of radius {critter.Radius:F1}.");
                 }
                 continue;
             }
 
-            // Bigger: hurts (plates towards it halve that), spikes and jaws towards it hurt back
+            // Bigger: its membrane flows around the player, pulls it in and digests it
             if (isDangerous)
             {
-                float damage = (0 == Player.Stage ? 6f : 12f) * critter.Radius / playerSize;
-                bool  isHit  = Player.TakeDamage(damage, critter.Position);
-                if (isHit && thornHit > 0f)
-                {
-                    critter.Hurt(thornHit);
-                }
+                EngulfPlayer(critter, distance, playerSize, thornHit, critterHit, dt);
                 continue;
             }
 
@@ -461,14 +479,18 @@ public partial class Main : Node2D
             Player.Position  -= normal * overlap * 0.5f;
             if (thornHit > 0f && critter.BumpCooldown <= 0f)
             {
-                critter.Hurt(thornHit);
+                critter.Hurt(thornHit, Player.GlobalPosition);
                 critter.BumpCooldown = 0.5f;
+            }
+            if (critterHit > 0f)
+            {
+                Player.TakeDamage(critterHit, critter.Position);
             }
         }
 
         // ---------------------------------------------------------------------------
         // Cells vs. cells
-        //   Bigger cells eat smaller ones, equal ones push apart.
+        //   Bigger cells start swallowing smaller ones, equal ones push apart.
         // ---------------------------------------------------------------------------
 
         ResolveCritterContacts(playerSize);
@@ -492,13 +514,125 @@ public partial class Main : Node2D
         }
     }
 
-    /// <summary>Checks every pair of cells once: eat or push apart.</summary>
+    private const float ENGULF_SECONDS = 1.4f;     // from the first touch to digested
+    private const float ENGULF_CONTACT = 0.3f;     // share of the prey radius that must touch the player
+
+    /*
+      Every frame, for each swallowed cell:
+      > Its eater is gone (eaten, freed)
+          - Release it, it swims on.
+      > Otherwise
+          - The eater stretches pseudopods towards it (EngulfPoint, EngulfReach: up while
+            the arms wrap around, down once the prey is inside).
+          - Pull it in a little further, digest it once done: biomass for the player,
+            growth for a critter.
+    */
+    /// <summary>Advances every swallow, hands out the reward of finished ones.</summary>
+    private void UpdateEngulfing(float dt, float playerSize)
+    {
+        // Pseudopods only reach out while a swallow runs
+        Player.EngulfReach = 0f;
+        foreach (Node node in CritterLayer.GetChildren())
+        {
+            if (node is Critter critter)
+            {
+                critter.EngulfReach = 0f;
+            }
+        }
+
+        foreach (Node node in CritterLayer.GetChildren())
+        {
+            if (node is not Critter prey || !prey.IsEngulfed || prey.IsQueuedForDeletion())
+            {
+                continue;
+            }
+
+            // Its eater is gone (eaten, freed)
+            CellBody eater = prey.Engulfer;
+            if (!IsInstanceValid(eater) || eater.IsQueuedForDeletion())
+            {
+                prey.ReleaseEngulf();
+                continue;
+            }
+
+            // Pseudopods towards the prey, the strongest swallow of an eater wins
+            float reach = Mathf.Sin(prey.EngulfProgress * Mathf.Pi);
+            if (reach >= eater.EngulfReach)
+            {
+                eater.EngulfReach = reach;
+                eater.EngulfPoint = prey.GlobalPosition;
+            }
+            if (!prey.AdvanceEngulf(dt, ENGULF_SECONDS))
+            {
+                continue;
+            }
+
+            // Digested
+            if (eater == Player)
+            {
+                Player.AddBiomass(KillReward(prey.EngulfRadius), BiomassSource.Meat);
+            }
+            else if (eater is Critter hunter)
+            {
+                hunter.Devour(prey.EngulfRadius, playerSize * CRITTER_GROWTH_CAP);
+            }
+            prey.QueueFree();
+        }
+    }
+
+    private const float PLAYER_PULL = 0.3f;        // pull into a bigger cell at full depth, share of the player's speed
+    private const float PULL_AT_CONTACT = 0.25f;   // share of PLAYER_PULL at the first touch, it grows with the depth
+    private const float DIGEST_PER_SECOND = 1f;    // share of the old hit damage per second inside
+    private const float THORNS_PER_SECOND = 2f;    // spikes and jaws keep hurting the eater from inside
+
+    /*
+      A bigger cell swallows the player like the player swallows small ones, but the
+      player can fight it:
+      - The eater's pseudopods reach around the player, the deeper it sits the more.
+      - The pull drags the player to the eater's center, weak at the first touch and up to
+        PLAYER_PULL of its own speed deep inside, swimming away gets it out (contact lost =
+        free). The eater itself slows down while it eats (Critter, ENGULF_SLOWDOWN).
+      - Inside, the player is digested steadily, faster by the eater's spikes and jaws
+        (armor towards the eater halves it), and its own spikes and jaws hurt the eater
+        (its armor halves that), which may pop and set it free.
+      - Health at zero while inside means game over (Player.Die), a cluster loses cells first.
+      - The grace period after a death or lost cells stops the swallow.
+    */
+    /// <summary>One frame of a bigger cell swallowing the player.</summary>
+    /// <param name="critterHit">(Required) Spike and jaw damage of the eater towards the player, per second inside.</param>
+    private void EngulfPlayer(Critter critter, float distance, float playerSize, float thornHit, float critterHit, float dt)
+    {
+        if (Player.Invulnerable > 0f)
+        {
+            return;
+        }
+
+        // Pseudopods around the player
+        float depth = 1f - distance / (playerSize + critter.Radius);
+        critter.EngulfReach = Mathf.Max(critter.EngulfReach, Mathf.Clamp(depth * 2f, 0f, 1f));
+        critter.EngulfPoint = Player.GlobalPosition;
+
+        // Pull towards the eater's center, weak at the first touch, stronger the deeper
+        Vector2 toCenter = critter.GlobalPosition - Player.GlobalPosition;
+        float   pull     = PLAYER_PULL * Mathf.Lerp(PULL_AT_CONTACT, 1f, Mathf.Clamp(depth * 2f, 0f, 1f));
+        Player.Position += toCenter.LimitLength(Player.CurrentSpeed() * pull * dt);
+
+        // Digest the player, thorns hurt back
+        float damage = (0 == Player.Stage ? 6f : 12f) * critter.Radius / playerSize;
+        Player.Digest((damage * DIGEST_PER_SECOND + critterHit) * dt, critter.Position);
+        if (thornHit > 0f)
+        {
+            critter.Hurt(thornHit * THORNS_PER_SECOND * dt, Player.GlobalPosition);
+        }
+    }
+
+    /// <summary>Checks every pair of cells once: start swallowing or push apart.</summary>
     private void ResolveCritterContacts(float playerSize)
     {
         var critters = new List<Critter>();
         foreach (Node node in CritterLayer.GetChildren())
         {
-            if (node is Critter critter && !critter.IsQueuedForDeletion())
+            if (node is Critter critter && !critter.IsQueuedForDeletion() && !critter.IsEngulfed)
             {
                 critters.Add(critter);
             }
@@ -510,7 +644,7 @@ public partial class Main : Node2D
             {
                 Critter a = critters[i];
                 Critter b = critters[j];
-                if (a.IsQueuedForDeletion() || b.IsQueuedForDeletion())
+                if (a.IsQueuedForDeletion() || b.IsQueuedForDeletion() || a.IsEngulfed || b.IsEngulfed)
                 {
                     continue;
                 }
@@ -520,17 +654,12 @@ public partial class Main : Node2D
                     continue;
                 }
 
-                // Bigger one eats once the center of the smaller one is inside
+                // Bigger one flows around the smaller one on contact, ENGULF finishes the meal
                 Critter big   = a.Radius >= b.Radius ? a : b;
                 Critter small = big == a ? b : a;
                 if (big.CanEat(small.Radius))
                 {
-                    if (distance < big.Radius)
-                    {
-                        big.Devour(small.Radius, playerSize * CRITTER_GROWTH_CAP);
-                        SpawnSplash(small.Position, small.Radius * 1.5f, small.BodyColor);
-                        small.QueueFree();
-                    }
+                    small.StartEngulf(big);
                     continue;
                 }
 
@@ -640,7 +769,7 @@ public partial class Main : Node2D
 
         // In the organism stage the sea is full of creatures instead of cells
         var critter = new Critter { Target = Player };
-        critter.Setup(radius, kind, playerSize);
+        critter.Setup(radius, kind, playerSize, Player.Stage);
         if (Player.IsOrganism)
         {
             critter.Creature = CreatureDesign.ForCritter(kind);
@@ -679,7 +808,8 @@ public partial class Main : Node2D
     //   OnEditorClosed     Resumes the game.
     //   OnPlayerDivided    Plop around the cluster, banner at 64 cells.
     //   OnStageChanged     Banner per stage.
-    //   OnPlayerDied       Splash and banner.
+    //   OnPlayerDied       Game over: splash, the soup pauses, the game over screen shows.
+    //   Restart            Reloads the scene, straight into a new game or to the title menu.
     //   OnPlayerLostCells  Red plops at the cluster edge and banner, the cluster lives on.
     //
 
@@ -768,13 +898,27 @@ public partial class Main : Node2D
 
     private void OnPlayerDied()
     {
-        // Death on land: the body washes back into the sea
-        if (null != Coast && Coast.IsOnLand(Player.GlobalPosition))
-        {
-            Player.Position = Coast.ToSea(Player.GlobalPosition, Player.BodySize() * 3f);
-        }
         SpawnSplash(Player.GlobalPosition, Player.BodySize() * 2f, new Color(1f, 0.4f, 0.4f));
-        Hud.ShowBanner("BANNER_DEATH_TITLE", "BANNER_DEATH_TEXT");
+        GetTree().Paused = true;
+        Hud.Visible      = false;
+
+        var screen = new GameOverScreen { StageKey = Player.STAGE_KEYS[Player.Stage], Biomass = Player.Biomass };
+        AddChild(screen);
+        screen.RestartPressed += () => Restart(isToMenu: false);
+        screen.MenuPressed    += () => Restart(isToMenu: true);
+        Log.Verbose("Main", $"Game over at stage {Player.Stage} with biomass {Player.Biomass:F0}.");
+    }
+
+    // Survives the scene reload: the new Main starts the game right away instead of the menu
+    private static bool _isRestartQueued;
+
+    /// <summary>A fresh soup: reloads the scene, a restart skips the title menu and plays the intro.</summary>
+    /// <param name="isToMenu">(Required) True shows the title menu, false starts a new game at once.</param>
+    public void Restart(bool isToMenu)
+    {
+        _isRestartQueued = !isToMenu;
+        GetTree().Paused = false;
+        GetTree().ReloadCurrentScene();
     }
 
     /// <summary>Red plops around the edge of the cluster, one per lost cell (at most eight).</summary>
@@ -849,12 +993,11 @@ public partial class Main : Node2D
 
     // ---------------------------------------------------------------------------
     // Shaping
-    //   The blob settled: the player takes on the clay color, the creature editor opens.
+    //   The blob settled, the creature editor opens (the coral clay, see Player.ORGANISM_COLOR).
     // ---------------------------------------------------------------------------
 
     private void OnEvolveCutsceneFinished()
     {
-        Player.BodyColor = EvolveCutscene.ClayFor(Player.BodyColor);
         CreatureEditor.Open(Player, isFirstShaping: true);
     }
 

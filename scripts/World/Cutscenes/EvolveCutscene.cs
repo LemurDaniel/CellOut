@@ -30,8 +30,8 @@ public partial class EvolveCutscene : Node3D
     //   Camera      (Required) The world camera, flown closer by the cutscene.
     //   Center      (Required) Center of the player in 3D.
     //   Size        (Required) Body size of the player, everything scales with it.
-    //   BodyColor   (Required) Color of the cells, the clay leans from it towards CLAY_COLOR.
-    //   ClayColor   The color of the blob, Main hands it on to the creature (ClayFor).
+    //   BodyColor   (Required) Color of the cells, they melt into ClayColor.
+    //   ClayColor   The coral of the blob, the creature's default color (Player.ORGANISM_COLOR).
     //   VisibleCells  Cells shown right now, 64 up to 512.
     //   Finished    The blob has settled, Main opens the creature editor.
     //
@@ -50,17 +50,8 @@ public partial class EvolveCutscene : Node3D
     public Vector3 Center { get; set; }
     public float Size { get; set; } = 14f;
     public Color BodyColor { get; set; } = new(0.45f, 0.85f, 0.65f);
-    public Color ClayColor => ClayFor(BodyColor);
+    public Color ClayColor => Player.ORGANISM_COLOR;
 
-    /// <summary>The clay color a body color melts into, the creature keeps it.</summary>
-    /// <example><code>EvolveCutscene.ClayFor(player.BodyColor)</code></example>
-    public static Color ClayFor(Color bodyColor)
-    {
-        return bodyColor.Lerp(CLAY_COLOR, CLAY_SHARE);
-    }
-
-    private static readonly Color CLAY_COLOR = new(0.86f, 0.58f, 0.42f);
-    private const float CLAY_SHARE = 0.7f;           // mostly clay, a hint of the cell color stays
     private const float DURATION = 5.4f;
     private const float CAMERA_END = 2.6f;
     private const float DIVIDE_START = 0.5f;

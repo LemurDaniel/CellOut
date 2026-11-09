@@ -1,29 +1,34 @@
 // NOTE:
-//   The coast of the organism stage: a straight shore line on the plane (the logic),
-//   land on one side, sea on the other. Drawn with life on top of it:
-//     - ground (shaders/coast_ground.gdshader): rocky sea floor that fades into the
-//       Backdrop floor with depth, shallow sand with caustics, beach with ripples and a
-//       wet band behind the swash, dunes, a meadow with flowers
-//     - water (shaders/coast_water.gdshader): a wobbling water line, rolling wave crests
-//       and foam over the sea only
+//   The coast of the organism stage: an archipelago of small islands in the open sea
+//   (the logic: a signed distance into the nearest island), the first one ahead of the
+//   player, the others scattered around it. Drawn with life on top of it:
+//     - ground (shaders/coast_ground.gdshader): one round mesh per island, rocky sea
+//       floor that fades into the Backdrop floor with depth, shallow sand with caustics,
+//       beach with ripples and a wet band behind the swash, dunes, a meadow on a hill
+//     - water (shaders/coast_water.gdshader): a sea surface around the player with a
+//       wobbling water line, rolling wave crests and foam at every shore; as open sea
+//       (third person) blue with fresnel towards the horizon
 //     - props: seaweed and rocks under water, pebbles, shells and driftwood on the
 //       beach, grass, bushes and flowers on the meadow, seeded per grid cell
-//   Horizontal distances are world units (the coast stays put), heights are player
-//   sizes (Follow rescales them), so the ground always fits the current body.
+//   The island outline is the same formula in C# (IslandRadius) and in the shaders
+//   (ocean_floor.gdshaderinc, island_radius). Horizontal distances are world units (the
+//   islands stay put), heights are player sizes (Follow rescales them).
 //
-//   var coast = new Coast { Origin = point, Normal = direction, Unit = player.BodySize() };
+//   var coast = Coast.Scatter(player.GlobalPosition, direction, shoreDistance, player.BodySize(), seed);
 //   AddChild(coast);
-//   coast.Follow(player.GlobalPosition, player.BodySize(), viewRadius);   // every frame
+//   coast.Follow(player.GlobalPosition, player.BodySize(), viewRadius, drawReach, openSea);   // every frame
 
 //
 //   Chapters:
-//     SETTINGS          Shore line, extents, the ground profile and the shaders.
+//     SETTINGS          Islands, extents, the ground profile and the shaders.
+//     ARCHIPELAGO       The island outline and the scattering of the islands.
 //     LAND AND SEA      Which side a point is on, how deep inside, the ground height.
-//     BUILD             Ground, water and the three prop multimeshes.
-//     FOLLOW            Re-centers the ground along the shore, rescales, refills the props.
+//     BUILD             One ground mesh per island, the water and the three prop multimeshes.
+//     FOLLOW            Rescales the ground, moves the water, refills the props.
 //     PROPS             Seeded props per grid cell, by band.
 //
 
+using System.Collections.Generic;
 using Godot;
 
 namespace CellOut;
@@ -34,49 +39,154 @@ public partial class Coast : Node3D
     // ==============================   SETTINGS   ===============================
     // ===========================================================================
     //
-    //   Origin   (Required) A point on the shore line.
-    //   Normal   (Required) Unit direction from the sea onto the land.
     //   Unit     (Required) Player size when the coast appeared, every band scales with it.
+    //   Origin   Landing point on the shore of the first island, facing the player.
+    //   Normal   Direction from the sea onto the first island at Origin.
     //
     //   Ground profile, d in Unit (negative = sea), height in player sizes:
     //     d -30 .. -14    -3 -> -2.9    sea floor of the Backdrop, rocky relief fades in
     //     d -14 .. -2     -2.9 -> -1    the slope up
     //     d -2 .. 0       -1 -> -0.6    shallow water
     //     d 0 .. 3        -0.6 -> -0.5  beach, then dunes and meadow at GROUND_HEIGHT
+    //     d 8 .. 30       + HILL_HEIGHT a soft hill in the middle of the bigger islands
     //
 
-    public Vector2 Origin { get; set; }
-    public Vector2 Normal { get; set; } = Vector2.Right;
     public float Unit { get; set; } = 14f;
+    public Vector2 Origin { get; private set; }
+    public Vector2 Normal { get; private set; } = Vector2.Right;
 
     public const float GROUND_HEIGHT = -0.5f;        // dry land below the body center, in player sizes
+    public const int MAX_ISLANDS = 8;                // the size of the islands array in ocean_floor.gdshaderinc
     private const float WATER_HEIGHT = 0.7f;         // water surface above the body center, in player sizes
-    private const float ALONG_HALF = 100f;           // half length of the ground along the shore, in Unit
-    private const float ALONG_STEP = 1.5f;           // column spacing along the shore, in Unit
-    private const float RECENTER_DISTANCE = 30f;     // the ground re-centers after the player went this far, in Unit
+    private const float HILL_HEIGHT = 1.4f;          // in player sizes
+    private const int SEGMENTS = 144;                // ground mesh columns around an island
     private static readonly float[] PROFILE_D = { -30f, -14f, -8f, -2f, 0f, 1f, 3f, 6f, 12f, 400f };
     private static readonly float[] PROFILE_H = { -3f, -2.9f, -2f, -1f, -0.6f, -0.55f, GROUND_HEIGHT, GROUND_HEIGHT, -0.45f, -0.45f };
     private static readonly Shader GROUND_SHADER = GD.Load<Shader>("res://shaders/coast_ground.gdshader");
     private static readonly Shader WATER_SHADER = GD.Load<Shader>("res://shaders/coast_water.gdshader");
     private static readonly Shader PLANT_SHADER = GD.Load<Shader>("res://shaders/coast_plant.gdshader");
 
-    private Vector2 Tangent => new(-Normal.Y, Normal.X);
+    // ===========================================================================
+    // =============================   ARCHIPELAGO   =============================
+    // ===========================================================================
+    //
+    //   Island          Center on the plane, base radius in world units, seed of the bulges.
+    //   Islands         All islands, the first one is the landing island.
+    //   IslandRadius    Radius of an island towards an angle (circle with three soft bulges).
+    //   AddIsland       Adds one island, before the coast enters the tree.
+    //   Scatter         The archipelago: a landing island ahead of the player, more around it.
+    //
+
+    public readonly record struct Island(Vector2 Center, float Radius, float Seed);
+
+    private const int ISLAND_COUNT = 7;
+    private const float START_RADIUS = 26f;          // landing island, in Unit
+    private const float MIN_RADIUS = 9f;             // the others, in Unit
+    private const float MAX_RADIUS = 20f;
+    private const float MIN_GAP = 22f;               // sea between two shores at least, in Unit
+    private const float MAX_GAP = 70f;
+    private const float MAX_BULGE = 1.25f;           // IslandRadius never exceeds Radius times this
+
+    private readonly List<Island> _islands = new();
+
+    public IReadOnlyList<Island> Islands => _islands;
+
+    /// <summary>Radius of an island towards an angle, the same formula as island_radius in the shaders.</summary>
+    /// <example><code>Coast.IslandRadius(new Coast.Island(Vector2.Zero, 10f, 0f), 0f)  // 10</code></example>
+    public static float IslandRadius(Island island, float angle)
+    {
+        float s = island.Seed;
+        return island.Radius * (1f
+            + 0.12f * Mathf.Sin(2f * angle + s * 1.7f)
+            + 0.08f * Mathf.Sin(3f * angle + s * 2.9f)
+            + 0.05f * Mathf.Sin(5f * angle + s * 4.3f));
+    }
+
+    /// <summary>Adds one island, the first one sets the landing point (Origin, Normal) towards the given point.</summary>
+    /// <param name="island">(Required) The island, center and radius in world units.</param>
+    /// <param name="from">(Optional) Where the landing is seen from. Defaults to the west of the island.</param>
+    public void AddIsland(Island island, Vector2? from = null)
+    {
+        if (_islands.Count >= MAX_ISLANDS)
+        {
+            Log.Verbose("Coast", $"Island at {island.Center} dropped, at most {MAX_ISLANDS} islands.");
+            return;
+        }
+        _islands.Add(island);
+        if (1 == _islands.Count)
+        {
+            Vector2 toFrom = ((from ?? island.Center + Vector2.Left) - island.Center).Normalized();
+            Origin = island.Center + toFrom * IslandRadius(island, toFrom.Angle());
+            Normal = -toFrom;
+        }
+    }
+
+    /*
+      1. Landing island   START_RADIUS, its shore shoreDistance ahead of the player.
+      2. Neighbors        Next to a random island already placed, a gap of MIN_GAP..MAX_GAP
+                          between the shores (with the largest bulge), never on top of
+                          another island or of the player. Gives up after a few tries.
+    */
+    /// <summary>A new archipelago ahead of the player.</summary>
+    /// <param name="player">(Required) Plane position of the player, it stays in the sea.</param>
+    /// <param name="direction">(Required) Unit direction towards the landing island.</param>
+    /// <param name="shoreDistance">(Required) Distance from the player to the first shore.</param>
+    /// <param name="unit">(Required) Player size, every distance scales with it.</param>
+    /// <param name="seed">(Required) Seed of the layout.</param>
+    /// <returns>The coast, not yet in the tree.</returns>
+    public static Coast Scatter(Vector2 player, Vector2 direction, float shoreDistance, float unit, ulong seed)
+    {
+        var coast = new Coast { Unit = unit };
+        var rng   = new RandomNumberGenerator { Seed = seed };
+
+        // Landing island
+        var   start      = new Island(Vector2.Zero, START_RADIUS * unit, rng.Randf() * 100f);
+        float startReach = IslandRadius(start, (-direction).Angle());
+        coast.AddIsland(start with { Center = player + direction * (shoreDistance + startReach) }, player);
+
+        // Neighbors
+        for (int attempt = 0; attempt < 200 && coast._islands.Count < ISLAND_COUNT; attempt++)
+        {
+            Island  anchor   = coast._islands[rng.RandiRange(0, coast._islands.Count - 1)];
+            float   radius   = rng.RandfRange(MIN_RADIUS, MAX_RADIUS) * unit;
+            float   gap      = rng.RandfRange(MIN_GAP, MAX_GAP) * unit;
+            Vector2 center   = anchor.Center + Vector2.FromAngle(rng.Randf() * Mathf.Tau) * ((anchor.Radius + radius) * MAX_BULGE + gap);
+            bool    isFree   = player.DistanceTo(center) > radius * MAX_BULGE + MIN_GAP * unit;
+            foreach (Island other in coast._islands)
+            {
+                isFree = isFree && other.Center.DistanceTo(center) >= (other.Radius + radius) * MAX_BULGE + MIN_GAP * unit;
+            }
+            if (isFree)
+            {
+                coast.AddIsland(new Island(center, radius, rng.Randf() * 100f));
+            }
+        }
+        Log.Verbose("Coast", $"Archipelago of {coast._islands.Count} islands, landing at {coast.Origin}.");
+        return coast;
+    }
 
     // ===========================================================================
     // ============================   LAND AND SEA   =============================
     // ===========================================================================
     //
-    //   LandDepth      Signed distance of a plane point into the land, negative in the sea.
+    //   LandDepth      Signed distance of a plane point into the nearest island, negative in the sea.
     //   IsOnLand       Whether a plane point lies on land.
-    //   ToSea          A plane point pushed back into the sea, at least a margin from the shore.
-    //   GroundHeight   Ground height in player sizes: profile plus rocky relief and dunes.
+    //   ToSea          A plane point pushed back into the sea, at least a margin from every shore.
+    //   GroundHeight   Ground height in player sizes: profile, rocky relief, dunes and the hill.
+    //   SurfaceLift    How far the ground at a point lies above GROUND_HEIGHT, in world units.
     //
 
-    /// <summary>Signed distance into the land, negative in the sea.</summary>
-    /// <example><code>coast.LandDepth(coast.Origin + coast.Normal * 5f)  // 5</code></example>
+    /// <summary>Signed distance into the nearest island, negative in the sea.</summary>
+    /// <example><code>coast.LandDepth(island.Center)  // about the island radius</code></example>
     public float LandDepth(Vector2 point)
     {
-        return (point - Origin).Dot(Normal);
+        float depth = float.MinValue;
+        foreach (Island island in _islands)
+        {
+            Vector2 rel = point - island.Center;
+            depth = Mathf.Max(depth, IslandRadius(island, rel.Angle()) - rel.Length());
+        }
+        return depth;
     }
 
     public bool IsOnLand(Vector2 point)
@@ -84,28 +194,38 @@ public partial class Coast : Node3D
         return LandDepth(point) > 0f;
     }
 
-    /// <summary>The point itself in the sea, otherwise moved straight out to sea.</summary>
+    /// <summary>The point itself in the sea, otherwise moved straight out of the island it is in or near.</summary>
     /// <param name="point">(Required) Plane point.</param>
     /// <param name="margin">(Required) Distance to keep from the shore.</param>
     public Vector2 ToSea(Vector2 point, float margin)
     {
-        float depth = LandDepth(point);
-        return depth > -margin ? point - Normal * (depth + margin) : point;
+        foreach (Island island in _islands)
+        {
+            Vector2 rel    = point - island.Center;
+            float   radius = IslandRadius(island, rel.Angle());
+            if (radius - rel.Length() > -margin)
+            {
+                Vector2 outward = rel.LengthSquared() > 0.0001f ? rel.Normalized() : Vector2.Right;
+                point = island.Center + outward * (IslandRadius(island, outward.Angle()) + margin);
+            }
+        }
+        return point;
     }
 
     private readonly FastNoiseLite _noise = new() { NoiseType = FastNoiseLite.NoiseTypeEnum.Simplex, Frequency = 0.12f, Seed = 7 };
 
     /*
-      Height = profile (linear between the PROFILE points)
+      Height = profile (linear between the PROFILE points, d = LandDepth / Unit)
              + relief under water: up to 0.35 sizes, fading in from d -2 to -6 and out
                towards the Backdrop floor from d -22 to -30
              + dunes on land: up to 0.12 sizes, growing from d 3 to 8
+             + the hill: up to HILL_HEIGHT, rising from d 8 to 30, a little wavy
     */
-    /// <summary>Ground height in player sizes at coast coordinates.</summary>
-    /// <param name="d">(Required) Distance onto the land in Unit.</param>
-    /// <param name="along">(Required) Position along the shore in Unit.</param>
-    public float GroundHeight(float d, float along)
+    /// <summary>Ground height in player sizes at a plane point.</summary>
+    /// <param name="point">(Required) Plane point.</param>
+    public float GroundHeight(Vector2 point)
     {
+        float d       = LandDepth(point) / Unit;
         float profile = PROFILE_H[^1];
         for (int i = 0; i < PROFILE_D.Length - 1; i++)
         {
@@ -116,108 +236,141 @@ public partial class Coast : Node3D
                 break;
             }
         }
-        float noise  = _noise.GetNoise2D(d, along);
-        float relief = Mathf.Clamp((-d - 2f) / 4f, 0f, 1f) * (1f - Mathf.Clamp((-d - 22f) / 8f, 0f, 1f));
-        float dunes  = Mathf.Clamp((d - 3f) / 5f, 0f, 1f);
-        return profile + noise * (0.35f * relief + 0.12f * dunes);
+        Vector2 q      = point / Unit;
+        float   noise  = _noise.GetNoise2D(q.X, q.Y);
+        float   relief = Mathf.Clamp((-d - 2f) / 4f, 0f, 1f) * (1f - Mathf.Clamp((-d - 22f) / 8f, 0f, 1f));
+        float   dunes  = Mathf.Clamp((d - 3f) / 5f, 0f, 1f);
+        float   hill   = Mathf.SmoothStep(8f, 30f, d);
+        return profile + noise * (0.35f * relief + 0.12f * dunes + 0.4f * hill) + HILL_HEIGHT * hill;
+    }
+
+    /// <summary>Ground above GROUND_HEIGHT in world units (the hill), 0 in the sea and on the beach.</summary>
+    /// <param name="point">(Required) Plane point.</param>
+    /// <param name="size">(Required) Player.BodySize(), the ground scales with it.</param>
+    public float SurfaceLift(Vector2 point, float size)
+    {
+        return Mathf.Max(0f, GroundHeight(point) - GROUND_HEIGHT) * size;
     }
 
     // ===========================================================================
     // ================================   BUILD   ================================
     // ===========================================================================
     //
-    //   _Ready         Ground and water below this node (local +X onto the land),
-    //                  the props top level in world space.
-    //   BuildGround    A grid in coast coordinates around a center along the shore.
+    //   _Ready         One ground mesh per island, the water and the props top level in world space.
+    //   BuildGround    Rings around one island from the deep in to its middle.
     //   AddProps       One prop multimesh with the plant shader.
     //
 
-    private const int MAX_PROPS = 6000;
+    private const int MAX_PROPS = 16000;
 
-    private MeshInstance3D _ground;
+    private readonly List<MeshInstance3D> _grounds = new();
     private ShaderMaterial _groundMaterial;
     private ShaderMaterial _waterMaterial;
+    private MeshInstance3D _water;
     private MultiMesh _blades;
     private MultiMesh _lumps;
     private MultiMesh _sticks;
-    private float _centerAlong = float.NaN;
 
     public override void _Ready()
     {
         ProcessMode = ProcessModeEnum.Always;
-        Rotation    = new Vector3(0f, Plane3D.FacingToYaw(Normal.Angle()), 0f);
+        TopLevel    = true;
 
-        // Ground, built around the player in Follow
+        // Ground: one mesh per island, heights in player sizes (scaled in Follow)
         _groundMaterial = new ShaderMaterial { Shader = GROUND_SHADER };
-        _ground = new MeshInstance3D { MaterialOverride = _groundMaterial, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
-        AddChild(_ground);
-
-        // Water surface over the sea, it reaches a little onto the beach for the swash
-        _waterMaterial = new ShaderMaterial { Shader = WATER_SHADER };
-        float seaReach = 280f * Unit;
-        AddChild(new MeshInstance3D
+        foreach (Island island in _islands)
         {
-            Mesh             = new PlaneMesh { Size = new Vector2(seaReach + 2f * Unit, ALONG_HALF * 2f * Unit) },
-            MaterialOverride = _waterMaterial,
-            Position         = new Vector3(-seaReach * 0.5f + Unit, WATER_HEIGHT, 0f),
-            CastShadow       = GeometryInstance3D.ShadowCastingSetting.Off,
-        });
+            var ground = new MeshInstance3D
+            {
+                Mesh             = BuildGround(island),
+                MaterialOverride = _groundMaterial,
+                Position         = Plane3D.To3D(island.Center),
+                CastShadow       = GeometryInstance3D.ShadowCastingSetting.Off,
+            };
+            AddChild(ground);
+            _grounds.Add(ground);
+        }
 
+        // Water: one subdivided plane around the player, so it bends with the planet
+        _waterMaterial = new ShaderMaterial { Shader = WATER_SHADER };
+        _water = new MeshInstance3D
+        {
+            Mesh             = new PlaneMesh { Size = Vector2.One, SubdivideWidth = 96, SubdivideDepth = 96 },
+            MaterialOverride = _waterMaterial,
+            CastShadow       = GeometryInstance3D.ShadowCastingSetting.Off,
+        };
+        AddChild(_water);
+
+        // Islands for the shaders: xy center, z radius, w seed
+        var islands = new Vector4[MAX_ISLANDS];
+        for (int i = 0; i < _islands.Count; i++)
+        {
+            islands[i] = new Vector4(_islands[i].Center.X, _islands[i].Center.Y, _islands[i].Radius, _islands[i].Seed);
+        }
         foreach (ShaderMaterial material in new[] { _groundMaterial, _waterMaterial })
         {
-            material.SetShaderParameter("coast_origin", Origin);
-            material.SetShaderParameter("coast_normal", Normal);
+            material.SetShaderParameter("islands", islands);
+            material.SetShaderParameter("island_count", _islands.Count);
             material.SetShaderParameter("unit", Unit);
         }
 
         // Props in world space: blades (cones) sway, lumps (spheres) and sticks (rods) do not
-        var props = new Node3D { TopLevel = true };
-        AddChild(props);
-        _blades = AddProps(props, CellVisual3D.ConeMesh(), 0.12f);
-        _lumps  = AddProps(props, CellVisual3D.SphereMesh(true), 0f);
-        _sticks = AddProps(props, CellVisual3D.RodMesh(), 0f);
-        Log.Verbose("Coast", $"Coast at {Origin}, land towards {Normal}, unit {Unit:F1}.");
+        _blades = AddProps(this, CellVisual3D.ConeMesh(), 0.12f);
+        _lumps  = AddProps(this, CellVisual3D.SphereMesh(true), 0f);
+        _sticks = AddProps(this, CellVisual3D.RodMesh(), 0f);
+        Log.Verbose("Coast", $"{_islands.Count} islands, landing at {Origin} towards {Normal}, unit {Unit:F1}.");
     }
 
     /*
-      Rows across the shore (d): coarse in the deep, every 0.5 Unit around the shore,
-      coarse again inland and a few far rows up to 400 Unit. Columns along the shore every
-      ALONG_STEP. Heights from GroundHeight at the absolute along position, so a rebuilt
-      grid lines up with the old one. Winding as in CreatureVisual3D (drawn two sided).
+      Rings at a land depth d (in Unit), from the deep in to the middle: coarse in the deep,
+      every 0.5 Unit around the shore, coarser on the meadow, then one center vertex. A ring
+      vertex lies at IslandRadius(angle) - d from the center, so the rings follow the
+      outline. Heights from GroundHeight (all islands), so overlapping skirts of two
+      islands agree. Winding: inwards x around gives an upward normal (drawn two sided).
     */
-    private ArrayMesh BuildGround(float centerAlong)
+    private ArrayMesh BuildGround(Island island)
     {
-        var rows = new System.Collections.Generic.List<float>();
+        float inner = island.Radius * (2f - MAX_BULGE) / Unit * 0.9f;
+        var   rows  = new List<float>();
         for (float d = -30f; d < -16f; d += 2f) rows.Add(d);
-        for (float d = -16f; d < 16f; d += 0.5f) rows.Add(d);
-        for (float d = 16f; d <= 60f; d += 2f) rows.Add(d);
-        rows.AddRange(new[] { 100f, 200f, 400f });
-        int columns = Mathf.RoundToInt(ALONG_HALF * 2f / ALONG_STEP) + 1;
+        for (float d = -16f; d < Mathf.Min(16f, inner); d += 0.5f) rows.Add(d);
+        for (float d = 16f; d < inner; d += 1.5f) rows.Add(d);
 
         var surface = new SurfaceTool();
         surface.Begin(Mesh.PrimitiveType.Triangles);
         foreach (float d in rows)
         {
-            for (int j = 0; j < columns; j++)
+            for (int j = 0; j < SEGMENTS; j++)
             {
-                float offset = -ALONG_HALF + j * ALONG_STEP;
-                surface.AddVertex(new Vector3(d * Unit, GroundHeight(d, centerAlong + offset), offset * Unit));
+                float   angle  = j * Mathf.Tau / SEGMENTS;
+                Vector2 local  = Vector2.FromAngle(angle) * (IslandRadius(island, angle) - d * Unit);
+                surface.AddVertex(Plane3D.To3D(local, GroundHeight(island.Center + local)));
             }
         }
-        for (int i = 0; i < rows.Count - 1; i++)
+        int center = rows.Count * SEGMENTS;
+        surface.AddVertex(Plane3D.To3D(Vector2.Zero, GroundHeight(island.Center)));
+
+        for (int i = 0; i < rows.Count; i++)
         {
-            for (int j = 0; j < columns - 1; j++)
+            for (int j = 0; j < SEGMENTS; j++)
             {
-                int a = i * columns + j;
-                int b = a + 1;
-                int c = a + columns;
-                int e = c + 1;
+                int a = i * SEGMENTS + j;
+                int b = i * SEGMENTS + (j + 1) % SEGMENTS;
+                if (i == rows.Count - 1)
+                {
+                    surface.AddIndex(a);
+                    surface.AddIndex(b);
+                    surface.AddIndex(center);
+                    continue;
+                }
+                int c = a + SEGMENTS;
+                int e = b + SEGMENTS;
                 surface.AddIndex(a);
-                surface.AddIndex(c);
-                surface.AddIndex(b);
                 surface.AddIndex(b);
                 surface.AddIndex(c);
+                surface.AddIndex(b);
                 surface.AddIndex(e);
+                surface.AddIndex(c);
             }
         }
         surface.GenerateNormals();
@@ -245,10 +398,12 @@ public partial class Coast : Node3D
     // ================================   FOLLOW   ===============================
     // ===========================================================================
     //
-    //   1. Ground   Re-centers along the shore once the player went far, rescales the heights.
-    //   2. Floor    The sea floor pattern scale of the Backdrop, so the deep ground matches it.
+    //   1. Ground   Rescales the heights with the player, the deep pattern matches the Backdrop.
+    //   2. Water    Centered on the player, as far as the camera draws, open sea in third person.
     //   3. Props    Refilled when the player moved a few Units or grew noticeably.
     //
+
+    private const float PROP_REACH = 45f;            // props at most this far, in Unit
 
     private Vector2 _propsCenter = new(float.NaN, float.NaN);
     private float _propsSize;
@@ -257,29 +412,32 @@ public partial class Coast : Node3D
     /// <param name="playerPosition">(Required) Plane position of the player.</param>
     /// <param name="playerSize">(Required) Player.BodySize(), heights scale with it.</param>
     /// <param name="viewRadius">(Required) Visible radius on the plane, the same the Backdrop gets.</param>
-    public void Follow(Vector2 playerPosition, float playerSize, float viewRadius)
+    /// <param name="drawReach">(Optional) How far the water reaches, e.g. the camera far plane. Defaults to 2 view radii.</param>
+    /// <param name="openSea">(Optional) 0 top view tint .. 1 open sea of the third person view. Defaults to 0.</param>
+    public void Follow(Vector2 playerPosition, float playerSize, float viewRadius, float drawReach = 0f, float openSea = 0f)
     {
         // ---------------------------------------------------------------------------
         // Ground
-        //   Re-centers along the shore once the player went far, rescales the heights.
+        //   Rescales the heights with the player, the deep pattern matches the Backdrop.
         // ---------------------------------------------------------------------------
 
-        float along = (playerPosition - Origin).Dot(Tangent) / Unit;
-        if (float.IsNaN(_centerAlong) || Mathf.Abs(along - _centerAlong) > RECENTER_DISTANCE)
+        foreach (MeshInstance3D ground in _grounds)
         {
-            _centerAlong  = Mathf.Round(along / ALONG_STEP) * ALONG_STEP;
-            _ground.Mesh  = BuildGround(_centerAlong);
-            Log.Verbose("Coast", $"Ground re-centered at along {_centerAlong:F0}.");
+            ground.Scale = new Vector3(1f, playerSize, 1f);
         }
-        Position = Plane3D.To3D(Origin + Tangent * _centerAlong * Unit);
-        Scale    = new Vector3(1f, playerSize, 1f);
-
-        // ---------------------------------------------------------------------------
-        // Floor
-        //   The sea floor pattern scale of the Backdrop, so the deep ground matches it.
-        // ---------------------------------------------------------------------------
-
         _groundMaterial.SetShaderParameter("world_scale", viewRadius * 2f);
+
+        // ---------------------------------------------------------------------------
+        // Water
+        //   Centered on the player, as far as the camera draws, open sea in third person.
+        // ---------------------------------------------------------------------------
+
+        float reach = Mathf.Max(drawReach, viewRadius * 2f);
+        _water.Position = Plane3D.To3D(playerPosition, WATER_HEIGHT * playerSize);
+        _water.Scale    = new Vector3(reach * 2f, 1f, reach * 2f);
+        _waterMaterial.SetShaderParameter("open_sea", openSea);
+        _waterMaterial.SetShaderParameter("focus", playerPosition);
+        _waterMaterial.SetShaderParameter("focus_size", playerSize);
 
         // ---------------------------------------------------------------------------
         // Props
@@ -292,7 +450,7 @@ public partial class Coast : Node3D
         {
             _propsCenter = playerPosition;
             _propsSize   = playerSize;
-            FillProps(playerPosition, playerSize, viewRadius * 1.3f + Unit * 4f);
+            FillProps(playerPosition, playerSize, Mathf.Min(viewRadius * 1.3f + Unit * 4f, PROP_REACH * Unit));
         }
     }
 
@@ -301,10 +459,11 @@ public partial class Coast : Node3D
     // ===========================================================================
     //
     //   FillProps   Seeds every grid cell around the player and places its props by band.
-    //   Place       World transform of a prop at coast coordinates, on the ground.
+    //   AddTuft     A tuft of grass blades.
+    //   Place       World transform of a prop at a plane point, on the ground.
     //   Add         One instance into a multimesh, ignored when it is full.
     //
-    //   Bands (d in Unit), per cell of PROP_CELL Units:
+    //   Bands (d = LandDepth in Unit), per cell of PROP_CELL Units:
     //     -16 .. -1.5   seaweed clumps, rocks
     //     -1.5 .. 2.5   pebbles, shells, driftwood
     //     2.5 .. 5      tall dune grass
@@ -323,24 +482,22 @@ public partial class Coast : Node3D
         _bladeCount = 0;
         _lumpCount  = 0;
         _stickCount = 0;
-        float centerD     = LandDepth(center) / Unit;
-        float centerAlong = (center - Origin).Dot(Tangent) / Unit;
-        float reachUnits  = reach / Unit;
-        int   d0 = Mathf.FloorToInt((centerD - reachUnits) / PROP_CELL);
-        int   d1 = Mathf.CeilToInt((centerD + reachUnits) / PROP_CELL);
-        int   a0 = Mathf.FloorToInt((centerAlong - reachUnits) / PROP_CELL);
-        int   a1 = Mathf.CeilToInt((centerAlong + reachUnits) / PROP_CELL);
+        float cell = PROP_CELL * Unit;
+        int   x0   = Mathf.FloorToInt((center.X - reach) / cell);
+        int   x1   = Mathf.CeilToInt((center.X + reach) / cell);
+        int   y0   = Mathf.FloorToInt((center.Y - reach) / cell);
+        int   y1   = Mathf.CeilToInt((center.Y + reach) / cell);
 
-        for (int gd = d0; gd <= d1; gd++)
+        for (int gx = x0; gx <= x1; gx++)
         {
-            for (int ga = a0; ga <= a1; ga++)
+            for (int gy = y0; gy <= y1; gy++)
             {
                 // Same cell -> same seed -> the same props every time
-                _rng.Seed = (ulong)(uint)System.HashCode.Combine(gd, ga, 31);
-                float d     = (gd + _rng.Randf()) * PROP_CELL;
-                float along = (ga + _rng.Randf()) * PROP_CELL;
+                _rng.Seed = (ulong)(uint)System.HashCode.Combine(gx, gy, 31);
+                var   point = new Vector2(gx + _rng.Randf(), gy + _rng.Randf()) * cell;
                 float roll  = _rng.Randf();
-                if (d < -16f)
+                float d     = LandDepth(point) / Unit;
+                if (d < -16f || point.DistanceSquaredTo(center) > reach * reach)
                 {
                     continue;
                 }
@@ -355,14 +512,14 @@ public partial class Coast : Node3D
                         {
                             float height = _rng.RandfRange(0.6f, 1.4f);
                             Color kelp   = new Color(0.16f, 0.36f, 0.22f).Lerp(new Color(0.42f, 0.36f, 0.16f), _rng.Randf());
-                            Add(_blades, ref _bladeCount, Place(d + _rng.RandfRange(-0.3f, 0.3f), along + _rng.RandfRange(-0.3f, 0.3f),
-                                new Vector3(0.12f, height / 0.6f, 0.12f) * size * 0.25f, height * 0.5f * size, size, tilt: 0.25f), kelp);
+                            Add(_blades, ref _bladeCount, Place(Jitter(point, 0.3f), new Vector3(0.45f, height / 0.6f, 0.3f) * size * 0.25f,
+                                height * 0.5f * size, size, tilt: 0.25f), kelp);
                         }
                     }
                     else if (roll < 0.5f)
                     {
                         float rock = _rng.RandfRange(0.15f, 0.45f);
-                        Add(_lumps, ref _lumpCount, Place(d, along, new Vector3(rock, rock * 0.6f, rock * 0.8f) * size, 0f, size, tilt: 0f),
+                        Add(_lumps, ref _lumpCount, Place(point, new Vector3(rock, rock * 0.6f, rock * 0.8f) * size, 0f, size, tilt: 0f),
                             new Color(0.3f, 0.36f, 0.33f).Lightened(_rng.RandfRange(-0.1f, 0.15f)));
                     }
                     continue;
@@ -377,20 +534,19 @@ public partial class Coast : Node3D
                         for (int k = 0; k < pebbles; k++)
                         {
                             float pebble = _rng.RandfRange(0.03f, 0.08f);
-                            Add(_lumps, ref _lumpCount, Place(d + _rng.RandfRange(-0.4f, 0.4f), along + _rng.RandfRange(-0.4f, 0.4f),
-                                new Vector3(pebble, pebble * 0.55f, pebble * 0.8f) * size, 0f, size, tilt: 0f),
+                            Add(_lumps, ref _lumpCount, Place(Jitter(point, 0.4f), new Vector3(pebble, pebble * 0.55f, pebble * 0.8f) * size, 0f, size, tilt: 0f),
                                 new Color(0.55f, 0.52f, 0.48f).Lightened(_rng.RandfRange(-0.2f, 0.25f)));
                         }
                     }
                     else if (roll < 0.34f)
                     {
                         Color shell = _rng.Randf() < 0.5f ? new Color(0.97f, 0.82f, 0.78f) : new Color(0.98f, 0.94f, 0.85f);
-                        Add(_lumps, ref _lumpCount, Place(d, along, new Vector3(0.07f, 0.025f, 0.055f) * size, 0f, size, tilt: 0f), shell);
+                        Add(_lumps, ref _lumpCount, Place(point, new Vector3(0.07f, 0.025f, 0.055f) * size, 0f, size, tilt: 0f), shell);
                     }
                     else if (roll < 0.38f)
                     {
                         float length = _rng.RandfRange(0.5f, 1.1f);
-                        Transform3D wood = Place(d, along, new Vector3(0.045f, length, 0.045f) * size, 0.03f * size, size, tilt: 0f,
+                        Transform3D wood = Place(point, new Vector3(0.045f, length, 0.045f) * size, 0.03f * size, size, tilt: 0f,
                             lay: new Basis(Vector3.Back, Mathf.Pi * 0.5f));   // the rod lies down
                         Add(_sticks, ref _stickCount, wood, new Color(0.5f, 0.4f, 0.3f));
                     }
@@ -402,7 +558,7 @@ public partial class Coast : Node3D
                 {
                     if (roll < 0.5f)
                     {
-                        AddTuft(d, along, size, new Color(0.62f, 0.66f, 0.42f), 0.25f, 0.45f);
+                        AddTuft(point, size, new Color(0.62f, 0.66f, 0.42f), 0.25f, 0.45f);
                     }
                     continue;
                 }
@@ -410,7 +566,7 @@ public partial class Coast : Node3D
                 // Meadow: grass tufts, bushes, flowers, a few rocks
                 if (roll < 0.62f)
                 {
-                    AddTuft(d, along, size, new Color(0.25f, 0.45f, 0.2f).Lerp(new Color(0.42f, 0.58f, 0.26f), _rng.Randf()), 0.15f, 0.32f);
+                    AddTuft(point, size, new Color(0.25f, 0.45f, 0.2f).Lerp(new Color(0.42f, 0.58f, 0.26f), _rng.Randf()), 0.15f, 0.32f);
                 }
                 else if (roll < 0.76f)
                 {
@@ -418,8 +574,8 @@ public partial class Coast : Node3D
                     for (int k = 0; k < 3; k++)
                     {
                         float leaf = _rng.RandfRange(0.14f, 0.24f);
-                        Add(_lumps, ref _lumpCount, Place(d + _rng.RandfRange(-0.15f, 0.15f), along + _rng.RandfRange(-0.15f, 0.15f),
-                            Vector3.One * leaf * size, leaf * 0.7f * size, size, tilt: 0f), leaves.Lightened(k * 0.06f));
+                        Add(_lumps, ref _lumpCount, Place(Jitter(point, 0.15f), Vector3.One * leaf * size, leaf * 0.7f * size, size, tilt: 0f),
+                            leaves.Lightened(k * 0.06f));
                     }
                 }
                 else if (roll < 0.9f)
@@ -428,18 +584,17 @@ public partial class Coast : Node3D
                     int   heads = _rng.RandiRange(2, 4);
                     for (int k = 0; k < heads; k++)
                     {
-                        float fd = d + _rng.RandfRange(-0.3f, 0.3f);
-                        float fa = along + _rng.RandfRange(-0.3f, 0.3f);
-                        float stem = _rng.RandfRange(0.15f, 0.25f);
-                        Add(_blades, ref _bladeCount, Place(fd, fa, new Vector3(0.08f, stem / 0.6f, 0.08f) * size * 0.25f, stem * 0.5f * size, size, tilt: 0.1f),
+                        Vector2 spot = Jitter(point, 0.3f);
+                        float   stem = _rng.RandfRange(0.15f, 0.25f);
+                        Add(_blades, ref _bladeCount, Place(spot, new Vector3(0.08f, stem / 0.6f, 0.08f) * size * 0.25f, stem * 0.5f * size, size, tilt: 0.1f),
                             new Color(0.3f, 0.5f, 0.22f));
-                        Add(_lumps, ref _lumpCount, Place(fd, fa, Vector3.One * 0.035f * size, stem * size, size, tilt: 0f), bloom);
+                        Add(_lumps, ref _lumpCount, Place(spot, Vector3.One * 0.035f * size, stem * size, size, tilt: 0f), bloom);
                     }
                 }
                 else if (roll < 0.94f)
                 {
                     float rock = _rng.RandfRange(0.12f, 0.3f);
-                    Add(_lumps, ref _lumpCount, Place(d, along, new Vector3(rock, rock * 0.65f, rock * 0.85f) * size, 0f, size, tilt: 0f),
+                    Add(_lumps, ref _lumpCount, Place(point, new Vector3(rock, rock * 0.65f, rock * 0.85f) * size, 0f, size, tilt: 0f),
                         new Color(0.5f, 0.5f, 0.47f).Lightened(_rng.RandfRange(-0.1f, 0.1f)));
                 }
             }
@@ -450,28 +605,32 @@ public partial class Coast : Node3D
         _sticks.VisibleInstanceCount = _stickCount;
     }
 
+    /// <summary>A point moved randomly by up to spread Units on both axes.</summary>
+    private Vector2 Jitter(Vector2 point, float spread)
+    {
+        return point + new Vector2(_rng.RandfRange(-spread, spread), _rng.RandfRange(-spread, spread)) * Unit;
+    }
+
     /// <summary>A tuft of grass blades of one color, heights between min and max player sizes.</summary>
-    private void AddTuft(float d, float along, float size, Color color, float minHeight, float maxHeight)
+    private void AddTuft(Vector2 point, float size, Color color, float minHeight, float maxHeight)
     {
         int blades = _rng.RandiRange(4, 7);
         for (int k = 0; k < blades; k++)
         {
             float height = _rng.RandfRange(minHeight, maxHeight);
-            Add(_blades, ref _bladeCount, Place(d + _rng.RandfRange(-0.12f, 0.12f), along + _rng.RandfRange(-0.12f, 0.12f),
-                new Vector3(0.1f, height / 0.6f, 0.1f) * size * 0.25f, height * 0.5f * size, size, tilt: 0.35f),
-                color.Lightened(_rng.RandfRange(-0.08f, 0.1f)));
+            Add(_blades, ref _bladeCount, Place(Jitter(point, 0.12f), new Vector3(0.3f, height / 0.6f, 0.2f) * size * 0.25f,
+                height * 0.5f * size, size, tilt: 0.35f), color.Lightened(_rng.RandfRange(-0.08f, 0.1f)));
         }
     }
 
-    /// <summary>A transform at coast coordinates, standing on the ground, randomly turned and tilted.</summary>
+    /// <summary>A transform at a plane point, standing on the ground, randomly turned and tilted.</summary>
     /// <param name="lift">(Required) Height of the prop center above the ground, in world units.</param>
     /// <param name="tilt">(Required) Largest random lean in radians.</param>
     /// <param name="lay">(Optional) Turn of the mesh before the lean, e.g. a rod lying down. Defaults to none.</param>
-    private Transform3D Place(float d, float along, Vector3 scale, float lift, float size, float tilt, Basis? lay = null)
+    private Transform3D Place(Vector2 point, Vector3 scale, float lift, float size, float tilt, Basis? lay = null)
     {
-        Vector2 point  = Origin + Normal * d * Unit + Tangent * along * Unit;
-        float   ground = GroundHeight(d, along) * size;
-        Basis   basis  = new Basis(Vector3.Up, _rng.Randf() * Mathf.Tau)
+        float ground = GroundHeight(point) * size;
+        Basis basis  = new Basis(Vector3.Up, _rng.Randf() * Mathf.Tau)
             * new Basis(Vector3.Right, _rng.RandfRange(-tilt, tilt))
             * (lay ?? Basis.Identity)
             * Basis.FromScale(scale);

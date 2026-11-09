@@ -42,3 +42,14 @@ renderer/rendering_method.mobile="gl_compatibility"
 anti_aliasing/quality/msaa_2d=2
 anti_aliasing/quality/msaa_3d=2
 environment/defaults/default_clear_color=Color(0.04, 0.13, 0.17, 1)
+
+[shader_globals]
+
+planet_curve={
+"type": "float",
+"value": 0.0
+}
+planet_origin={
+"type": "vec3",
+"value": Vector3(0, 0, 0)
+}

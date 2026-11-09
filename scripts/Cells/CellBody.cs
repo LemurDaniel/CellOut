@@ -52,7 +52,7 @@ public partial class CellBody : Node2D
     // ---------------------------------------------------------------------------
 
     public const float REFERENCE_SIZE = 14f;        // size at which speed and damage are 1:1
-    private const float BASE_SWIM_SPEED = 112.5f;   // plane units per second at REFERENCE_SIZE
+    private const float BASE_SWIM_SPEED = 56.25f;   // plane units per second at REFERENCE_SIZE, calm on purpose
     private const float SWIM_SPEED_EXPONENT = 0.85f;
     private const int MIN_ORGANELLES = 3;
     private const int MAX_ORGANELLES = 5;
@@ -66,17 +66,15 @@ public partial class CellBody : Node2D
 
     // Visual traits of critters, the player uses its Design instead
     public bool IsProtocell { get; set; }
-    public int Flagella { get; set; }
-    public bool HasCilia { get; set; }
-    public bool HasSpikes { get; set; }
-    public bool HasChloroplasts { get; set; }
-    public int EyeCount { get; set; } = 1;
+    public int EyeCount { get; set; }       // face eyes, 0: every cell starts blind, eyes come as Eyespot parts
     public float HurtFlash { get; set; }
-    public int Threat { get; set; }           // -1 edible, 0 neutral, 1 dangerous (ring around the cell)
     public bool IsGhost { get; set; }         // blinks, e.g. while invulnerable
     public bool IsHidden { get; set; }        // not rendered at all, e.g. the player during the title menu
     public bool IsPartsOnly { get; set; }     // renders only the placed parts, no core cell (editor drag icon and ghost)
     public bool IsOnLand { get; set; }        // set by Main at the coast, creatures walk or crawl there
+    public float GroundLift { get; set; }     // set by Main on land: the hill below the body, in world units
+    public Vector2 EngulfPoint { get; set; }  // prey being swallowed, on the plane (Main, ENGULF)
+    public float EngulfReach { get; set; }    // 0 smooth membrane .. 1 pseudopods fully around the prey
 
     // Inner life, LookVersion counts up when it changes so the visual rebuilds
     public float AnimSeed { get; private set; }
@@ -161,7 +159,7 @@ public partial class CellBody : Node2D
     /// </summary>
     /// <param name="size">(Required) Body size on the plane.</param>
     /// <returns>Speed in plane units per second, BASE_SWIM_SPEED at REFERENCE_SIZE.</returns>
-    /// <example><code>CellBody.SwimSpeed(CellBody.REFERENCE_SIZE)  // 112.5</code></example>
+    /// <example><code>CellBody.SwimSpeed(CellBody.REFERENCE_SIZE)  // 56.25</code></example>
     public static float SwimSpeed(float size)
     {
         return BASE_SWIM_SPEED * Mathf.Pow(size / REFERENCE_SIZE, SWIM_SPEED_EXPONENT);

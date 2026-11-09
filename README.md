@@ -1,9 +1,11 @@
 # 🦠 Cell Out
 
+*Inspired by Spore. 🌱👾*
+
 > [!WARNING]
 > **⚠️🤖 WARNING: THIS IS AN AI SLOP GAME 🤖⚠️**
 >
-> This game was 99% splattered together by an AI. The remaining 1% is human despair. ☕
+> This game was 99% splattered together by an AI. The remaining 1% is the human who said "make it more fun" 47 times. 🔁
 >
 > Just like the primordial soup your cell swims in, this code **emerged spontaneously, is chaotic and probably not viable**. Bugs aren't errors, they're **mutations**. 🧬 They're part of evolution.
 >
@@ -11,7 +13,20 @@
 
 > From primordial soup to multicellular life. An evolution game in Godot 4 (C#), realistically inspired, cartoony in 3D.
 
+<p align="center"><img src="docs/images/cell.hero.png" alt="A cell built in the editor: humped back with two spikes, jaws, eyes, a flagellum and cilia" width="720"></p>
+
 You start as a **protocell**, a lipid bubble with a floating DNA helix, collecting biomolecules. As you grow you develop a nucleus, eat smaller cells and mutate. Once you are big enough you **divide**: every cell splits, 1 → 2 → 4 → … → 64 cells stick together as one growing cluster.
+
+## 📸 Gallery
+
+| | |
+|---|---|
+| ![Herbivore with chloroplasts, filter mouth, armour plates and cilia](docs/images/cell.herbivore.png) | ![Predator with double jaws, a crown of spikes and venom vacuoles](docs/images/cell.carnivore.png) |
+| 🌿 **Herbivore**: chloroplasts, filter mouth, armour plates, cilia | 🩸 **Predator**: double jaws, spike crown, venom vacuoles |
+| ![Scout with five eyes, two flagella and cilia](docs/images/cell.scout.png) | ![Protocell: a lipid bubble with a DNA helix](docs/images/cell.protocell.png) |
+| 🔭 **Scout**: five eyes, two flagella, cilia | 🧬 **Protocell**: a lipid bubble with a DNA helix |
+
+Every part is placed freely on the membrane in the cell editor (around, on top, underneath), and the cell itself can be stretched and raised into any shape.
 
 ## ▶️ Getting started
 
@@ -30,7 +45,7 @@ Without the editor: `dotnet build`, then `godot --path .` with the .NET binary.
 | Cell editor (on every level-up) | Pick a part on the left, left click places, right click removes |
 | Language DE/EN | Button top right (starts with the system language) |
 
-**Green outline** = you can eat it · **Red outline** = it eats you
+Smaller cells you touch get engulfed and digested, bigger ones engulf you. Swim away before your health runs out: at zero it's **game over**.
 
 **Diet bar** (top right): molecules and photosynthesis pull to the left (herbivore), eaten cells to the right (carnivore), editor parts in their own direction. The position unlocks parts: armour plate on the left, cilia in the middle, jaws and venom vacuole on the right.
 

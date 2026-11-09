@@ -90,7 +90,7 @@ public partial class Food : Node2D
         BuildMolecule();
 
         // Placed right away, a molecule spawned during a pause would wait at the origin otherwise
-        _visual.GlobalPosition = Plane3D.To3D(GlobalPosition, Mathf.Sin(_bob * 1.3f) * Size * 0.4f);
+        _visual.GlobalPosition = Plane3D.To3D(GlobalPosition, Mathf.Sin(_bob * 1.3f) * Size * 0.4f - Plane3D.Drop(GlobalPosition));
         _visual.Scale          = Vector3.One * 0.001f;   // grows in, see GrowIn
     }
 
@@ -100,7 +100,7 @@ public partial class Food : Node2D
         Position += _drift * dt;
         _bob     += dt;
         _age     += dt;
-        _visual.GlobalPosition = Plane3D.To3D(GlobalPosition, Mathf.Sin(_bob * 1.3f) * Size * 0.4f);
+        _visual.GlobalPosition = Plane3D.To3D(GlobalPosition, Mathf.Sin(_bob * 1.3f) * Size * 0.4f - Plane3D.Drop(GlobalPosition));
         _visual.Rotate(_spinAxis, _spin * dt);
         _visual.Scale = Vector3.One * Size * GrowIn();
     }

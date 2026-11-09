@@ -1,9 +1,9 @@
 // NOTE:
 //   Small live 3D icon of one editor part: a mini cell that carries only this part,
-//   rendered in its own SubViewport and framed on the part. Used by the CellEditor
-//   palette tiles; with isPartOnly the cell is left out, that is the part hanging at
-//   the cursor while dragging. Also holds the shared studio (environment and light)
-//   that the editor preview uses.
+//   rendered in its own SubViewport and framed on the part. With isPartOnly the cell is
+//   left out and the camera frames the bare part model once it is built: the CellEditor
+//   palette tiles and the part hanging at the cursor while dragging. Also holds the
+//   shared studio (environment and light) that the editor preview uses.
 //
 //   var icon = new PartIcon(PartKind.Jaw, player.BodyColor, 64);
 //   tile.AddChild(icon);
@@ -11,9 +11,10 @@
 //
 //   Chapters:
 //     STUDIO      Viewport with environment and light, shared with the editor preview.
-//     BUILD ICON  Mini cell with the part, camera framed on the part.
+//     BUILD ICON  Mini cell with the part (or the bare part), camera framed on the part.
 //
 
+using System.Linq;
 using Godot;
 
 namespace CellOut;
@@ -48,6 +49,9 @@ public partial class PartIcon : SubViewportContainer
             AmbientLightSource = Godot.Environment.AmbientSource.Color,
             AmbientLightColor  = new Color(0.68f, 0.74f, 0.88f),
             AmbientLightEnergy = 0.7f,
+            SsaoEnabled        = true,                   // contact shadows where parts meet the body (unit scale)
+            SsaoRadius         = 0.35f,
+            SsaoIntensity      = 1.6f,
         };
         viewport.AddChild(new WorldEnvironment { Environment = environment });
         viewport.AddChild(new DirectionalLight3D
@@ -63,13 +67,20 @@ public partial class PartIcon : SubViewportContainer
     // ===========================================================================
     //
     //   PartIcon     Builds the studio, the mini cell (or the bare part) and the camera.
+    //   _Process     Bare part: frames the camera on the part once its model is built.
     //   IconPoint    Where the part sits on the mini cell: rim parts in front,
     //                the flagellum behind, inner parts near the nucleus.
     //
 
     private const float CAMERA_DISTANCE = 2.7f;
     private const float CAMERA_PITCH = 0.95f;        // radians above the plane
-    private const float PART_ONLY_ZOOM_IN = 0.6f;    // the bare part is small, the camera comes closer
+    private const float PART_ONLY_ZOOM_IN = 0.6f;    // until the bare part is framed
+    private const float FIT_MARGIN = 1.05f;
+
+    private readonly Camera3D _camera;
+    private readonly SubViewport _viewport;
+    private readonly bool _isPartOnly;
+    private bool _isFramed;
 
     /// <summary>Builds the icon, it renders and animates on its own.</summary>
     /// <param name="kind">(Required) The part shown.</param>
@@ -84,6 +95,8 @@ public partial class PartIcon : SubViewportContainer
 
         SubViewport viewport = NewStudio(new Vector2I(pixels, pixels));
         AddChild(viewport);
+        _viewport   = viewport;
+        _isPartOnly = isPartOnly;
 
         // Mini cell that carries only this part
         Vector2 point  = IconPoint(kind);
@@ -96,9 +109,42 @@ public partial class PartIcon : SubViewportContainer
         float   focus    = isPartOnly ? (PartKind.Flagellum == kind ? 1.6f : 1f) : 0.6f;
         Vector3 target   = Plane3D.To3D(point * focus);
         Vector3 offset   = new Vector3(-0.35f, Mathf.Sin(CAMERA_PITCH), Mathf.Cos(CAMERA_PITCH)).Normalized() * distance;
-        var camera = new Camera3D { Fov = 40f, Current = true };
-        camera.Transform = new Transform3D(Basis.LookingAt(-offset, Vector3.Up), target + offset);
-        viewport.AddChild(camera);
+        _camera = new Camera3D { Fov = 40f, Current = true };
+        _camera.Transform = new Transform3D(Basis.LookingAt(-offset, Vector3.Up), target + offset);
+        viewport.AddChild(_camera);
+    }
+
+    /// <summary>
+    /// The cell visual builds its meshes in its first frame, so the bare part is framed
+    /// as soon as visible meshes exist: the camera keeps its direction and moves to
+    /// where the bounding sphere of the part fills the view.
+    /// </summary>
+    public override void _Process(double delta)
+    {
+        if (!_isPartOnly || _isFramed)
+        {
+            return;
+        }
+        Aabb? bounds = null;
+        foreach (MeshInstance3D mesh in _viewport.FindChildren("*", nameof(MeshInstance3D), true, false).OfType<MeshInstance3D>())
+        {
+            if (!mesh.IsVisibleInTree())
+            {
+                continue;
+            }
+            Aabb box = mesh.GlobalTransform * mesh.GetAabb();
+            bounds = null == bounds ? box : bounds.Value.Merge(box);
+        }
+        if (null == bounds)
+        {
+            return;
+        }
+        Vector3 center    = bounds.Value.GetCenter();
+        float   radius    = Mathf.Max(bounds.Value.Size.Length() * 0.5f, 0.05f);
+        float   distance  = radius / Mathf.Sin(Mathf.DegToRad(_camera.Fov) * 0.5f) * FIT_MARGIN;
+        Vector3 direction = _camera.GlobalTransform.Basis.Z;               // the camera looks along -Z
+        _camera.GlobalTransform = new Transform3D(_camera.GlobalTransform.Basis, center + direction * distance);
+        _isFramed = true;
     }
 
     /// <summary>

@@ -9,4 +9,4 @@ The soup around the player: the game loop, food, scenery and effects.
 | `Backdrop.cs` | Sea floor with caustics and motes at several depths. |
 | `Splash.cs` | Plop effect when something is eaten or pops. |
 | `Cutscenes/` | Intro and evolve cutscene, see `Cutscenes/README.md`. |
-| `Coast.cs` | Shore of the organism stage: sea floor rising to beach and meadow, water surface and foam, land checks. |
+| `Coast.cs` | Shore of the organism stage: rocky sea floor fading into the Backdrop, beach, dunes and meadow, wobbling water line with waves and foam, seeded props (seaweed, rocks, shells, driftwood, grass, bushes, flowers), land checks. |

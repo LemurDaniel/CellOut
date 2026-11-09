@@ -174,7 +174,7 @@ public partial class Hud : CanvasLayer
     }
 
     /// <summary>Shows a big title with subtitle that fades out after a few seconds.</summary>
-    /// <param name="titleKey">(Required) Translation key of the title, e.g. BANNER_DEATH_TITLE.</param>
+    /// <param name="titleKey">(Required) Translation key of the title, e.g. BANNER_START_TITLE.</param>
     /// <param name="textKey">(Required) Translation key of the line below.</param>
     public void ShowBanner(string titleKey, string textKey)
     {
@@ -377,8 +377,8 @@ public partial class Hud : CanvasLayer
     {
         var background = new StyleBoxFlat { BgColor = new Color(0f, 0f, 0f, 0.4f) };
         var fill       = new StyleBoxFlat { BgColor = color };
-        background.SetCornerRadiusAll(7);
-        fill.SetCornerRadiusAll(7);
+        background.SetCornerRadiusAll(3);
+        fill.SetCornerRadiusAll(3);
 
         var bar = new ProgressBar { CustomMinimumSize = new Vector2(320, 14), ShowPercentage = false };
         bar.AddThemeStyleboxOverride("background", background);
