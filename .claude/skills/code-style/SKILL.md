@@ -40,9 +40,9 @@ Before writing or reviewing code in one of these languages, read the matching fi
 | --- | --- |
 | PowerShell (`tools/*.ps1`) | `references/powershell.md` |
 | JavaScript / Node.js (`tools/font`) | `references/javascript.md` |
+| C# (`scripts/`, `tests/`) | `references/csharp.md` |
 
-C# (`scripts/`, `tests/`), Python (`tools/blender`) and Godot shaders (`shaders/`): only the general rules below, plus the language's own conventions and `CLAUDE.md`. The existing files (e.g. `scripts/Core/Plane3D.cs`, `tools/blender/build.models.py`) are the reference.
-- C#: file header and table of contents above the `using`s, chapter banners inside the class body, `///` XML doc comments with `(Required)`/`(Optional)`, PascalCase members, `UPPER_SNAKE` constants.
+Python (`tools/blender`) and Godot shaders (`shaders/`): only the general rules below, plus the language's own conventions and `CLAUDE.md`. The existing files (e.g. `tools/blender/build.models.py`) are the reference.
 
 # General
 
