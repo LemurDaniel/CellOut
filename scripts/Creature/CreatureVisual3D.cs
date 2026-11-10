@@ -206,7 +206,7 @@ public partial class CreatureVisual3D : Node3D
     // ===========================================================================
     //
     //   1. Rebuild     Rebuilds when design or color changed.
-    //   2. Transform   Paints the spray dots, follows position, facing and size of the body, blinks when ghosted.
+    //   2. Transform   Paints the spray dots, follows position, facing and size of the body.
     //   3. Swim        Wave phase and amplitude from the speed, body shader and parts follow.
     //   4. Details     Leg animation speed, threat ring, eye blink and the blowhole spout.
     //
@@ -260,7 +260,7 @@ public partial class CreatureVisual3D : Node3D
 
         // ---------------------------------------------------------------------------
         // Transform
-        //   Follows position, facing and size of the body, blinks when ghosted.
+        //   Follows position, facing and size of the body.
         // ---------------------------------------------------------------------------
 
         float speedShare = 0f;
@@ -272,7 +272,7 @@ public partial class CreatureVisual3D : Node3D
             GlobalPosition = Plane3D.To3D(Body.GlobalPosition, _lift * Body.Radius + Body.GroundLift - _sink - Plane3D.Drop(Body.GlobalPosition));
             Rotation       = new Vector3(0f, Plane3D.FacingToYaw(Body.Facing), 0f);
             Scale          = Vector3.One * Body.Radius;
-            Visible        = !Body.IsHidden && !(Body.IsGhost && !GetTree().Paused && _time % 0.2f < 0.1f);   // the invulnerable time stands still while paused
+            Visible        = !Body.IsHidden;
             speedShare     = Mathf.Clamp(Body.Velocity.Length() / CellBody.SwimSpeed(Body.Radius), 0f, 1f);
         }
         else

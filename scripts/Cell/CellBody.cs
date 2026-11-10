@@ -68,7 +68,6 @@ public partial class CellBody : Node2D
     public bool IsProtocell { get; set; }
     public int EyeCount { get; set; }       // face eyes, 0: every cell starts blind, eyes come as Eyespot parts
     public float HurtFlash { get; set; }
-    public bool IsGhost { get; set; }         // blinks, e.g. while invulnerable
     public bool IsHidden { get; set; }        // not rendered at all, e.g. the player during the title menu
     public bool IsPartsOnly { get; set; }     // renders only the placed parts, no core cell (editor drag icon and ghost)
     public bool IsOnLand { get; set; }        // set by Main at the coast, creatures walk or crawl there

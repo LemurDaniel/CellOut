@@ -128,7 +128,6 @@ public partial class Player : CellBody
     //   InputTurn         Turn of the key directions, set by Main from the camera yaw.
     //   _Ready            Protocell look and a short grace period.
     //   _PhysicsProcess   Steers by keys or mouse, regenerates, photosynthesizes, fades the diet.
-    //   _Process          Blinks while invulnerable.
     //
 
     /// <summary>Turn of the key directions in radians, 0 in the top view (W = screen up).</summary>
@@ -183,12 +182,6 @@ public partial class Player : CellBody
         _diet.Decay(dt);
         Diet = _diet.Value(Design.Lean(), Design.Parts.Count > 0);
         UpdateLand(dt);
-    }
-
-    public override void _Process(double delta)
-    {
-        base._Process(delta);
-        IsGhost = Invulnerable > 0f;
     }
 
     // ===========================================================================

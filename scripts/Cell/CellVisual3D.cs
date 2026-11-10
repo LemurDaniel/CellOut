@@ -148,7 +148,7 @@ public partial class CellVisual3D : Node3D
     // ===========================================================================
     //
     //   1. Rebuild    Rebuilds the visual when the traits of the body changed.
-    //   2. Transform  Follows position, facing and size of the body, blinks when ghosted,
+    //   2. Transform  Follows position, facing and size of the body,
     //                 moves divided cells out of their mothers.
     //   3. Animate    Membrane stretch and flash, pseudopods, flagella, eyes and DNA.
     //
@@ -197,14 +197,14 @@ public partial class CellVisual3D : Node3D
 
         // ---------------------------------------------------------------------------
         // Transform
-        //   Follows position, facing and size of the body, blinks when ghosted,
+        //   Follows position, facing and size of the body,
         //   moves divided cells out of their mothers.
         // ---------------------------------------------------------------------------
 
         GlobalPosition = Plane3D.To3D(Body.GlobalPosition, -Plane3D.Drop(Body.GlobalPosition));
         Rotation       = new Vector3(0f, Plane3D.FacingToYaw(Body.Facing), 0f);
         Scale          = Vector3.One * Body.Radius;
-        Visible        = !Body.IsHidden && !(Body.IsGhost && !GetTree().Paused && _time % 0.2f < 0.1f);   // the invulnerable time stands still while paused
+        Visible        = !Body.IsHidden;
 
         // Divided cells glide out of their mothers with a little overshoot
         if (_splitTime < SPLIT_SECONDS)
