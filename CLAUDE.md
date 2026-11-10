@@ -1,6 +1,6 @@
 # CLAUDE.md – Cell Out
 
-Evolutionsspiel in Godot 4.7 .NET (C#): Protozelle → Einzeller → Mehrzeller → Lebewesen → Landtier. F10 öffnet ein Cheat-Menü mit Stufen-Sprüngen. Stand und Entscheidungen: `PROGRESS.md`.
+Evolutionsspiel in Godot 4.7 .NET (C#): (RNA-Welt als spielbare Vorstufe, `World/Prelude/`) → Protozelle → Einzeller → Mehrzeller → Lebewesen → Landtier. F10 öffnet ein Cheat-Menü mit Stufen-Sprüngen. Stand und Entscheidungen: `PROGRESS.md`.
 
 ## Regeln
 - Code Style: Projekt-Skill `.claude/skills/code-style/` (Kopie des User-Skills, auf C#/PowerShell/JS/Python gekürzt; Header mit Usage, Kapitel-/Abschnitts-Banner, englische Kommentare und Bezeichner, `UPPER_SNAKE`-Konstanten, `is`/`has`-Bools, `null` links). Vor dem Schreiben laden.

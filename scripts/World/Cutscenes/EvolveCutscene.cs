@@ -14,7 +14,7 @@
 //     SETTINGS        Inputs from Main, the clay color and the timeline.
 //     BUILD           Cell multimesh, the hidden clay blob and its ring.
 //     PLAY TIMELINE   Camera, divisions into a ball, melting into clay, settling.
-//     HELPERS         Cell positions per cluster size and the easing curves.
+//     HELPERS         Cell positions per cluster size.
 //
 
 using Godot;
@@ -161,7 +161,7 @@ public partial class EvolveCutscene : Node3D
         //   Eases into a closer, lower pose and orbits slowly.
         // ---------------------------------------------------------------------------
 
-        float flight = EaseInOut(Mathf.Clamp(_time / CAMERA_END, 0f, 1f));
+        float flight = Ease.InOut(Mathf.Clamp(_time / CAMERA_END, 0f, 1f));
         Transform3D orbit = _cameraEnd;
         orbit.Origin = Center + (orbit.Origin - Center).Rotated(Vector3.Up, Mathf.Sin(_time * 0.25f) * 0.35f * flight);
         orbit.Basis  = Basis.LookingAt(Center - orbit.Origin, Vector3.Up);
@@ -178,9 +178,9 @@ public partial class EvolveCutscene : Node3D
         float split      = sinceStart < 0f ? 0f : Mathf.Clamp((sinceStart - division * DIVIDE_STEP) / SPLIT_SECONDS, 0f, 1f);
         int   mothers    = Player.MAX_CELLS << division;
         int   daughters  = mothers * 2;
-        float ball       = Smooth(Mathf.Clamp((_time - DIVIDE_START) / (BALL_END - DIVIDE_START), 0f, 1f));
+        float ball       = Ease.Smooth(Mathf.Clamp((_time - DIVIDE_START) / (BALL_END - DIVIDE_START), 0f, 1f));
         float melt       = Mathf.Clamp((_time - MELT_START) / (MELT_END - MELT_START), 0f, 1f);
-        float glide      = BackOut(split);
+        float glide      = Ease.BackOut(split);
 
         _cells.VisibleInstanceCount = split > 0f ? daughters : mothers;
         for (int i = 0; i < _cells.VisibleInstanceCount; i++)
@@ -191,7 +191,7 @@ public partial class EvolveCutscene : Node3D
             Vector3 to          = isSplitting ? CellPosition(daughters, i, ball) : from;
             float   radius      = isSplitting ? Mathf.Lerp(CellRadius(mothers, ball), CellRadius(daughters, ball), split) : CellRadius(mothers, ball);
             Vector3 position    = from.Lerp(to, glide) * (1f - melt * 0.6f);
-            float   scale       = radius * (1f - Smooth(melt));
+            float   scale       = radius * (1f - Ease.Smooth(melt));
             _cells.SetInstanceTransform(i, new Transform3D(Basis.FromScale(Vector3.One * Mathf.Max(scale, 0.0001f)), position));
             _cells.SetInstanceColor(i, _cellTints[i].Lerp(ClayColor, melt));
         }
@@ -201,7 +201,7 @@ public partial class EvolveCutscene : Node3D
         //   The cells shrink into the swelling blob, a ring bursts out.
         // ---------------------------------------------------------------------------
 
-        float swell  = BackOut(melt);
+        float swell  = Ease.BackOut(melt);
         float settle = Mathf.Clamp((_time - MELT_END) / (DURATION - MELT_END), 0f, 1f);
         float blob   = Mathf.Max(Mathf.Lerp(BALL_RADIUS * 0.7f, BLOB_RADIUS, swell) * Size * Mathf.Min(melt * 4f, 1f), 0.001f);
         _blob.Scale = new Vector3(blob, blob * 0.9f, blob);
@@ -231,9 +231,8 @@ public partial class EvolveCutscene : Node3D
     //
     //   CellPosition   Cell i of a cluster, between the flat dome and the hollow ball.
     //   CellRadius     Cell radius of a cluster, growing a little on the ball to close gaps.
-    //   Smooth         Smoothstep 0..1.
-    //   EaseInOut      Cubic ease in and out.
-    //   BackOut        Overshoots to about 1.1 and settles at 1.
+    //
+    //   The easing curves come from Core/Ease.cs.
     //
 
     /// <summary>
@@ -261,22 +260,5 @@ public partial class EvolveCutscene : Node3D
         float flat   = Size / CellBody.ClusterExtent(count);
         float sphere = BALL_RADIUS * Size * 2.2f / Mathf.Sqrt(count);
         return Mathf.Lerp(flat, sphere, ball);
-    }
-
-    private static float Smooth(float t)
-    {
-        return t * t * (3f - 2f * t);
-    }
-
-    private static float EaseInOut(float t)
-    {
-        return t < 0.5f ? 4f * t * t * t : 1f - Mathf.Pow(-2f * t + 2f, 3f) * 0.5f;
-    }
-
-    private static float BackOut(float t)
-    {
-        const float OVERSHOOT = 1.70158f;
-        float u = t - 1f;
-        return 1f + (OVERSHOOT + 1f) * u * u * u + OVERSHOOT * u * u;
     }
 }
