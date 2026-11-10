@@ -798,9 +798,9 @@ public partial class SmokeTest : Node
         }
         bool isGoalOk = RnaWorld.GOAL_LINKS == prelude.PairedCount && RnaWorld.GOAL_LINKS + 1 == prelude.LinkCount;
 
-        // A far bite misses, a bite into the 11th link (straight behind the head) breaks off three links, the mutation stays
+        // A far bite misses, a bite into the second-to-last paired link (straight behind the head) breaks off three links, the mutation stays
         bool isBreakOk = 0 == prelude.BreakAt(new Vector2(100f, 100f), 0.5f)
-            && 3 == prelude.BreakAt(new Vector2(0f, RnaWorld.LINK_SPACING * 11f), 0.01f)
+            && 3 == prelude.BreakAt(new Vector2(0f, RnaWorld.LINK_SPACING * (RnaWorld.GOAL_LINKS - 1)), 0.01f)
             && RnaWorld.GOAL_LINKS - 2 == prelude.LinkCount
             && 1 == prelude.MutationCount;
         prelude.Skip();
@@ -811,15 +811,15 @@ public partial class SmokeTest : Node
 
     private bool ProbeMutations()
     {
-        // Tough (+10 % HP) and Sluggish (-5 % speed) on a fresh protocell: 50 * 1.1 HP, two EP more, slower
+        // Tough (+5 % HP) and Sluggish (-3 % speed) on a fresh protocell: 50 * 1.05 HP, two EP more, slower
         var probe = new Player();
         AddChild(probe);
         int   pointsBefore = probe.EvolutionPoints;
         float speedBefore  = probe.CurrentSpeed();
         probe.ApplyMutations(new[] { MutationKind.Tough, MutationKind.Sluggish });
-        bool isOk = Mathf.IsEqualApprox(probe.MaxHp, 55f)
+        bool isOk = Mathf.IsEqualApprox(probe.MaxHp, 52.5f)
             && pointsBefore + 2 * Mutation.EP_PER_MUTATION == probe.EvolutionPoints
-            && Mathf.IsEqualApprox(probe.CurrentSpeed(), speedBefore * 0.95f)
+            && Mathf.IsEqualApprox(probe.CurrentSpeed(), speedBefore * 0.97f)
             && 2 == probe.Mutations.Count;
         probe.QueueFree();
         return isOk;

@@ -78,23 +78,24 @@ Enemies and food scale with your size and the camera zooms out with you. That wa
 ## 🗂️ Structure
 
 ```
-project.godot / CellOut.csproj   # Godot 4.7 .NET, C# (net8.0)
-scenes/main.tscn                 # Entry scene, root script World/Main.cs
-scripts/
-  Core/    Plane3D, Rand, Log              # 2D↔3D bridge, randomness, verbose log
-  Cells/   CellBody, CellVisual3D,         # Cell base + procedural 3D body
-           Player, Critter                 # Player, NPC cells
-  Evolution/ PartCatalog, CellDesign,      # Editor parts, placement,
-           DietTracker                     # diet
-  World/   Main, Food, Backdrop, Splash    # Game loop, food, scenery, effects
-  Ui/      Hud, Editor/, DietBar           # Status, cell editor, diet bar
-shaders/   membrane, ocean, greyout,       # Cell membrane, ocean floor,
-           editor_panel                    # editor grey-out and panel
-locale/    translations.csv                # All UI texts, German + English
-fonts/     CellOut, CellOutDisplay         # Own game fonts: text + titles (generated)
-tests/     SmokeTest                       # Headless run through all stages
-tools/     Test-CellOut.ps1                # Build + import + smoke test
-           font/                           # Node generator of the game font
+project.godot / CellOut.csproj               # Godot 4.7 .NET, C# (net8.0)
+scenes/main.tscn                             # Entry scene, root script Game/Main.cs
+scripts/                                     # By era first, domain second
+  Core/    Plane3D, Rand, Ease, Log,         # 2D↔3D bridge, randomness, easing,
+           PartModels, TreeModels            # verbose log, model loaders
+  Game/    Main, Player, Food, Backdrop,     # Game loop, player, food, scenery,
+           Cutscenes/, Ui/                   # cutscenes, HUD and menus
+  Prelude/ RnaWorld, Mutation                # Playable RNA world
+  Cell/    CellBody, CellVisual3D, Critter,  # Protocell to multicellular,
+           PartCatalog, CellDesign, Editor/  # cell parts, cell editor
+  Creature/ CreatureDesign, Coast, Editor/   # Organism to land animal, creature editor
+shaders/   membrane, ocean, greyout,         # Cell membrane, ocean floor,
+           editor_panel                      # editor grey-out and panel
+locale/    translations.csv                  # All UI texts, German + English
+fonts/     CellOut, CellOutDisplay           # Own game fonts: text + titles (generated)
+tests/     SmokeTest                         # Headless run through all stages
+tools/     Test-CellOut.ps1                  # Build + import + smoke test
+           font/                             # Node generator of the game font
 ```
 
 No external assets: game logic in 2D, rendering in real 3D, everything procedural from primitives and shaders. Even the fonts are generated (`tools/font`, `npm run build`): a readable text font with wobbling membrane strokes and organelle-bubble dots, and a display font for titles with fat cytoplasm strokes full of vacuoles, nuclei in the bowls and bouncing letters.

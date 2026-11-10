@@ -684,8 +684,8 @@ public partial class Player : CellBody
     public IReadOnlyList<MutationKind> Mutations => _mutations;
 
     /// <summary>
-    /// Takes over the mutations the RNA strand caught in the prelude (World/Prelude/RnaWorld.cs):
-    /// their traits (Evolution/Mutation.cs), EP_PER_MUTATION evolution points each and a hue shift of the protocell.
+    /// Takes over the mutations the RNA strand caught in the prelude (Prelude/RnaWorld.cs):
+    /// their traits (Prelude/Mutation.cs), EP_PER_MUTATION evolution points each and a hue shift of the protocell.
     /// </summary>
     /// <param name="mutations">(Required) Mutations of the strand, empty changes nothing.</param>
     /// <example><code>player.ApplyMutations(new[] { MutationKind.Tough, MutationKind.Sluggish });</code></example>

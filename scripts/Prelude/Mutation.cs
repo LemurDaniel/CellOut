@@ -1,12 +1,12 @@
 // NOTE:
-//   Mutations the RNA strand of the prelude (World/Prelude/RnaWorld.cs) catches with a
+//   Mutations the RNA strand of the prelude (Prelude/RnaWorld.cs) catches with a
 //   wrong base. Each one rolls a small trait, good or bad, that stays with the cell
 //   phase (protocell to multicellular, Player.ApplyDesign) and is worth EP_PER_MUTATION
 //   evolution points. Names and effects come from translations.csv
 //   (MUTATION_<KIND>_NAME / _DESC).
 //
 //   MutationKind kind = Mutation.Roll();
-//   Mutation trait    = Mutation.Get(kind);   // trait.Health == 1.1f for Tough
+//   Mutation trait    = Mutation.Get(kind);   // trait.Health == 1.05f for Tough
 
 //
 //   Chapters:
@@ -38,16 +38,16 @@ public sealed record Mutation(MutationKind Kind, bool IsGood, float Health = 1f,
 
     public static readonly IReadOnlyList<Mutation> ALL = new[]
     {
-        new Mutation(MutationKind.Tough,    IsGood: true,  Health: 1.1f),
-        new Mutation(MutationKind.Swift,    IsGood: true,  Speed: 1.06f),
-        new Mutation(MutationKind.Sticky,   IsGood: true,  Magnet: 1.2f),
-        new Mutation(MutationKind.Greedy,   IsGood: true,  Digest: 1.08f),
-        new Mutation(MutationKind.Brittle,  IsGood: false, Health: 0.92f),
-        new Mutation(MutationKind.Sluggish, IsGood: false, Speed: 0.95f),
+        new Mutation(MutationKind.Tough,    IsGood: true,  Health: 1.05f),
+        new Mutation(MutationKind.Swift,    IsGood: true,  Speed: 1.03f),
+        new Mutation(MutationKind.Sticky,   IsGood: true,  Magnet: 1.1f),
+        new Mutation(MutationKind.Greedy,   IsGood: true,  Digest: 1.04f),
+        new Mutation(MutationKind.Brittle,  IsGood: false, Health: 0.96f),
+        new Mutation(MutationKind.Sluggish, IsGood: false, Speed: 0.97f),
     };
 
     /// <summary>The mutation of a kind.</summary>
-    /// <example><code>Mutation.Get(MutationKind.Swift).Speed  // 1.06</code></example>
+    /// <example><code>Mutation.Get(MutationKind.Swift).Speed  // 1.03</code></example>
     public static Mutation Get(MutationKind kind) => ALL.First(mutation => mutation.Kind == kind);
 
     /// <summary>A random mutation, every kind equally likely.</summary>

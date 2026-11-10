@@ -3,7 +3,7 @@
 //   primordial soup. The ribozyme head swims like a snake, nucleotides (A, U, G, C)
 //   drift around. The strand copies a random template: swallowing the base that pairs
 //   with the next template base (A-U, G-C) adds a link, a wrong base still sticks but
-//   as a mutation that does not count for the goal: it rolls a trait (Evolution/Mutation.cs,
+//   as a mutation that does not count for the goal: it rolls a trait (Prelude/Mutation.cs,
 //   good ones white, bad ones red) that the cell keeps, plus evolution points. A bitten
 //   off mutation link takes its trait along. The ring around the head glows in the wanted color.
 //   Rival strands swim around and eat nucleotides too. A head biting into a chain breaks
@@ -57,7 +57,7 @@ public partial class RnaWorld : Node3D
     public float Size { get; set; } = 14f;
 
     // Goal and chain, lengths in body sizes
-    public const int GOAL_LINKS = 12;
+    public const int GOAL_LINKS = 8;
     private const int START_LINKS = 2;
     private const float HEAD_RADIUS = 0.3f;
     private const float LINK_RADIUS = 0.13f;
@@ -88,7 +88,7 @@ public partial class RnaWorld : Node3D
     private const float SPAWN_MIN = 3f;
     private const float SPAWN_MAX = 9f;
     private const float DESPAWN_DISTANCE = 12f;
-    private const float WANTED_CHANCE = 0.35f;      // share of new nucleotides that pair with the next template base
+    private const float WANTED_CHANCE = 0.5f;       // share of new nucleotides that pair with the next template base
     private const float DRIFT_SPEED = 0.25f;
 
     // Vesicle, camera and HUD
@@ -293,7 +293,7 @@ public partial class RnaWorld : Node3D
     //   Wanted           The base the next link needs.
     //   PairedCount      Links that paired correctly, they count for the goal.
     //   MutationCount    Links that stuck without pairing.
-    //   Mutations        The traits of those links (Evolution/Mutation.cs).
+    //   Mutations        The traits of those links (Prelude/Mutation.cs).
     //   LinkCount        All links behind the head.
     //   IsGoalReached    Enough paired links, the vesicle is called.
     //   Attach           Adds a link at the end, a paired one or a mutation.

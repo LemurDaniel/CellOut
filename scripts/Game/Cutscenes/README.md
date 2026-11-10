@@ -1,4 +1,4 @@
-# World/Cutscenes
+# Game/Cutscenes
 
 Animations that run while the game is paused, Main frees them when they are done, the editor transition frees itself after its color faded.
 

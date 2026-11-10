@@ -162,7 +162,7 @@ public partial class Main : Node2D
     //
     //   1. Menu      Pauses the soup, hides player and HUD, camera high above the spawn.
     //   2. Start     Fades the menu, then the RNA prelude (also after a retry).
-    //   3. Prelude   The RNA strand swims until it reaches a lipid vesicle (World/Prelude/RnaWorld.cs).
+    //   3. Prelude   The RNA strand swims until it reaches a lipid vesicle (Prelude/RnaWorld.cs).
     //   4. Intro     Flies the camera to the gameplay pose while the intro builds the protocell.
     //   5. Birth     Shows player and HUD, resumes the game, the soup starts filling, start banner.
     //
@@ -244,7 +244,7 @@ public partial class Main : Node2D
 
     // ---------------------------------------------------------------------------
     // Prelude
-    //   The RNA strand swims until it reaches a lipid vesicle (World/Prelude/RnaWorld.cs).
+    //   The RNA strand swims until it reaches a lipid vesicle (Prelude/RnaWorld.cs).
     // ---------------------------------------------------------------------------
 
     private void StartPrelude()
