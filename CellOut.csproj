@@ -6,4 +6,8 @@
     <Nullable>disable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- The unit tests are their own project (tests/unit/CellOut.Tests.csproj) -->
+    <Compile Remove="tests/unit/**" />
+  </ItemGroup>
 </Project>

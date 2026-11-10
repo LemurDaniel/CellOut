@@ -65,7 +65,7 @@ public partial class CutsceneReel : Node
                 _main.StartGame(isPreludeSkipped: true);
                 break;
             case SINGLE_FRAME:
-                player.AddBiomass(Player.STAGE_THRESHOLDS[Player.SINGLE_STAGE], BiomassSource.Raw);
+                player.AddBiomass(Balance.Current.Player.SingleCellAt, BiomassSource.Raw);
                 break;
             case CLOSE_FIRST_FRAME:
             case CLOSE_SECOND_FRAME:

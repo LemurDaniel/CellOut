@@ -17,3 +17,7 @@ tools/font/node_modules/
 
 # Python bytecode of the Blender generator
 __pycache__/
+
+# Unit tests (dotnet test)
+tests/unit/bin/
+tests/unit/obj/

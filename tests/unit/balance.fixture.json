@@ -1,0 +1,188 @@
+{
+  "player": {
+    "bodySizeBase": 10,
+    "bodySizeGrowth": 1.6,
+    "singleCellAt": 40,
+
+    "firstLevelStep": 45,
+    "levelGrowth": 2.1,
+    "levelStep": 30,
+    "epPerLevel": 2,
+    "epPerStage": 2,
+    "organismBonusEp": 6,
+
+    "protocellHp": 50,
+    "cellHp": 60,
+    "regenPerSecond": 0.02,
+    "acceleration": 2.5,
+    "magnetRange": 1.6,
+    "knockback": 2.5,
+    "startInvulnerability": 3,
+    "hitInvulnerability": 0.5,
+    "respawnInvulnerability": 2.5,
+
+    "divisionBiomass": 100,
+    "divisionGrowth": 2.5,
+    "hpPerDivision": 0.15,
+    "cellsLostOnDeath": 0.25,
+
+    "jawEatRatio": 0.95,
+    "eatRatioPerDivision": 0.05,
+    "minEatRatio": 0.75,
+
+    "airSeconds": 8,
+    "airRefill": 0.5,
+    "suffocateDamage": 0.1
+  },
+
+  "diet": {
+    "halfLife": 90,
+    "lightWeight": 0.5,
+    "eatingWeight": 0.6,
+    "neutralMass": 5
+  },
+
+  "cell": {
+    "parts": {
+      "Chloroplast": { "cost": 4 },
+      "FilterMouth": { "cost": 2 },
+      "ArmorPlate":  { "cost": 4, "maxDiet": -0.2 },
+      "Flagellum":   { "cost": 4 },
+      "Eyespot":     { "cost": 2 },
+      "Vacuole":     { "cost": 4 },
+      "Cilia":       { "cost": 5, "minDiet": -0.5, "maxDiet": 0.5 },
+      "Spike":       { "cost": 2 },
+      "Jaw":         { "cost": 5, "minDiet": 0.2 },
+      "Toxin":       { "cost": 6, "minDiet": 0.5 }
+    },
+    "effects": {
+      "chloroplastLight": 0.4,
+      "filterMouthMagnet": 0.4,
+      "filterMouthDigestPlant": 1.25,
+      "armorPlateHealth": 1.1,
+      "flagellumSpeed": 0.22,
+      "flagellumFrontThrust": 0.3,
+      "eyespotMagnet": 0.5,
+      "eyespotSight": 0.5,
+      "vacuoleDigest": 1.2,
+      "ciliaAcceleration": 1.4,
+      "jawDigestMeat": 1.2,
+      "toxinDamage": 1.6
+    },
+    "combat": {
+      "spikeArc": 0.7,
+      "jawArc": 0.8,
+      "plateArc": 0.9,
+      "spikeDamage": 8,
+      "jawDamage": 10,
+      "plateDamageFactor": 0.5
+    }
+  },
+
+  "critter": {
+    "eatRatio": 1.15,
+    "jawEatRatio": 1,
+    "satedTime": 4,
+    "senseRadii": 9,
+    "wanderSpeed": 0.45,
+    "bacteriumSpeed": 0.6,
+    "amoebaSpeed": 0.5,
+    "hunterSpeed": 0.7
+  },
+
+  "creature": {
+    "parts": {
+      "CaudalFin":     { "cost": 2, "weight": 0.6 },
+      "Fluke":         { "cost": 2, "weight": 0.8 },
+      "DorsalFin":     { "cost": 1, "weight": 0.3 },
+      "PectoralFin":   { "cost": 1, "weight": 0.4 },
+
+      "Jaw":           { "cost": 2, "weight": 0.9 },
+      "Spines":        { "cost": 2, "weight": 0.7 },
+
+      "PitEye":        { "cost": 1, "weight": 0.1 },
+      "Eye":           { "cost": 2, "weight": 0.3 },
+      "StalkEye":      { "cost": 3, "weight": 0.6 },
+
+      "StubLimb":      { "cost": 1, "weight": 0.3 },
+      "BentLimb":      { "cost": 1, "weight": 0.45 },
+      "Limb":          { "cost": 1, "weight": 0.6 },
+      "Tentacle":      { "cost": 2, "weight": 0.7 },
+
+      "Legs":          { "cost": 2, "weight": 1.5, "carry": 14, "stride": 1 },
+      "StubbyLegs":    { "cost": 2, "weight": 1.8, "carry": 20, "stride": 0.75 },
+      "ClawLegs":      { "cost": 3, "weight": 2.0, "carry": 12, "stride": 1.15 },
+      "CrabLegs":      { "cost": 2, "weight": 0.9, "carry": 10, "stride": 1.1 },
+
+      "Hands":         { "cost": 2, "weight": 0.8 },
+      "Claws":         { "cost": 3, "weight": 1.0 },
+
+      "SmallBrain":    { "cost": 2, "weight": 0.4 },
+      "BigBrain":      { "cost": 4, "weight": 1.2 },
+
+      "Lung":          { "cost": 2, "weight": 0.8 },
+      "Blowhole":      { "cost": 1, "weight": 0.3 },
+      "BigLung":       { "cost": 3, "weight": 1.5 },
+
+      "MembraneWings": { "cost": 3, "weight": 1.5, "lift": 6 },
+      "FeatherWings":  { "cost": 4, "weight": 2.5, "lift": 10 }
+    },
+    "body": {
+      "density": 7.5,
+      "mammalHealth": 1.3,
+      "fishSwimSpeed": 1.1,
+      "healthBase": 0.7,
+      "healthPerGirth": 0.6,
+      "healthPerVertebra": 0.05,
+      "swimBase": 1.15,
+      "swimPerGirth": 0.3,
+      "swimPerVertebra": 0.03
+    },
+    "land": {
+      "crawlSpeed": 0.3,
+      "walkSpeed": 0.85,
+      "loadBase": 1.5,
+      "loadSlope": 0.5,
+      "minLoadFactor": 0.4,
+      "maxLoadFactor": 1.2,
+      "wingFlapBonus": 0.08
+    },
+    "effects": {
+      "caudalFinSwim": 1.3,
+      "flukeSwim": 1.25,
+      "flukeAcceleration": 1.2,
+      "dorsalFinAcceleration": 1.25,
+      "pectoralFinAcceleration": 1.3,
+
+      "jawDigestMeat": 1.2,
+      "pitEyeMagnet": 0.3,
+      "eyeMagnet": 0.5,
+      "stalkEyeMagnet": 0.8,
+      "handsMagnet": 0.4,
+      "clawsMagnet": 0.15,
+
+      "limbDrag": 0.95,
+      "limbCarry": 10,
+      "limbStride": 0.9,
+      "limbReach": 0.2,
+
+      "smallBrainEp": 1,
+      "bigBrainEp": 2,
+      "bigBrainAcceleration": 1.15,
+      "blowholeHealth": 1.25,
+      "bigLungHealth": 1.2
+    }
+  },
+
+  "prelude": {
+    "epPerMutation": 1,
+    "mutations": {
+      "Tough":    { "health": 1.05 },
+      "Swift":    { "speed": 1.03 },
+      "Sticky":   { "magnet": 1.1 },
+      "Greedy":   { "digest": 1.04 },
+      "Brittle":  { "health": 0.96 },
+      "Sluggish": { "speed": 0.97 }
+    }
+  }
+}

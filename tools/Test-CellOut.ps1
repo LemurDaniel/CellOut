@@ -1,4 +1,4 @@
-﻿#Requires -Version 7.0
+#Requires -Version 7.0
 # NOTE:
 #   Requires: .NET SDK 8+ and Godot 4.7 .NET (the *_mono_win64_console.exe on Windows,
 #   the normal exe prints nothing). Path via -GodotPath or $env:GODOT.
@@ -8,17 +8,18 @@
 #
 #   Chapters:
 #     HELPERS          Runs one Godot call with timeout and output check.
-#     BUILD AND TEST   Validates Godot, builds C#, imports and runs the smoke test.
+#     BUILD AND TEST   Validates Godot, builds C#, runs the unit tests, imports and runs the smoke test.
 #
 
 <#
 .SYNOPSIS
-    Headless smoke test for Cell Out.
+    Unit tests and headless smoke test for Cell Out.
 
 .DESCRIPTION
-    Builds the C# project, imports the Godot project and runs tests/SmokeTest.tscn.
-    Fails on a build error, an exit code other than 0, SCRIPT ERROR or exceptions
-    in the output, or a timeout.
+    Builds the C# project, runs the unit tests of the pure logic (tests/unit, no Godot),
+    imports the Godot project and runs tests/SmokeTest.tscn. Fails on a build error, a
+    failed unit test, an exit code other than 0, SCRIPT ERROR or exceptions in the
+    output, or a timeout.
 
 .EXAMPLE
     Run with the Godot path from the environment:
@@ -118,7 +119,8 @@ function Invoke-Godot {
 #
 #   1. Validations   Fails early when Godot is missing.
 #   2. Build         Compiles the C# project, Godot loads the assembly from .godot/mono.
-#   3. Smoke test    Imports the project, then plays through all stages headless.
+#   3. Unit tests    Checks the pure logic against the frozen balance fixture, without Godot.
+#   4. Smoke test    Imports the project, then plays through all stages headless.
 #
 
 # ---------------------------------------------------------------------------
@@ -142,6 +144,17 @@ if ($LASTEXITCODE -NE 0) {
 }
 
 # ---------------------------------------------------------------------------
+# Unit tests
+#   Checks the pure logic against the frozen balance fixture, without Godot.
+# ---------------------------------------------------------------------------
+
+Write-Host '▶ Unit-Tests' -ForegroundColor Cyan
+dotnet test (Join-Path -Path $ProjectPath -ChildPath 'tests/unit/CellOut.Tests.csproj') --nologo -v quiet
+if ($LASTEXITCODE -NE 0) {
+    throw [System.InvalidOperationException]::new("dotnet test must pass every unit test, got exit code $LASTEXITCODE.")
+}
+
+# ---------------------------------------------------------------------------
 # Smoke test
 #   Imports the project, then plays through all stages headless.
 # ---------------------------------------------------------------------------
@@ -153,4 +166,4 @@ $GodotConfig = @{
 Invoke-Godot @GodotConfig -Label 'Import' -Arguments @('--headless', '--path', $ProjectPath, '--import')
 Invoke-Godot @GodotConfig -Label 'Smoke-Test' -Arguments @('--headless', '--path', $ProjectPath, 'res://tests/SmokeTest.tscn')
 
-Write-Host '✅ Cell Out Smoke-Test grün' -ForegroundColor Green
+Write-Host '✅ Cell Out Unit- und Smoke-Test grün' -ForegroundColor Green

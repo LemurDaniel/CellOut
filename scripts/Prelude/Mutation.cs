@@ -1,9 +1,9 @@
 // NOTE:
 //   Mutations the RNA strand of the prelude (Prelude/RnaWorld.cs) catches with a
 //   wrong base. Each one rolls a small trait, good or bad, that stays with the cell
-//   phase (protocell to multicellular, Player.ApplyDesign) and is worth EP_PER_MUTATION
-//   evolution points. Names and effects come from translations.csv
-//   (MUTATION_<KIND>_NAME / _DESC).
+//   phase (protocell to multicellular, Player.ApplyDesign) and is worth evolution
+//   points. Multipliers and points come from data/balance.json, names and effects
+//   from translations.csv (MUTATION_<KIND>_NAME / _DESC).
 //
 //   MutationKind kind = Mutation.Roll();
 //   Mutation trait    = Mutation.Get(kind);   // trait.Health == 1.05f for Tough
@@ -24,8 +24,8 @@ namespace CellOut;
 //
 //   MutationKind      Every mutation, good ones first.
 //   Mutation          Multipliers of one mutation (1 = no effect) and whether it helps.
-//   EP_PER_MUTATION   Evolution points per mutation, good or bad.
 //   ALL               Every mutation with its multipliers.
+//   Of                One table row, numbers from data/balance.json.
 //   Get               The mutation of a kind.
 //   Roll              A random mutation, every kind equally likely (a third is bad).
 //
@@ -34,17 +34,23 @@ public enum MutationKind { Tough, Swift, Sticky, Greedy, Brittle, Sluggish }
 
 public sealed record Mutation(MutationKind Kind, bool IsGood, float Health = 1f, float Speed = 1f, float Magnet = 1f, float Digest = 1f)
 {
-    public const int EP_PER_MUTATION = 1;
-
+    // Whether a mutation helps is fixed, its multipliers come from data/balance.json (prelude.mutations)
     public static readonly IReadOnlyList<Mutation> ALL = new[]
     {
-        new Mutation(MutationKind.Tough,    IsGood: true,  Health: 1.05f),
-        new Mutation(MutationKind.Swift,    IsGood: true,  Speed: 1.03f),
-        new Mutation(MutationKind.Sticky,   IsGood: true,  Magnet: 1.1f),
-        new Mutation(MutationKind.Greedy,   IsGood: true,  Digest: 1.04f),
-        new Mutation(MutationKind.Brittle,  IsGood: false, Health: 0.96f),
-        new Mutation(MutationKind.Sluggish, IsGood: false, Speed: 0.97f),
+        Of(MutationKind.Tough,    isGood: true),
+        Of(MutationKind.Swift,    isGood: true),
+        Of(MutationKind.Sticky,   isGood: true),
+        Of(MutationKind.Greedy,   isGood: true),
+        Of(MutationKind.Brittle,  isGood: false),
+        Of(MutationKind.Sluggish, isGood: false),
     };
+
+    /// <summary>One table row: the multipliers come from Balance.Current.Prelude.Mutations.</summary>
+    private static Mutation Of(MutationKind kind, bool isGood)
+    {
+        MutationBalance tune = Balance.Current.Prelude.Mutations[kind];
+        return new Mutation(kind, isGood, tune.Health, tune.Speed, tune.Magnet, tune.Digest);
+    }
 
     /// <summary>The mutation of a kind.</summary>
     /// <example><code>Mutation.Get(MutationKind.Swift).Speed  // 1.03</code></example>

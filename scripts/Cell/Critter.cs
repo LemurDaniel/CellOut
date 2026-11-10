@@ -35,10 +35,9 @@ public partial class Critter : CellBody
     //   How much bigger a predator must be and how long a meal lasts.
     // ---------------------------------------------------------------------------
 
-    public const float EAT_RATIO = 1.15f;
-    private const float SATED_TIME = 4f;           // seconds without hunting after a meal
-    private const float SENSE_RADII = 9f;          // sense range in own radii
-    private const float WANDER_SPEED = 0.45f;      // share of full speed while drifting
+    /// <summary>Eat ratios, sated time, senses and speeds from data/balance.json (critter).</summary>
+    private static CritterBalance Tune => Balance.Current.Critter;
+
     private const float SEPARATION_WEIGHT = 0.6f;
     private const float ENGULF_SLOWDOWN = 0.3f;    // share of the speed while swallowing, busy flowing around the prey
 
@@ -81,22 +80,22 @@ public partial class Critter : CellBody
         Design = CellDesign.ForCritter(kind, stage);
         _stats = CellStats.From(Design);
         Hp     = radius * 1.5f * _stats.Health;
-        _sense = radius * SENSE_RADII * (1f + _stats.SightBonus);
+        _sense = radius * Tune.SenseRadii * (1f + _stats.SightBonus);
 
         float speedFactor;
         switch (kind)
         {
             case CritterKind.Bacterium:
                 BodyColor   = Color.FromHsv(Rand.Range(0.06f, 0.16f), 0.55f, 0.95f);
-                speedFactor = 0.6f;
+                speedFactor = Tune.BacteriumSpeed;
                 break;
             case CritterKind.Amoeba:
                 BodyColor   = Color.FromHsv(Rand.Range(0.72f, 0.88f), 0.42f, 0.9f);
-                speedFactor = 0.5f;
+                speedFactor = Tune.AmoebaSpeed;
                 break;
             case CritterKind.Hunter:
                 BodyColor   = Color.FromHsv(Rand.Range(0f, 0.04f), 0.6f, 0.92f);
-                speedFactor = 0.7f;
+                speedFactor = Tune.HunterSpeed;
                 break;
             default:
                 throw new System.ArgumentOutOfRangeException(nameof(kind), $"kind must be a known CritterKind, got '{kind}'.");
@@ -115,13 +114,11 @@ public partial class Critter : CellBody
     //   DamageFactorFrom      Share of the damage taken from a world direction, plates halve it.
     //
 
-    private const float JAW_EAT_RATIO = 1f;        // with a jaw a critter swallows cells as big as itself
-
     /// <summary>Whether this critter can eat something of the given radius. Bacteria never eat.</summary>
     /// <param name="otherRadius">(Required) Radius of the prey.</param>
     public bool CanEat(float otherRadius)
     {
-        float ratio = _stats.JawAngles.Count > 0 ? JAW_EAT_RATIO : EAT_RATIO;
+        float ratio = _stats.JawAngles.Count > 0 ? Tune.JawEatRatio : Tune.EatRatio;
         return CritterKind.Bacterium != Kind && Radius > otherRadius * ratio;
     }
 
@@ -139,7 +136,7 @@ public partial class Critter : CellBody
         return _stats.DamageFactorFrom(worldAngle - Facing);
     }
 
-    /// <summary>Grows after a meal and pauses hunting for SATED_TIME seconds.</summary>
+    /// <summary>Grows after a meal and pauses hunting for the sated time.</summary>
     /// <param name="eatenRadius">(Required) Radius of the eaten cell.</param>
     /// <param name="maxRadius">(Required) Upper limit, keeps critters relative to the player.</param>
     public void Devour(float eatenRadius, float maxRadius)
@@ -147,7 +144,7 @@ public partial class Critter : CellBody
         float digested = eatenRadius * eatenRadius * 0.35f * _stats.DigestAll * _stats.DigestMeat;
         Radius  = Mathf.Min(Mathf.Sqrt(Radius * Radius + digested), maxRadius);
         Hp     += eatenRadius * 0.75f;
-        _sated  = SATED_TIME;
+        _sated  = Tune.SatedTime;
     }
 
     /// <summary>Takes damage and pops at zero health, Main turns the pop into food.</summary>
@@ -274,7 +271,7 @@ public partial class Critter : CellBody
             float   playerSize = Target.BodySize();
             float   distance   = toPlayer.Length();
             bool    isInSense  = distance < _sense + playerSize;
-            if (isInSense && Target.Stage >= 1 && playerSize > Radius * EAT_RATIO)
+            if (isInSense && Target.Stage >= 1 && playerSize > Radius * Tune.EatRatio)
             {
                 flee -= toPlayer / Mathf.Max(distance, 1f);
             }
@@ -336,7 +333,7 @@ public partial class Critter : CellBody
                 _wanderDirection = Vector2.FromAngle(Rand.Angle());
                 _wanderTimer     = Rand.Range(1.5f, 4f);
             }
-            desired = _wanderDirection * WANDER_SPEED;
+            desired = _wanderDirection * Tune.WanderSpeed;
         }
         desired = (desired + separate * SEPARATION_WEIGHT).LimitLength(1f);
 

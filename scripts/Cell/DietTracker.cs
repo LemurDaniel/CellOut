@@ -33,15 +33,14 @@ public sealed class DietTracker
     // ===========================================================================
     //
     //   Add      Counts a meal towards plant or meat.
-    //   Decay    Fades old meals with HALF_LIFE.
+    //   Tune     The numbers from data/balance.json (diet).
+    //   Decay    Fades old meals with the half-life.
     //   Reset    Forgets every meal, e.g. when the nucleus forms.
     //   Value    Mix of eating lean and part lean, -1 .. 1.
     //
 
-    private const float HALF_LIFE = 90f;          // seconds until a meal counts half
-    private const float LIGHT_WEIGHT = 0.5f;      // photosynthesis counts half as plant
-    private const float EATING_WEIGHT = 0.6f;     // share of the eating lean once parts exist
-    private const float NEUTRAL_MASS = 5f;        // damps the value while little was eaten
+    /// <summary>Half-life, light weight, eating weight and neutral mass from data/balance.json (diet).</summary>
+    private static DietBalance Tune => Balance.Current.Diet;
 
     private float _plant;
     private float _meat;
@@ -57,7 +56,7 @@ public sealed class DietTracker
                 _plant += amount;
                 break;
             case BiomassSource.Light:
-                _plant += amount * LIGHT_WEIGHT;
+                _plant += amount * Tune.LightWeight;
                 break;
             case BiomassSource.Meat:
                 _meat += amount;
@@ -69,7 +68,7 @@ public sealed class DietTracker
     /// <param name="dt">(Required) Frame time in seconds.</param>
     public void Decay(float dt)
     {
-        float factor = Mathf.Pow(0.5f, dt / HALF_LIFE);
+        float factor = Mathf.Pow(0.5f, dt / Tune.HalfLife);
         _plant *= factor;
         _meat  *= factor;
     }
@@ -87,8 +86,8 @@ public sealed class DietTracker
     /// <example><code>tracker.Value(0f, hasParts: false)  // 0 before the first meal</code></example>
     public float Value(float partsLean, bool hasParts)
     {
-        float eatingLean = (_meat - _plant) / (_meat + _plant + NEUTRAL_MASS);
-        float value      = hasParts ? Mathf.Lerp(partsLean, eatingLean, EATING_WEIGHT) : eatingLean;
+        float eatingLean = (_meat - _plant) / (_meat + _plant + Tune.NeutralMass);
+        float value      = hasParts ? Mathf.Lerp(partsLean, eatingLean, Tune.EatingWeight) : eatingLean;
         return Mathf.Clamp(value, -1f, 1f);
     }
 }

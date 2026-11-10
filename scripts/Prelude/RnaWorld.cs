@@ -11,6 +11,8 @@
 //   the player bites rivals. GOAL_LINKS paired links call a lipid vesicle, swimming into
 //   it ends the prelude, Main then plays the Intro there.
 //   Runs while the game is paused (like the cutscenes), Tab skips it.
+//   This class is the coordinator: the rules are in Prelude/Chain/ (template, chain), the
+//   strands, nucleotides, the vesicle and the HUD are components in Prelude/View/.
 //
 //   var prelude = new RnaWorld { Camera = camera, Center = spawn, Size = player.BodySize() };
 //   AddChild(prelude);
@@ -23,8 +25,7 @@
 //     BUILD           Player strand, rivals, the first nucleotides and the HUD.
 //     CHAIN           Pairing rules, attaching and breaking links, used by the game loop and the smoke test.
 //     PLAY            Camera, steering, rivals, bites, nucleotides, the vesicle.
-//     STRANDS         Building, moving, growing and breaking a strand (player and rivals alike).
-//     HELPERS         Nucleotides, materials and labels.
+//     HELPERS         Spawning rivals and nucleotides, breaking a strand.
 //
 
 using System.Collections.Generic;
@@ -33,22 +34,21 @@ using Godot;
 
 namespace CellOut;
 
-// ===========================================================================
-// ==============================   SETTINGS   ===============================
-// ===========================================================================
-//
-//   RnaBase      The four bases of RNA, U instead of the T of DNA.
-//   Camera       (Required) The world camera, flown down from the menu pose and then following the head.
-//   Center       (Required) Spawn point of the player on the plane, the strand starts here.
-//   Size         (Required) Body size of the player (Player.BodySize()), everything scales with it.
-//   CameraMoved  Every frame with the camera focus and distance, Main moves the sea floor with it.
-//   Finished     The strand swam into the vesicle (or Tab skipped): its point and the mutation count.
-//
-
-public enum RnaBase { A, U, G, C }
-
 public partial class RnaWorld : Node3D
 {
+    // ===========================================================================
+    // ==============================   SETTINGS   ===============================
+    // ===========================================================================
+    //
+    //   Camera       (Required) The world camera, flown down from the menu pose and then following the head.
+    //   Center       (Required) Spawn point of the player on the plane, the strand starts here.
+    //   Size         (Required) Body size of the player (Player.BodySize()), everything scales with it.
+    //   CameraMoved  Every frame with the camera focus and distance, Main moves the sea floor with it.
+    //   Finished     The strand swam into the vesicle (or Tab skipped): its point and the mutation count.
+    //
+    //   The bases (RnaBase) are in Prelude/Chain/RnaTemplate.cs.
+    //
+
     [Signal] public delegate void CameraMovedEventHandler(Vector2 focus, float distance);
     [Signal] public delegate void FinishedEventHandler(Vector2 vesicle, int[] mutations);
 
@@ -59,9 +59,8 @@ public partial class RnaWorld : Node3D
     // Goal and chain, lengths in body sizes
     public const int GOAL_LINKS = 8;
     private const int START_LINKS = 2;
-    private const float HEAD_RADIUS = 0.3f;
-    private const float LINK_RADIUS = 0.13f;
-    public const float LINK_SPACING = 0.34f;
+    private const float HEAD_RADIUS = RnaStrand.HEAD_RADIUS;
+    public const float LINK_SPACING = RnaStrand.LINK_SPACING;
 
     // Steering, speeds in body sizes per second
     private const float SWIM_SPEED = 2.4f;
@@ -84,94 +83,37 @@ public partial class RnaWorld : Node3D
 
     // Nucleotides
     private const int NUCLEOTIDES = 34;
-    private const float NUCLEOTIDE_RADIUS = 0.15f;
     private const float SPAWN_MIN = 3f;
     private const float SPAWN_MAX = 9f;
     private const float DESPAWN_DISTANCE = 12f;
     private const float WANTED_CHANCE = 0.5f;       // share of new nucleotides that pair with the next template base
-    private const float DRIFT_SPEED = 0.25f;
 
-    // Vesicle, camera and HUD
-    private const float VESICLE_RADIUS = 1.3f;
+    // Vesicle and camera
     private const float VESICLE_DISTANCE = 5f;
     private const float FLY_SECONDS = 1.6f;
     private const float CAM_TILT = 0.5f;            // tilt from vertical, like Main
     private const float CAM_DISTANCE = 7f;
     private const float CAM_DISTANCE_PER_LINK = 0.18f;
-    private const int UPCOMING_SHOWN = 2;           // template bases shown after the wanted one
-    private const float BANNER_HOLD = 3.5f;
-    private const float BANNER_FADE = 1.2f;
-
-    // Same hues as CellVisual3D.DNA_BASES, U takes the blue of T
-    private static readonly Color[] BASE_COLORS =
-    {
-        new(0.98f, 0.85f, 0.35f),   // A
-        new(0.45f, 0.8f, 1f),       // U
-        new(0.55f, 0.95f, 0.55f),   // G
-        new(1f, 0.6f, 0.35f),       // C
-    };
-    private static readonly Color BACKBONE_COLOR = new(0.95f, 0.55f, 0.75f);
-    private static readonly Color RIVAL_COLOR = new(0.6f, 0.5f, 0.95f);
-    private static readonly Color GOOD_MUTATION_COLOR = new(0.95f, 1f, 1f);
-    private static readonly Color BAD_MUTATION_COLOR = new(1f, 0.25f, 0.3f);
-    private static readonly Color VESICLE_COLOR = new(1f, 0.9f, 0.55f);
-    private static readonly Shader MEMBRANE_SHADER = GD.Load<Shader>("res://shaders/membrane.gdshader");
 
     // ===========================================================================
     // ================================   BUILD   ================================
     // ===========================================================================
     //
-    //   _Ready      Keeps running while paused, builds the player strand, rivals, nucleotides and the HUD.
-    //   BuildHud    Banner, goal, the wanted base and mutations, all via Tr().
+    //   _Ready           Keeps running while paused, builds the player strand, rivals, nucleotides and the HUD.
+    //   NewStrand        A strand component at a point, the player or a rival.
+    //   _Notification    A language change writes the HUD texts new.
     //
 
-    private sealed class Link
-    {
-        public RnaBase Kind;
-        public MutationKind? Mutation;     // null: paired, else the trait the wrong base rolled
-        public bool IsMutation => null != Mutation;
-        public Vector2 Position;
-        public MeshInstance3D Bead;
-        public MeshInstance3D Bond;
-    }
-
-    private sealed class Strand
-    {
-        public bool IsRival;
-        public Vector2 Position;
-        public float Heading;
-        public float Wander;            // rivals: drifting target heading
-        public float BiteCooldown;
-        public Node3D Head;
-        public MeshInstance3D Ring;     // player only, glows in the wanted color
-        public StandardMaterial3D Backbone;
-        public readonly List<Link> Links = new();
-    }
-
-    private sealed class Nucleotide
-    {
-        public RnaBase Kind;
-        public Vector2 Position;
-        public Vector2 Velocity;
-        public float Phase;
-        public Node3D Node;
-    }
-
-    private readonly List<Nucleotide> _nucleotides = new();
-    private readonly List<Strand> _rivals = new();
-    private readonly List<RnaBase> _template = new();
-    private readonly StandardMaterial3D[] _baseMaterials = new StandardMaterial3D[4];
-    private StandardMaterial3D _goodMutationMaterial;
-    private StandardMaterial3D _badMutationMaterial;
-    private StandardMaterial3D _ringMaterial;
-    private Strand _player;
+    private readonly List<RnaStrand> _rivals = new();
+    private readonly RnaTemplate _template = new(() => (RnaBase)Rand.Index(RnaTemplate.BASE_COUNT));
+    private RnaPalette _palette;
+    private RnaStrand _player;
+    private RnaSoup _soup;
+    private RnaVesicle _vesicle;
+    private RnaHud _hud;
     private Transform3D _cameraStart;
     private Vector3 _camFocus;
     private float _time;
-    private MeshInstance3D _vesicle;
-    private ShaderMaterial _vesicleMaterial;
-    private Vector2 _vesiclePosition;
-    private float _vesicleTime;
     private bool _isFinished;
 
     public override void _Ready()
@@ -179,14 +121,14 @@ public partial class RnaWorld : Node3D
         ProcessMode  = ProcessModeEnum.Always;
         _cameraStart = Camera.GlobalTransform;
         _camFocus    = Plane3D.To3D(Center);
+        _palette     = new RnaPalette();
 
-        for (int kind = 0; kind < BASE_COLORS.Length; kind++)
-        {
-            _baseMaterials[kind] = Glow(BASE_COLORS[kind], 0.5f);
-        }
-        _goodMutationMaterial = Glow(GOOD_MUTATION_COLOR, 1.6f);
-        _badMutationMaterial  = Glow(BAD_MUTATION_COLOR, 1.2f);
-        _ringMaterial     = Glow(BASE_COLORS[(int)RnaBase.A], 1.4f);
+        _soup = new RnaSoup();
+        _soup.Setup(_palette, Size);
+        AddChild(_soup);
+        _vesicle = new RnaVesicle();
+        _vesicle.Setup(Size);
+        AddChild(_vesicle);
 
         // The player swims up the screen
         _player = NewStrand(Center, -Mathf.Pi * 0.5f, isRival: false);
@@ -202,85 +144,27 @@ public partial class RnaWorld : Node3D
         {
             SpawnNucleotide(Rand.Range(SPAWN_MIN, SPAWN_MAX));
         }
-        BuildHud();
+        _hud = new RnaHud();
+        AddChild(_hud);
+        UpdateHud();
         UpdateFrame(0f);
         Log.Verbose("RnaWorld", $"Prelude started at {Center}, goal {GOAL_LINKS} paired links, {RIVALS} rivals.");
     }
 
-    private Label _banner;
-    private Label _bannerSub;
-    private Label _goalLabel;
-    private Label _wantedLabel;
-    private Label _wantedBase;
-    private readonly Label[] _upcoming = new Label[UPCOMING_SHOWN];
-    private Label _mutationLabel;
-    private VBoxContainer _mutationList;
-
-    private void BuildHud()
+    private RnaStrand NewStrand(Vector2 position, float heading, bool isRival)
     {
-        var hud = new CanvasLayer { Layer = 10 };
-        AddChild(hud);
-
-        // Banner in the upper middle, fades out after BANNER_HOLD
-        var box = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
-        box.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.TopWide);
-        box.OffsetTop = 110;
-        hud.AddChild(box);
-        _banner    = NewLabel(64);
-        GameFonts.UseDisplay(_banner);
-        _bannerSub = NewLabel(20);
-        foreach (Label label in new[] { _banner, _bannerSub })
-        {
-            label.HorizontalAlignment = HorizontalAlignment.Center;
-            box.AddChild(label);
-        }
-        Tween fade = CreateTween().SetPauseMode(Tween.TweenPauseMode.Process).SetParallel();
-        fade.TweenProperty(_banner, "modulate:a", 0f, BANNER_FADE).SetDelay(BANNER_HOLD);
-        fade.TweenProperty(_bannerSub, "modulate:a", 0f, BANNER_FADE).SetDelay(BANNER_HOLD);
-
-        // Status top left: goal, wanted base with the next ones, mutations
-        var corner = new MarginContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
-        corner.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.TopLeft);
-        corner.AddThemeConstantOverride("margin_left", 24);
-        corner.AddThemeConstantOverride("margin_top", 20);
-        hud.AddChild(corner);
-        var status = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
-        corner.AddChild(status);
-        _goalLabel = NewLabel(22);
-        status.AddChild(_goalLabel);
-        var wantedRow = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
-        status.AddChild(wantedRow);
-        _wantedLabel = NewLabel(20);
-        _wantedBase  = NewLabel(30);
-        wantedRow.AddChild(_wantedLabel);
-        wantedRow.AddChild(_wantedBase);
-        for (int i = 0; i < _upcoming.Length; i++)
-        {
-            _upcoming[i] = NewLabel(20);
-            wantedRow.AddChild(_upcoming[i]);
-        }
-        _mutationLabel = NewLabel(18);
-        status.AddChild(_mutationLabel);
-        _mutationList = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
-        _mutationList.AddThemeConstantOverride("separation", 0);
-        status.AddChild(_mutationList);
-
-        ApplyTexts();
+        var strand = new RnaStrand();
+        strand.Setup(_palette, Size, position, heading, isRival);
+        AddChild(strand);
+        return strand;
     }
 
     public override void _Notification(int what)
     {
-        if (NotificationTranslationChanged == what && null != _goalLabel)
+        if (NotificationTranslationChanged == what && null != _hud)
         {
-            ApplyTexts();
+            UpdateHud();
         }
-    }
-
-    private void ApplyTexts()
-    {
-        _banner.Text    = Tr("PRELUDE_TITLE");
-        _bannerSub.Text = Tr("PRELUDE_TEXT");
-        UpdateHud();
     }
 
     // ===========================================================================
@@ -288,7 +172,6 @@ public partial class RnaWorld : Node3D
     // ===========================================================================
     //
     //   Pair             The base that pairs with another one: A-U, G-C.
-    //   TemplateAt       Base of the random template at a position, grows on demand.
     //   WantedAt         The base that pairs with the template at a position.
     //   Wanted           The base the next link needs.
     //   PairedCount      Links that paired correctly, they count for the goal.
@@ -299,44 +182,31 @@ public partial class RnaWorld : Node3D
     //   Attach           Adds a link at the end, a paired one or a mutation.
     //   BreakAt          A bite: breaks the chain at the first link inside a circle.
     //   Skip             Ends the prelude at once (Tab, smoke test).
+    //   UpdateHud        The ring in the wanted color and the state of the chain for the HUD.
+    //
+    //   The rules themselves are in Prelude/Chain/RnaTemplate.cs and RnaChain.cs.
     //
 
     /// <summary>The base that pairs with another one: A-U, G-C.</summary>
     /// <example><code>RnaWorld.Pair(RnaBase.G)  // RnaBase.C</code></example>
     public static RnaBase Pair(RnaBase kind)
     {
-        return kind switch
-        {
-            RnaBase.A => RnaBase.U,
-            RnaBase.U => RnaBase.A,
-            RnaBase.G => RnaBase.C,
-            _         => RnaBase.G,
-        };
-    }
-
-    /// <summary>Base of the random template at a position, the template grows as far as it is asked.</summary>
-    private RnaBase TemplateAt(int index)
-    {
-        while (_template.Count <= index)
-        {
-            _template.Add((RnaBase)Rand.Index(BASE_COLORS.Length));
-        }
-        return _template[index];
+        return RnaTemplate.Pair(kind);
     }
 
     /// <summary>The base that pairs with the template at a position, a broken chain asks again from there.</summary>
-    public RnaBase WantedAt(int index) => Pair(TemplateAt(index));
+    public RnaBase WantedAt(int index) => _template.WantedAt(index);
 
     /// <summary>The base the next link needs, every link (mutations too) takes one template position.</summary>
-    public RnaBase Wanted => WantedAt(_player.Links.Count);
+    public RnaBase Wanted => WantedAt(_player.Chain.Count);
 
     public int PairedCount { get; private set; }
     public int MutationCount { get; private set; }
-    public int LinkCount => _player.Links.Count;
+    public int LinkCount => _player.Chain.Count;
     public bool IsGoalReached => PairedCount >= GOAL_LINKS;
 
     /// <summary>The traits of the mutation links on the player chain, a bitten off link takes its trait along.</summary>
-    public IReadOnlyList<MutationKind> Mutations => _player.Links.Where(link => link.IsMutation).Select(link => link.Mutation.Value).ToList();
+    public IReadOnlyList<MutationKind> Mutations => _player.Chain.Mutations;
 
     /// <summary>Adds a link at the end of the player chain, paired if it fits Wanted, else as a mutation with a rolled trait.</summary>
     /// <param name="kind">(Required) The swallowed base.</param>
@@ -346,10 +216,10 @@ public partial class RnaWorld : Node3D
     {
         bool          isPaired = kind == Wanted;
         MutationKind? mutation = isPaired ? null : Mutation.Roll();
-        AddLink(_player, kind, mutation);
+        _player.AddLink(kind, mutation);
         RecountLinks();
         Log.Verbose("RnaWorld", $"{kind} {(isPaired ? "paired" : $"stuck as mutation {mutation}")}, {PairedCount}/{GOAL_LINKS} paired, {MutationCount} mutations.");
-        if (IsGoalReached && null == _vesicle)
+        if (IsGoalReached && !_vesicle.HasAppeared)
         {
             CallVesicle();
         }
@@ -362,7 +232,7 @@ public partial class RnaWorld : Node3D
     /// <returns>The number of lost links.</returns>
     public int BreakAt(Vector2 point, float radius)
     {
-        int cut = FirstLinkAt(_player, point, radius);
+        int cut = _player.FirstLinkAt(point, radius);
         if (cut < 0)
         {
             return 0;
@@ -376,7 +246,7 @@ public partial class RnaWorld : Node3D
     /// <summary>Ends the prelude at once with a vesicle in front of the head.</summary>
     public void Skip()
     {
-        if (null == _vesicle)
+        if (!_vesicle.HasAppeared)
         {
             CallVesicle();
         }
@@ -385,20 +255,25 @@ public partial class RnaWorld : Node3D
 
     private void RecountLinks()
     {
-        PairedCount   = 0;
-        MutationCount = 0;
-        foreach (Link link in _player.Links)
-        {
-            if (link.IsMutation)
-            {
-                MutationCount++;
-            }
-            else
-            {
-                PairedCount++;
-            }
-        }
+        PairedCount   = _player.Chain.PairedCount;
+        MutationCount = _player.Chain.MutationCount;
         UpdateHud();
+    }
+
+    private void UpdateHud()
+    {
+        RnaBase wanted = Wanted;
+        _palette.ShowWanted(wanted);
+        if (null == _hud)
+        {
+            return;
+        }
+        var upcoming = new RnaBase[RnaHud.UPCOMING_SHOWN];
+        for (int i = 0; i < upcoming.Length; i++)
+        {
+            upcoming[i] = WantedAt(_player.Chain.Count + 1 + i);
+        }
+        _hud.Refresh(new RnaHud.State(PairedCount, GOAL_LINKS, IsGoalReached, wanted, upcoming, Mutations));
     }
 
     // ===========================================================================
@@ -443,8 +318,8 @@ public partial class RnaWorld : Node3D
         //   Flies down from the menu pose, then follows the head and zooms out with the chain.
         // ---------------------------------------------------------------------------
 
-        float   distance = Size * (CAM_DISTANCE + CAM_DISTANCE_PER_LINK * _player.Links.Count);
-        Vector3 focus    = Plane3D.To3D(_player.Position);
+        float   distance = Size * (CAM_DISTANCE + CAM_DISTANCE_PER_LINK * _player.Chain.Count);
+        Vector3 focus    = Plane3D.To3D(_player.HeadPosition);
         _camFocus = dt <= 0f ? focus : _camFocus.Lerp(focus, Mathf.Clamp(dt * 3f, 0f, 1f));
         var follow = new Transform3D(Basis.Identity, _camFocus + new Vector3(0f, Mathf.Cos(CAM_TILT), Mathf.Sin(CAM_TILT)) * distance);
         follow = follow.LookingAt(_camFocus, Vector3.Up);
@@ -468,12 +343,12 @@ public partial class RnaWorld : Node3D
             if (Input.IsPhysicalKeyPressed(Key.D) || Input.IsPhysicalKeyPressed(Key.Right)) input.X += 1f;
             if (Input.IsMouseButtonPressed(MouseButton.Left))
             {
-                input = Plane3D.MouseOnPlane(GetViewport(), _player.Position) - _player.Position;
+                input = Plane3D.MouseOnPlane(GetViewport(), _player.HeadPosition) - _player.HeadPosition;
             }
         }
         bool isSteered = input.LengthSquared() > 0.0001f;
-        MoveStrand(_player, isSteered ? input.Angle() : _player.Heading, isSteered ? SWIM_SPEED : IDLE_SPEED, TURN_SPEED, dt);
-        _player.Ring.Rotation = new Vector3(0.6f * Mathf.Sin(_time * 1.3f), _time * 3f, 0.6f);
+        _player.Move(isSteered ? input.Angle() : _player.Heading, isSteered ? SWIM_SPEED : IDLE_SPEED, TURN_SPEED, dt, _time);
+        _player.SpinRing(_time);
 
         // ---------------------------------------------------------------------------
         // Rivals
@@ -482,10 +357,10 @@ public partial class RnaWorld : Node3D
 
         for (int i = _rivals.Count - 1; i >= 0; i--)
         {
-            Strand rival = _rivals[i];
-            if (rival.Position.DistanceTo(_player.Position) > RIVAL_DESPAWN * Size)
+            RnaStrand rival = _rivals[i];
+            if (rival.HeadPosition.DistanceTo(_player.HeadPosition) > RIVAL_DESPAWN * Size)
             {
-                FreeStrand(rival);
+                rival.QueueFree();
                 _rivals.RemoveAt(i);
                 continue;
             }
@@ -493,9 +368,9 @@ public partial class RnaWorld : Node3D
             // > The player head within RIVAL_FLEE_RANGE: swim away from it
             // > A nucleotide within RIVAL_SEEK_RANGE: swim to the nearest one
             // > Else: wander, the target heading drifts slowly
-            Vector2    fromPlayer = rival.Position - _player.Position;
-            Nucleotide prey       = NearestNucleotide(rival.Position, RIVAL_SEEK_RANGE * Size);
-            rival.Wander = Mathf.Clamp(rival.Wander + Rand.Range(-1f, 1f) * dt, -0.6f, 0.6f);
+            Vector2  fromPlayer = rival.HeadPosition - _player.HeadPosition;
+            Vector2? prey       = _soup.Nearest(rival.HeadPosition, RIVAL_SEEK_RANGE * Size);
+            rival.DriftWander(Rand.Range(-1f, 1f) * dt);
             float target = rival.Heading + rival.Wander;
             if (fromPlayer.Length() < RIVAL_FLEE_RANGE * Size)
             {
@@ -503,9 +378,9 @@ public partial class RnaWorld : Node3D
             }
             else if (null != prey)
             {
-                target = (prey.Position - rival.Position).Angle();
+                target = (prey.Value - rival.HeadPosition).Angle();
             }
-            MoveStrand(rival, target, RIVAL_SPEED, RIVAL_TURN, dt);
+            rival.Move(target, RIVAL_SPEED, RIVAL_TURN, dt, _time);
         }
         while (_rivals.Count < RIVALS)
         {
@@ -520,21 +395,21 @@ public partial class RnaWorld : Node3D
         if (_time >= START_GUARD)
         {
             float bite = HEAD_RADIUS * Size;
-            foreach (Strand rival in _rivals)
+            foreach (RnaStrand rival in _rivals)
             {
-                rival.BiteCooldown = Mathf.Max(0f, rival.BiteCooldown - dt);
+                rival.CoolBite(dt);
 
                 // The rival bites the player chain
-                if (0f == rival.BiteCooldown && BreakAt(rival.Position, bite) > 0)
+                if (rival.IsReadyToBite && BreakAt(rival.HeadPosition, bite) > 0)
                 {
-                    rival.BiteCooldown = BITE_COOLDOWN;
+                    rival.RestAfterBite(BITE_COOLDOWN);
                 }
 
                 // The player bites the rival chain
-                int cut = FirstLinkAt(rival, _player.Position, bite);
+                int cut = rival.FirstLinkAt(_player.HeadPosition, bite);
                 if (cut >= 0)
                 {
-                    int lost = BreakStrand(rival, cut, _player.Position);
+                    int lost = BreakStrand(rival, cut, _player.HeadPosition);
                     Log.Verbose("RnaWorld", $"Player bit a rival at link {cut}, {lost} links float free.");
                 }
             }
@@ -545,34 +420,30 @@ public partial class RnaWorld : Node3D
         //   Drift and bob, heads swallow them, far ones respawn around the view.
         // ---------------------------------------------------------------------------
 
-        float reach = (HEAD_RADIUS + NUCLEOTIDE_RADIUS) * Size;
-        for (int i = _nucleotides.Count - 1; i >= 0; i--)
+        float reach = (HEAD_RADIUS + RnaSoup.NUCLEOTIDE_RADIUS) * Size;
+        _soup.Drift(_time, dt);
+        for (int i = _soup.Count - 1; i >= 0; i--)
         {
-            Nucleotide nucleotide = _nucleotides[i];
-            nucleotide.Velocity  = nucleotide.Velocity.Lerp(Vector2.FromAngle(nucleotide.Phase + _time * 0.3f) * DRIFT_SPEED * Size, Mathf.Clamp(dt * 0.8f, 0f, 1f));
-            nucleotide.Position += nucleotide.Velocity * dt;
-            nucleotide.Node.Position = Plane3D.To3D(nucleotide.Position, Mathf.Sin(_time * 1.5f + nucleotide.Phase) * 0.06f * Size);
-            nucleotide.Node.Rotation = new Vector3(0f, _time + nucleotide.Phase, 0f);
-
-            if (_time >= START_GUARD && nucleotide.Position.DistanceTo(_player.Position) <= reach)
+            Vector2 position = _soup.PositionAt(i);
+            if (_time >= START_GUARD && position.DistanceTo(_player.HeadPosition) <= reach)
             {
-                Attach(nucleotide.Kind);
-                RemoveNucleotide(i);
+                Attach(_soup.KindAt(i));
+                _soup.RemoveAt(i);
                 continue;
             }
-            Strand eater = _rivals.Find(rival => rival.Links.Count < RIVAL_MAX_LINKS && nucleotide.Position.DistanceTo(rival.Position) <= reach);
+            RnaStrand eater = _rivals.Find(rival => rival.Chain.Count < RIVAL_MAX_LINKS && position.DistanceTo(rival.HeadPosition) <= reach);
             if (null != eater)
             {
-                AddLink(eater, nucleotide.Kind, null);
-                RemoveNucleotide(i);
+                eater.AddLink(_soup.KindAt(i), null);
+                _soup.RemoveAt(i);
                 continue;
             }
-            if (nucleotide.Position.DistanceTo(_player.Position) > DESPAWN_DISTANCE * Size)
+            if (position.DistanceTo(_player.HeadPosition) > DESPAWN_DISTANCE * Size)
             {
-                RemoveNucleotide(i);
+                _soup.RemoveAt(i);
             }
         }
-        while (_nucleotides.Count < NUCLEOTIDES)
+        while (_soup.Count < NUCLEOTIDES)
         {
             SpawnNucleotide(Rand.Range(SPAWN_MAX * 0.8f, SPAWN_MAX));
         }
@@ -582,15 +453,8 @@ public partial class RnaWorld : Node3D
         //   Wobbles, swimming into it ends the prelude.
         // ---------------------------------------------------------------------------
 
-        if (null == _vesicle)
-        {
-            return;
-        }
-        float grow = Ease.BackOut(Ease.Window(_time, _vesicleTime, _vesicleTime + 0.8f));
-        float size = VESICLE_RADIUS * Size * Mathf.Max(grow, 0.001f) * (1f + 0.05f * Mathf.Sin(_time * 3f));
-        _vesicle.Scale = new Vector3(size, size * CellVisual3D.FLATTEN, size);
-        _vesicleMaterial.SetShaderParameter("flash", 0.25f + 0.25f * Mathf.Sin(_time * 4f));
-        if (_player.Position.DistanceTo(_vesiclePosition) <= VESICLE_RADIUS * Size)
+        _vesicle.Animate(_time);
+        if (_vesicle.Contains(_player.HeadPosition))
         {
             Finish();
         }
@@ -598,16 +462,10 @@ public partial class RnaWorld : Node3D
 
     private void CallVesicle()
     {
-        _vesiclePosition = _player.Position + Vector2.FromAngle(_player.Heading + Rand.Range(-1f, 1f)) * VESICLE_DISTANCE * Size;
-        _vesicleTime     = _time;
-        _vesicleMaterial = new ShaderMaterial { Shader = MEMBRANE_SHADER };
-        _vesicleMaterial.SetShaderParameter("body_color", new Color(VESICLE_COLOR, 0.6f));
-        _vesicleMaterial.SetShaderParameter("seed", Rand.Range(0f, 100f));
-        _vesicleMaterial.SetShaderParameter("core_alpha", 0.15f);
-        _vesicle = CellVisual3D.AddMesh(this, CellVisual3D.SphereMesh(), _vesicleMaterial, Plane3D.To3D(_vesiclePosition), Vector3.One * 0.001f);
-        _vesicle.CastShadow = GeometryInstance3D.ShadowCastingSetting.Off;
+        Vector2 spot = _player.HeadPosition + Vector2.FromAngle(_player.Heading + Rand.Range(-1f, 1f)) * VESICLE_DISTANCE * Size;
+        _vesicle.Appear(spot, _time);
         UpdateHud();
-        Log.Verbose("RnaWorld", $"Goal reached -> vesicle at {_vesiclePosition}.");
+        Log.Verbose("RnaWorld", $"Goal reached -> vesicle at {spot}.");
     }
 
     private void Finish()
@@ -618,274 +476,45 @@ public partial class RnaWorld : Node3D
         }
         _isFinished = true;
         Log.Verbose("RnaWorld", $"Strand entered the vesicle with {PairedCount} paired links and {MutationCount} mutations.");
-        EmitSignal(SignalName.Finished, _vesiclePosition, Mutations.Select(kind => (int)kind).ToArray());
-    }
-
-    private void UpdateHud()
-    {
-        RnaBase wanted = Wanted;
-        _ringMaterial.AlbedoColor = BASE_COLORS[(int)wanted];
-        _ringMaterial.Emission    = BASE_COLORS[(int)wanted];
-        if (null == _goalLabel)
-        {
-            return;
-        }
-
-        // The wanted base big in its color, the next ones small and dim behind it
-        _goalLabel.Text     = IsGoalReached ? Tr("PRELUDE_GOAL_VESICLE") : string.Format(Tr("PRELUDE_GOAL"), PairedCount, GOAL_LINKS);
-        _wantedLabel.Text   = Tr("PRELUDE_WANTED");
-        _wantedBase.Text    = wanted.ToString();
-        _wantedBase.AddThemeColorOverride("font_color", BASE_COLORS[(int)wanted]);
-        for (int i = 0; i < _upcoming.Length; i++)
-        {
-            RnaBase next = WantedAt(_player.Links.Count + 1 + i);
-            _upcoming[i].Text = next.ToString();
-            _upcoming[i].AddThemeColorOverride("font_color", new Color(BASE_COLORS[(int)next], 0.55f - 0.15f * i));
-        }
-        _mutationLabel.Text    = string.Format(Tr("PRELUDE_MUTATIONS"), MutationCount, MutationCount * Mutation.EP_PER_MUTATION);
-        _mutationLabel.Visible = MutationCount > 0;
-
-        // One line per mutation on the chain: name and effect, green helps, red hurts
-        foreach (Node line in _mutationList.GetChildren())
-        {
-            line.QueueFree();
-        }
-        foreach (MutationKind kind in Mutations)
-        {
-            Mutation mutation = Mutation.Get(kind);
-            Label    line     = NewLabel(16);
-            line.Text = $"{Tr(mutation.NameKey)}  {Tr(mutation.DescKey)}";
-            line.AddThemeColorOverride("font_color", mutation.IsGood ? new Color(0.6f, 1f, 0.65f) : new Color(1f, 0.5f, 0.5f));
-            _mutationList.AddChild(line);
-        }
-    }
-
-    // ===========================================================================
-    // ===============================   STRANDS   ===============================
-    // ===========================================================================
-    //
-    //   NewStrand     A head at a point: pink with the wanted-color ring for the player, violet for rivals.
-    //   SpawnRival    A rival with a few links in a ring around the player.
-    //   MaterialOf    Bead material: base color, white for a good mutation, red for a bad one.
-    //   AddLink       A bead and its bond at the end of a chain, a mutation link carries its trait.
-    //   MoveStrand    Turns the head towards a heading, swims, every link follows the one in front.
-    //   FirstLinkAt   Index of the first link inside a circle, -1 for none.
-    //   BreakStrand   Frees the links from an index on, they float away as nucleotides.
-    //   FreeStrand    Frees head and links of a strand.
-    //
-
-    private Strand NewStrand(Vector2 position, float heading, bool isRival)
-    {
-        Color color  = isRival ? RIVAL_COLOR : BACKBONE_COLOR;
-        var   strand = new Strand
-        {
-            IsRival  = isRival,
-            Position = position,
-            Heading  = heading,
-            Head     = new Node3D(),
-            Backbone = Glow(color, 0.4f),
-        };
-        AddChild(strand.Head);
-        CellVisual3D.AddMesh(strand.Head, CellVisual3D.SphereMesh(), Glow(color, 0.35f), Vector3.Zero, Vector3.One * HEAD_RADIUS * Size);
-        if (!isRival)
-        {
-            strand.Ring = CellVisual3D.AddMesh(strand.Head, CellVisual3D.TorusMesh(), _ringMaterial, Vector3.Zero, Vector3.One * HEAD_RADIUS * 1.35f * Size);
-        }
-
-        // Two dots in front: the strand looks where it swims
-        foreach (float side in new[] { -1f, 1f })
-        {
-            var eye = new Vector3(HEAD_RADIUS * 0.75f, HEAD_RADIUS * 0.5f, side * HEAD_RADIUS * 0.3f) * Size;
-            CellVisual3D.AddMesh(strand.Head, CellVisual3D.SphereMesh(true), CellVisual3D.Material(new Color(0.08f, 0.05f, 0.1f)), eye, Vector3.One * HEAD_RADIUS * 0.2f * Size);
-        }
-        strand.Head.Position = Plane3D.To3D(position);
-        return strand;
-    }
-
-    private void SpawnRival(float distance)
-    {
-        Vector2 position = _player.Position + Vector2.FromAngle(Rand.Angle()) * distance * Size;
-        Strand  rival    = NewStrand(position, Rand.Angle(), isRival: true);
-        int     links    = RIVAL_MIN_LINKS + Rand.Index(RIVAL_MAX_LINKS - RIVAL_MIN_LINKS + 1);
-        for (int i = 0; i < links; i++)
-        {
-            AddLink(rival, (RnaBase)Rand.Index(BASE_COLORS.Length), null);
-        }
-        _rivals.Add(rival);
-    }
-
-    /// <summary>Bead material of a link: its base color, white for a good mutation, red for a bad one.</summary>
-    private StandardMaterial3D MaterialOf(RnaBase kind, MutationKind? mutation)
-    {
-        if (null == mutation)
-        {
-            return _baseMaterials[(int)kind];
-        }
-        return Mutation.Get(mutation.Value).IsGood ? _goodMutationMaterial : _badMutationMaterial;
-    }
-
-    private void AddLink(Strand strand, RnaBase kind, MutationKind? mutation)
-    {
-        Vector2 previous = 0 == strand.Links.Count ? strand.Position : strand.Links[^1].Position;
-        var link = new Link
-        {
-            Kind       = kind,
-            Mutation   = mutation,
-            Position   = previous - Vector2.FromAngle(strand.Heading) * LINK_SPACING * Size,
-            Bead       = CellVisual3D.AddMesh(this, CellVisual3D.SphereMesh(true), MaterialOf(kind, mutation), Vector3.Zero, Vector3.One * LINK_RADIUS * Size),
-            Bond       = CellVisual3D.AddMesh(this, CellVisual3D.RodMesh(), strand.Backbone, Vector3.Zero, Vector3.One),
-        };
-        link.Bead.CastShadow = GeometryInstance3D.ShadowCastingSetting.Off;
-        link.Bond.CastShadow = GeometryInstance3D.ShadowCastingSetting.Off;
-        link.Bead.Position   = Plane3D.To3D(link.Position);
-        strand.Links.Add(link);
-    }
-
-    private void MoveStrand(Strand strand, float targetHeading, float speed, float turn, float dt)
-    {
-        // Head: turns towards the target heading, then swims forward
-        strand.Heading   = Mathf.RotateToward(strand.Heading, targetHeading, turn * dt);
-        strand.Position += Vector2.FromAngle(strand.Heading) * speed * Size * dt;
-        strand.Head.Position = Plane3D.To3D(strand.Position, Mathf.Sin(_time * 2f + strand.Wander) * 0.04f * Size);
-        strand.Head.Rotation = new Vector3(0f, Plane3D.FacingToYaw(strand.Heading), 0f);
-
-        // Chain: every link keeps LINK_SPACING to the one in front, with a soft wave
-        Vector3 front3D = strand.Head.Position;
-        Vector2 front   = strand.Position;
-        for (int i = 0; i < strand.Links.Count; i++)
-        {
-            Link    link = strand.Links[i];
-            Vector2 back = link.Position - front;
-            link.Position = front + (back.IsZeroApprox() ? -Vector2.FromAngle(strand.Heading) : back.Normalized()) * LINK_SPACING * Size;
-
-            Vector3 at = Plane3D.To3D(link.Position, Mathf.Sin(_time * 4f - i * 0.7f) * 0.05f * Size);
-            link.Bead.Position  = at;
-            link.Bond.Transform = Intro.Rod(front3D, at, 0.035f * Size);
-            front   = link.Position;
-            front3D = at;
-        }
-    }
-
-    private int FirstLinkAt(Strand strand, Vector2 point, float radius)
-    {
-        for (int i = 0; i < strand.Links.Count; i++)
-        {
-            if (strand.Links[i].Position.DistanceTo(point) <= radius + LINK_RADIUS * Size)
-            {
-                return i;
-            }
-        }
-        return -1;
-    }
-
-    private int BreakStrand(Strand strand, int cut, Vector2 from)
-    {
-        int lost = strand.Links.Count - cut;
-        for (int i = strand.Links.Count - 1; i >= cut; i--)
-        {
-            Link    link = strand.Links[i];
-            Vector2 away = (link.Position - from).Normalized();
-            AddNucleotide(link.Kind, link.Position, (away.IsZeroApprox() ? Vector2.FromAngle(Rand.Angle()) : away) * Size * Rand.Range(0.8f, 1.6f));
-            link.Bead.QueueFree();
-            link.Bond.QueueFree();
-            strand.Links.RemoveAt(i);
-        }
-        return lost;
-    }
-
-    private static void FreeStrand(Strand strand)
-    {
-        strand.Head.QueueFree();
-        foreach (Link link in strand.Links)
-        {
-            link.Bead.QueueFree();
-            link.Bond.QueueFree();
-        }
-        strand.Links.Clear();
+        EmitSignal(SignalName.Finished, _vesicle.Spot, Mutations.Select(kind => (int)kind).ToArray());
     }
 
     // ===========================================================================
     // ===============================   HELPERS   ===============================
     // ===========================================================================
     //
-    //   SpawnNucleotide    A new nucleotide in a ring around the player, a share pairs with the next template base.
-    //   AddNucleotide      A nucleotide bead with its letter at a point.
-    //   RemoveNucleotide   Frees one nucleotide.
-    //   NearestNucleotide  The nearest nucleotide within a range, null for none.
-    //   Glow               Glowing material.
-    //   NewLabel           HUD label with outline, translated by hand.
+    //   SpawnRival        A rival with a few links in a ring around the player.
+    //   SpawnNucleotide   A new nucleotide in a ring around the player, a share pairs with the next template base.
+    //   BreakStrand       Breaks a strand at a link, the lost links float away as nucleotides.
     //
+
+    private void SpawnRival(float distance)
+    {
+        Vector2   position = _player.HeadPosition + Vector2.FromAngle(Rand.Angle()) * distance * Size;
+        RnaStrand rival    = NewStrand(position, Rand.Angle(), isRival: true);
+        int       links    = RIVAL_MIN_LINKS + Rand.Index(RIVAL_MAX_LINKS - RIVAL_MIN_LINKS + 1);
+        for (int i = 0; i < links; i++)
+        {
+            rival.AddLink((RnaBase)Rand.Index(RnaTemplate.BASE_COUNT), null);
+        }
+        _rivals.Add(rival);
+    }
 
     private void SpawnNucleotide(float distance)
     {
-        RnaBase kind     = Rand.Chance(WANTED_CHANCE) ? Wanted : (RnaBase)Rand.Index(BASE_COLORS.Length);
-        Vector2 position = _player.Position + Vector2.FromAngle(Rand.Angle()) * distance * Size;
-        AddNucleotide(kind, position, Vector2.Zero);
+        RnaBase kind     = Rand.Chance(WANTED_CHANCE) ? Wanted : (RnaBase)Rand.Index(RnaTemplate.BASE_COUNT);
+        Vector2 position = _player.HeadPosition + Vector2.FromAngle(Rand.Angle()) * distance * Size;
+        _soup.Add(kind, position, Vector2.Zero);
     }
 
-    private void AddNucleotide(RnaBase kind, Vector2 position, Vector2 velocity)
+    private int BreakStrand(RnaStrand strand, int cut, Vector2 from)
     {
-        var node = new Node3D { Position = Plane3D.To3D(position) };
-        AddChild(node);
-        MeshInstance3D bead = CellVisual3D.AddMesh(node, CellVisual3D.SphereMesh(true), _baseMaterials[(int)kind], Vector3.Zero, Vector3.One * NUCLEOTIDE_RADIUS * Size);
-        bead.CastShadow = GeometryInstance3D.ShadowCastingSetting.Off;
-
-        // The letter floats above the bead and always faces the camera
-        node.AddChild(new Label3D
+        IReadOnlyList<RnaChain.Link> lost = strand.Break(cut);
+        for (int i = lost.Count - 1; i >= 0; i--)
         {
-            Text            = kind.ToString(),
-            Billboard       = BaseMaterial3D.BillboardModeEnum.Enabled,
-            FontSize        = 64,
-            OutlineSize     = 14,
-            PixelSize       = NUCLEOTIDE_RADIUS * Size * 0.025f,
-            Modulate        = BASE_COLORS[(int)kind].Lightened(0.3f),
-            OutlineModulate = new Color(0.05f, 0.05f, 0.1f),
-            Position        = Vector3.Up * NUCLEOTIDE_RADIUS * 1.3f * Size,
-            NoDepthTest     = true,
-        });
-        _nucleotides.Add(new Nucleotide { Kind = kind, Position = position, Velocity = velocity, Phase = Rand.Angle(), Node = node });
-    }
-
-    private void RemoveNucleotide(int index)
-    {
-        _nucleotides[index].Node.QueueFree();
-        _nucleotides.RemoveAt(index);
-    }
-
-    private Nucleotide NearestNucleotide(Vector2 point, float range)
-    {
-        Nucleotide nearest = null;
-        float      best    = range;
-        foreach (Nucleotide nucleotide in _nucleotides)
-        {
-            float distance = nucleotide.Position.DistanceTo(point);
-            if (distance < best)
-            {
-                best    = distance;
-                nearest = nucleotide;
-            }
+            Vector2 away = (lost[i].Position - from).Normalized();
+            _soup.Add(lost[i].Kind, lost[i].Position, (away.IsZeroApprox() ? Vector2.FromAngle(Rand.Angle()) : away) * Size * Rand.Range(0.8f, 1.6f));
         }
-        return nearest;
-    }
-
-    private static StandardMaterial3D Glow(Color color, float glow)
-    {
-        return new StandardMaterial3D
-        {
-            AlbedoColor              = color,
-            Roughness                = 0.35f,
-            EmissionEnabled          = true,
-            Emission                 = color,
-            EmissionEnergyMultiplier = glow,
-        };
-    }
-
-    private static Label NewLabel(int fontSize)
-    {
-        var label = new Label { MouseFilter = Control.MouseFilterEnum.Ignore, AutoTranslateMode = AutoTranslateModeEnum.Disabled };
-        label.AddThemeFontSizeOverride("font_size", fontSize);
-        label.AddThemeColorOverride("font_outline_color", EditorStyle.OUTLINE);
-        label.AddThemeConstantOverride("outline_size", Mathf.Max(4, fontSize / 5));
-        return label;
+        return lost.Count;
     }
 }

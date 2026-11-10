@@ -754,7 +754,7 @@ public partial class SmokeTest : Node
         var hunter = new Critter();
         hunter.Setup(20f, CritterKind.Hunter, 20f, 1);
         float spikeAngle = hunter.Design.Parts.First(part => PartKind.Spike == part.Kind).Angle;
-        bool  isArmed    = hunter.ContactDamageToward(spikeAngle) >= CellStats.SPIKE_DAMAGE;
+        bool  isArmed    = hunter.ContactDamageToward(spikeAngle) >= Balance.Current.Cell.Combat.SpikeDamage;
         hunter.Free();
         return isByKind && isArmed;
     }
@@ -818,7 +818,7 @@ public partial class SmokeTest : Node
         float speedBefore  = probe.CurrentSpeed();
         probe.ApplyMutations(new[] { MutationKind.Tough, MutationKind.Sluggish });
         bool isOk = Mathf.IsEqualApprox(probe.MaxHp, 52.5f)
-            && pointsBefore + 2 * Mutation.EP_PER_MUTATION == probe.EvolutionPoints
+            && pointsBefore + 2 * Balance.Current.Prelude.EpPerMutation == probe.EvolutionPoints
             && Mathf.IsEqualApprox(probe.CurrentSpeed(), speedBefore * 0.97f)
             && 2 == probe.Mutations.Count;
         probe.QueueFree();
@@ -1165,7 +1165,7 @@ public partial class SmokeTest : Node
         Player walker  = OrganismProbe(CreatureType.Fish, CreaturePartKind.Legs, CreaturePartKind.Lung);
         crawler.IsOnLand = true;
         walker.IsOnLand  = true;
-        bool isCrawling  = Mathf.IsEqualApprox(crawler.CurrentSpeed(), CellBody.SwimSpeed(crawler.BodySize()) * CreatureStats.CRAWL_SPEED);
+        bool isCrawling  = Mathf.IsEqualApprox(crawler.CurrentSpeed(), CellBody.SwimSpeed(crawler.BodySize()) * Balance.Current.Creature.Land.CrawlSpeed);
         bool isWalking   = walker.CurrentSpeed() > crawler.CurrentSpeed();
         walker._PhysicsProcess(0.1);
         bool isLandStage = walker.IsLandAnimal && !crawler.IsLandAnimal;
@@ -1190,7 +1190,7 @@ public partial class SmokeTest : Node
         GD.Print($"  weight blob {blob.Weight:F1} kg, legs {withLegs.Weight:F1} kg at {withLegs.LandSpeed:F2}, heavy {heavyLegs.Weight:F1} kg at {heavyLegs.LandSpeed:F2}, two pairs {twoPairs.LandSpeed:F2}");
         return blob.Weight is > 8f and < 12f
             && Mathf.IsEqualApprox(withLegs.Weight, blob.Weight + CreatureCatalog.Get(CreaturePartKind.Legs).Weight)
-            && Mathf.IsEqualApprox(blob.LandSpeed, CreatureStats.CRAWL_SPEED)
+            && Mathf.IsEqualApprox(blob.LandSpeed, Balance.Current.Creature.Land.CrawlSpeed)
             && heavyLegs.LandSpeed < withLegs.LandSpeed
             && twoPairs.LandSpeed > withLegs.LandSpeed
             && stubby.Carry > withLegs.Carry;
@@ -1221,7 +1221,7 @@ public partial class SmokeTest : Node
             probe.Free();
             return gained;
         }
-        return Player.EP_PER_LEVEL == EpOfOneLevel() && Player.EP_PER_LEVEL + 2 == EpOfOneLevel(CreaturePartKind.BigBrain);
+        return Balance.Current.Player.EpPerLevel == EpOfOneLevel() && Balance.Current.Player.EpPerLevel + 2 == EpOfOneLevel(CreaturePartKind.BigBrain);
     }
 
     private static bool ProbeModels()

@@ -40,7 +40,7 @@ public partial class Player : CellBody
     // ================================   STATE   ================================
     // ===========================================================================
     //
-    //   Stages      Translation keys and biomass thresholds of the stages.
+    //   Stages      Translation keys and indices of the stages, the numbers of the player.
     //   Evolution   Evolution points and the diet.
     //   Signals     Stats, evolution, stage changes and deaths for Main and the HUD.
     //   Traits      Health, speed and the values the design sets.
@@ -48,14 +48,16 @@ public partial class Player : CellBody
 
     // ---------------------------------------------------------------------------
     // Stages
-    //   Translation keys and biomass thresholds of the stages.
+    //   Translation keys and indices of the stages, the numbers of the player.
     // ---------------------------------------------------------------------------
 
     // The multicellular stage has no threshold, the first division reaches it (DIVISION),
     // the organism comes from evolving the full cluster (ORGANISM), the land animal from
     // the first step onto land (LAND)
-    public static readonly string[] STAGE_KEYS = { "STAGE_PROTOCELL", "STAGE_SINGLE", "STAGE_MULTI", "STAGE_ORGANISM", "STAGE_LAND" };
-    public static readonly float[] STAGE_THRESHOLDS = { 0f, 40f };
+    /// <summary>Every tunable number of the player from data/balance.json (player), the formulas are in Growth.</summary>
+    private static PlayerBalance Tune => Balance.Current.Player;
+
+    public static readonly string[] STAGE_KEYS ={ "STAGE_PROTOCELL", "STAGE_SINGLE", "STAGE_MULTI", "STAGE_ORGANISM", "STAGE_LAND" };
     public const int SINGLE_STAGE = 1;
     public const int MULTICELLULAR_STAGE = 2;
     public const int ORGANISM_STAGE = 3;
@@ -72,11 +74,9 @@ public partial class Player : CellBody
     //   Evolution points and the diet.
     // ---------------------------------------------------------------------------
 
-    public const int EP_PER_LEVEL = 2;               // parts cost 2-6 EP, a level buys about half a part
-    private const int EP_PER_STAGE = 2;
 
     public int EvolutionPoints { get; private set; }
-    private int _epPerLevel = EP_PER_LEVEL;          // a brain adds to it (CreatureStats)
+    private int _epPerLevel = Tune.EpPerLevel;       // a brain adds to it (CreatureStats)
     public float Diet { get; private set; }          // -1 herbivore .. 1 carnivore
     private readonly DietTracker _diet = new();
 
@@ -98,20 +98,13 @@ public partial class Player : CellBody
     //   Health, speed and the values the design sets.
     // ---------------------------------------------------------------------------
 
-    private const float START_INVULNERABILITY = 3f;
-    private const float HIT_INVULNERABILITY = 0.5f;
-    private const float RESPAWN_INVULNERABILITY = 2.5f;
-    private const float CELLS_LOST_ON_DEATH = 0.25f;  // a cluster loses a quarter of its cells instead
-    private const float REGEN_PER_SECOND = 0.02f;     // share of MaxHp
-    private const float BASE_ACCELERATION = 2.5f;
-    public const float BASE_MAGNET_RANGE = 1.6f;
 
-    public float MaxHp { get; private set; } = 50f;
-    public float Hp { get; private set; } = 50f;
+    public float MaxHp { get; private set; } = Tune.ProtocellHp;
+    public float Hp { get; private set; } = Tune.ProtocellHp;
     public float Invulnerable { get; set; }
-    public float MagnetRange { get; private set; } = BASE_MAGNET_RANGE;
+    public float MagnetRange { get; private set; } = Tune.MagnetRange;
     private float _speedMultiplier = 1f;
-    private float _acceleration = BASE_ACCELERATION;
+    private float _acceleration = Tune.Acceleration;
     private float _digestAll = 1f;
     private float _digestPlant = 1f;
     private float _digestMeat = 1f;
@@ -139,7 +132,7 @@ public partial class Player : CellBody
         IsProtocell  = true;
         _stageColor  = PROTOCELL_COLOR;
         BodyColor    = _stageColor;
-        Invulnerable = START_INVULNERABILITY;
+        Invulnerable = Tune.StartInvulnerability;
         UpdateRadius();
         ApplyDesign();
     }
@@ -174,7 +167,7 @@ public partial class Player : CellBody
 
         // Regeneration, photosynthesis and fading meals
         Invulnerable = Mathf.Max(0f, Invulnerable - dt);
-        Hp           = Mathf.Min(MaxHp, Hp + MaxHp * REGEN_PER_SECOND * dt);
+        Hp           = Mathf.Min(MaxHp, Hp + MaxHp * Tune.RegenPerSecond * dt);
         if (_photosynthesis > 0f)
         {
             AddBiomass(_photosynthesis * Radius / REFERENCE_SIZE * dt, BiomassSource.Light);
@@ -198,14 +191,11 @@ public partial class Player : CellBody
 
     public const int MAX_CELLS = 64;
     public const int ORGANISM_CELLS = 512;           // the evolve cutscene divides on up to here
-    private const float DIVISION_BIOMASS = 100f;     // first division, every next one needs DIVISION_GROWTH times more
-    private const float DIVISION_GROWTH = 2.5f;
-    private const float HP_PER_DIVISION = 0.15f;     // share of the base health each division adds
 
     /// <summary>Divisions so far, an organism counts the divisions of the cutscene up to ORGANISM_CELLS.</summary>
     public int Divisions => System.Numerics.BitOperations.Log2((uint)(IsOrganism ? ORGANISM_CELLS : CellCount));
 
-    public float NextDivisionAt => DIVISION_BIOMASS * Mathf.Pow(DIVISION_GROWTH, Divisions);
+    public float NextDivisionAt => Growth.DivisionAt(Divisions);
 
     public bool CanDivide => Stage >= SINGLE_STAGE && !IsOrganism && CellCount < MAX_CELLS && Biomass >= NextDivisionAt;
 
@@ -258,14 +248,13 @@ public partial class Player : CellBody
     //   BecomeOrganism   Takes over the shaped body plan: one body, stage 4, every trait from the creature.
     //   CommitCreature   A later creature editor session: new body plan, points left.
     //
-    //   ORGANISM_BONUS_EP points come on top of the saved ones for the first creature editor.
+    //   Bonus points (organismBonusEp) come on top of the saved ones for the first creature editor.
     //
 
-    public const int ORGANISM_BONUS_EP = 6;
 
     public bool IsOrganism => Stage >= ORGANISM_STAGE;
 
-    public float EvolveAt => DIVISION_BIOMASS * Mathf.Pow(DIVISION_GROWTH, System.Numerics.BitOperations.Log2(MAX_CELLS));
+    public float EvolveAt => Growth.DivisionAt(System.Numerics.BitOperations.Log2(MAX_CELLS));
 
     public bool CanEvolve => MULTICELLULAR_STAGE == Stage && MAX_CELLS == CellCount && Biomass >= EvolveAt;
 
@@ -359,11 +348,7 @@ public partial class Player : CellBody
     //   Main sets CellBody.IsOnLand every physics frame from the Coast.
     //
 
-    private const float AIR_SECONDS = 8f;            // a full breath lasts this long on land
-    private const float AIR_REFILL = 0.5f;           // per second in the water
-    private const float SUFFOCATE_DAMAGE = 0.1f;     // share of MaxHp per second without air
-
-    private float _landSpeed = CreatureStats.CRAWL_SPEED;    // from CreatureStats, see ApplyCreature
+    private float _landSpeed = Balance.Current.Creature.Land.CrawlSpeed;    // from CreatureStats, see ApplyCreature
 
     public bool IsLandAnimal => LAND_STAGE == Stage;
 
@@ -387,10 +372,10 @@ public partial class Player : CellBody
 
         if (IsOnLand && !Creature.BreathesAir)
         {
-            Air = Mathf.Max(0f, Air - dt / AIR_SECONDS);
+            Air = Mathf.Max(0f, Air - dt / Tune.AirSeconds);
             if (Air <= 0f && Invulnerable <= 0f)
             {
-                Hp       -= MaxHp * SUFFOCATE_DAMAGE * dt;
+                Hp       -= MaxHp * Tune.SuffocateDamage * dt;
                 HurtFlash = Mathf.Max(HurtFlash, 0.4f);
                 if (Hp <= 0f)
                 {
@@ -402,13 +387,13 @@ public partial class Player : CellBody
         }
         else
         {
-            Air = Mathf.Min(1f, Air + dt * AIR_REFILL);
+            Air = Mathf.Min(1f, Air + dt * Tune.AirRefill);
         }
 
         if (ORGANISM_STAGE == Stage && IsOnLand && CanWalk)
         {
             Stage            = LAND_STAGE;
-            EvolutionPoints += EP_PER_STAGE;
+            EvolutionPoints += Tune.EpPerStage;
             Log.Verbose("Player", $"First steps on land -> stage {Stage} ({STAGE_KEYS[Stage]}).");
             EmitSignal(SignalName.StageChanged, Stage);
             EmitSignal(SignalName.StatsChanged);
@@ -429,10 +414,6 @@ public partial class Player : CellBody
     //   HasThorns             Whether any spike or jaw exists.
     //
 
-    private const float JAW_EAT_RATIO = 0.95f;           // with a jaw towards it, cells up to 95% of the own size
-    private const float EAT_RATIO_PER_DIVISION = 0.05f;  // every division swallows 5% bigger prey
-    private const float MIN_EAT_RATIO = 0.75f;           // at most prey a third bigger than the own body
-
     /// <summary>Swim speed in the water, on land the walking (or crawling) speed of LAND.</summary>
     public float CurrentSpeed()
     {
@@ -443,7 +424,7 @@ public partial class Player : CellBody
     {
         if (0 == Stage)
         {
-            return Biomass / STAGE_THRESHOLDS[SINGLE_STAGE];
+            return Biomass / Tune.SingleCellAt;
         }
         return Mathf.Clamp((Biomass - _levelStart) / Mathf.Max(NextLevelAt - _levelStart, 1f), 0f, 1f);
     }
@@ -465,38 +446,29 @@ public partial class Player : CellBody
     /// <summary>Whether a jaw points towards the given world direction.</summary>
     public bool CanBiteToward(float worldAngle)
     {
-        return _jawAngles.Exists(angle => IsWithin(worldAngle, angle, CellStats.JAW_ARC));
+        return CellStats.CanBite(_jawAngles, worldAngle - Facing);
     }
 
     /// <summary>
     /// The player swallows a cell when its body size is larger than the cell radius times this
-    /// ratio: 1.15 normally, 0.95 with a jaw towards it, each division 0.05 less (bigger prey),
-    /// never below MIN_EAT_RATIO.
+    /// ratio (Growth.EatRatio): lower with a jaw towards it and with every division (bigger prey).
     /// </summary>
     /// <param name="worldAngle">(Required) Direction from the player to the prey.</param>
     /// <example><code>player.EatRatioToward(0f)  // 1.15 as single cell, 0.9 with 32 cells</code></example>
     public float EatRatioToward(float worldAngle)
     {
-        float baseRatio = CanBiteToward(worldAngle) ? JAW_EAT_RATIO : Critter.EAT_RATIO;
-        return Mathf.Max(MIN_EAT_RATIO, baseRatio - EAT_RATIO_PER_DIVISION * Divisions);
+        return Growth.EatRatio(CanBiteToward(worldAngle), Divisions);
     }
 
     /// <summary>Share of the damage taken from the given world direction, plates halve it.</summary>
     public float DamageFactorFrom(float worldAngle)
     {
-        bool isShielded = _plateAngles.Exists(angle => IsWithin(worldAngle, angle, CellStats.PLATE_ARC));
-        return isShielded ? CellStats.PLATE_DAMAGE_FACTOR : 1f;
+        return CellStats.DamageFactor(_plateAngles, worldAngle - Facing);
     }
 
     public bool HasThorns()
     {
         return _spikeAngles.Count > 0 || _jawAngles.Count > 0;
-    }
-
-    /// <summary>Whether a world direction lies within arc of a part angle given relative to the facing.</summary>
-    private bool IsWithin(float worldAngle, float partAngle, float arc)
-    {
-        return CellStats.IsWithin(worldAngle - Facing, partAngle, arc);
     }
 
     // ===========================================================================
@@ -513,11 +485,6 @@ public partial class Player : CellBody
     //   LoseCells      The cluster survives a deadly hit by bursting a quarter of its cells.
     //   CommitDesign   Takes over the design and points left from the editor.
     //
-
-    // Levels get rarer the bigger you are: every next one needs LEVEL_GROWTH times the biomass
-    private const float LEVEL_GROWTH = 2.1f;
-    private const float LEVEL_STEP = 30f;
-    private const float FIRST_LEVEL_STEP = 45f;
 
     /// <summary>Adds biomass and handles diet, stage advances and level ups.</summary>
     /// <param name="amount">(Required) Biomass before digestion.</param>
@@ -537,7 +504,7 @@ public partial class Player : CellBody
         }
         UpdateRadius();
 
-        if (0 == Stage && Biomass >= STAGE_THRESHOLDS[SINGLE_STAGE])
+        if (0 == Stage && Biomass >= Tune.SingleCellAt)
         {
             AdvanceStage();
         }
@@ -546,7 +513,7 @@ public partial class Player : CellBody
             Level++;
             EvolutionPoints += _epPerLevel;
             _levelStart      = NextLevelAt;
-            NextLevelAt      = NextLevelAt * LEVEL_GROWTH + LEVEL_STEP;
+            NextLevelAt      = Growth.NextLevelAt(NextLevelAt);
             Log.Verbose("Player", $"Biomass {Biomass:F0} reached level {Level} -> {EvolutionPoints} EP, next at {NextLevelAt:F0}.");
         }
         EmitSignal(SignalName.StatsChanged);
@@ -565,8 +532,8 @@ public partial class Player : CellBody
         Vector2 toAttacker = from - GlobalPosition;
         Hp           -= amount * DamageFactorFrom(toAttacker.Angle());
         HurtFlash     = 1f;
-        Invulnerable  = HIT_INVULNERABILITY;
-        Velocity     -= toAttacker.Normalized() * CurrentSpeed() * 2.5f;
+        Invulnerable  = Tune.HitInvulnerability;
+        Velocity     -= toAttacker.Normalized() * CurrentSpeed() * Tune.Knockback;
         CheckDeath();
         return true;
     }
@@ -622,13 +589,13 @@ public partial class Player : CellBody
     /// </summary>
     private void LoseCells()
     {
-        int lost = Mathf.Max(1, Mathf.FloorToInt(CellCount * CELLS_LOST_ON_DEATH));
+        int lost = Growth.CellsLost(CellCount);
         Biomass  *= 1f - (float)lost / CellCount;
         CellCount -= lost;
         UpdateRadius();
         ApplyDesign();
         Hp           = MaxHp;
-        Invulnerable = RESPAWN_INVULNERABILITY;
+        Invulnerable = Tune.RespawnInvulnerability;
         Log.Verbose("Player", $"Deadly hit -> {lost} cell(s) burst, {CellCount} left, biomass {Biomass:F0}.");
         EmitSignal(SignalName.CellsLost, lost);
     }
@@ -667,8 +634,6 @@ public partial class Player : CellBody
     /// <summary>Color of the current stage, used when the design has no custom color.</summary>
     public Color StageColor => _stageColor;
 
-    private const float PROTOCELL_HP = 50f;
-    private const float CELL_HP = 60f;
     private const float MUTATION_HUE_SHIFT = 0.07f;  // per mutation of the RNA prelude
 
     private readonly List<MutationKind> _mutations = new();
@@ -678,7 +643,7 @@ public partial class Player : CellBody
 
     /// <summary>
     /// Takes over the mutations the RNA strand caught in the prelude (Prelude/RnaWorld.cs):
-    /// their traits (Prelude/Mutation.cs), EP_PER_MUTATION evolution points each and a hue shift of the protocell.
+    /// their traits (Prelude/Mutation.cs), evolution points for each one and a hue shift of the protocell.
     /// </summary>
     /// <param name="mutations">(Required) Mutations of the strand, empty changes nothing.</param>
     /// <example><code>player.ApplyMutations(new[] { MutationKind.Tough, MutationKind.Sluggish });</code></example>
@@ -689,7 +654,7 @@ public partial class Player : CellBody
             return;
         }
         _mutations.AddRange(mutations);
-        EvolutionPoints += Mutation.EP_PER_MUTATION * mutations.Count;
+        EvolutionPoints += Balance.Current.Prelude.EpPerMutation * mutations.Count;
 
         Color tinted = PROTOCELL_COLOR;
         tinted.H    = Mathf.Wrap(PROTOCELL_COLOR.H + MUTATION_HUE_SHIFT * _mutations.Count, 0f, 1f);
@@ -702,14 +667,14 @@ public partial class Player : CellBody
     private void AdvanceStage()
     {
         Stage++;
-        EvolutionPoints += EP_PER_STAGE;
+        EvolutionPoints += Tune.EpPerStage;
         Log.Verbose("Player", $"Biomass {Biomass:F0} reached -> advancing to stage {Stage} ({STAGE_KEYS[Stage]}).");
         if (SINGLE_STAGE == Stage)
         {
             IsProtocell = false;
             _stageColor = SINGLE_CELL_COLOR;
             _levelStart = Biomass;
-            NextLevelAt = Biomass + FIRST_LEVEL_STEP;
+            NextLevelAt = Growth.FirstLevelAt(Biomass);
             _diet.Reset();
             RegenOrganelles();
         }
@@ -725,15 +690,15 @@ public partial class Player : CellBody
         float hpRatio      = MaxHp > 0f ? Hp / MaxHp : 1f;
         float hpMultiplier = 1f;
         _speedMultiplier = 1f;
-        _landSpeed       = CreatureStats.CRAWL_SPEED;
-        _acceleration    = BASE_ACCELERATION;
+        _landSpeed       = Balance.Current.Creature.Land.CrawlSpeed;
+        _acceleration    = Tune.Acceleration;
         _digestAll       = 1f;
         _digestPlant     = 1f;
         _digestMeat      = 1f;
         _photosynthesis  = 0f;
         _toxin           = 1f;
-        MagnetRange      = BASE_MAGNET_RANGE;
-        _epPerLevel      = EP_PER_LEVEL;
+        MagnetRange      = Tune.MagnetRange;
+        _epPerLevel      = Tune.EpPerLevel;
         _spikeAngles.Clear();
         _jawAngles.Clear();
         _plateAngles.Clear();
@@ -771,9 +736,9 @@ public partial class Player : CellBody
             }
         }
 
-        hpMultiplier *= 1f + HP_PER_DIVISION * Divisions;
+        hpMultiplier *= 1f + Tune.HpPerDivision * Divisions;
         BodyColor = IsOrganism ? Creature.Color ?? ORGANISM_COLOR : Design.Color ?? _stageColor;
-        MaxHp = (0 == Stage ? PROTOCELL_HP : CELL_HP) * hpMultiplier;
+        MaxHp = (0 == Stage ? Tune.ProtocellHp : Tune.CellHp) * hpMultiplier;
         Hp    = hpRatio * MaxHp;
         Diet  = _diet.Value(Design.Lean(), Design.Parts.Count > 0);
     }
@@ -787,7 +752,7 @@ public partial class Player : CellBody
         _acceleration   *= stats.Acceleration;
         _digestMeat     *= stats.DigestMeat;
         _landSpeed       = stats.LandSpeed;
-        _epPerLevel      = EP_PER_LEVEL + stats.EpPerLevelBonus;
+        _epPerLevel      = Tune.EpPerLevel + stats.EpPerLevelBonus;
         MagnetRange     += stats.MagnetBonus;
         _jawAngles.AddRange(stats.JawAngles);
         _spikeAngles.AddRange(stats.SpikeAngles);
@@ -795,13 +760,12 @@ public partial class Player : CellBody
     }
 
     /// <summary>
-    /// The whole body grows with the biomass (10 + 1.6 * sqrt(biomass)), a cluster shares
+    /// The whole body grows with the biomass (Growth.BodySize), a cluster shares
     /// that size: each cell is the body size divided by the cluster extent. A division
     /// therefore keeps the body size and shrinks the cells.
     /// </summary>
     private void UpdateRadius()
     {
-        float bodySize = 10f + Mathf.Sqrt(Mathf.Max(Biomass, 0f)) * 1.6f;
-        Radius = bodySize / ClusterExtent(CellCount);
+        Radius = Growth.BodySize(Biomass) / ClusterExtent(CellCount);
     }
 }

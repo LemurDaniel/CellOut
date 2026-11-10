@@ -1,7 +1,8 @@
 // NOTE:
 //   Traits a cell gets from its placed editor parts: one formula for the Player and the
 //   NPC cells (Critter), like CreatureStats for organisms. Directions of spikes, jaws and
-//   plates are part angles relative to the facing (0 = forward).
+//   plates are part angles relative to the facing (0 = forward). The numbers come from
+//   data/balance.json (Core/Balance.cs).
 //
 //   CellStats stats = CellStats.From(design);
 //   float hit = stats.ContactDamageToward(0f);   // spike and jaw damage straight ahead
@@ -64,36 +65,37 @@ public sealed class CellStats
     public static CellStats From(CellDesign design)
     {
         var stats = new CellStats();
+        CellEffectsBalance effects = Balance.Current.Cell.Effects;
         foreach (PlacedPart part in design.Parts)
         {
             switch (part.Kind)
             {
                 // Herbivore
                 case PartKind.Chloroplast:
-                    stats.Photosynthesis += 0.4f;
+                    stats.Photosynthesis += effects.ChloroplastLight;
                     break;
                 case PartKind.FilterMouth:
-                    stats.MagnetBonus += 0.4f;
-                    stats.DigestPlant *= 1.25f;
+                    stats.MagnetBonus += effects.FilterMouthMagnet;
+                    stats.DigestPlant *= effects.FilterMouthDigestPlant;
                     break;
                 case PartKind.ArmorPlate:
-                    stats.Health *= 1.1f;
+                    stats.Health *= effects.ArmorPlateHealth;
                     stats.PlateAngles.Add(part.Angle);
                     break;
-                // Omnivore: a flagellum pushes with 30% from the front up to 100% from the back
+                // Omnivore: a flagellum pushes with FlagellumFrontThrust from the front up to 100% from the back
                 case PartKind.Flagellum:
-                    float thrust = Mathf.Lerp(0.3f, 1f, (1f - Mathf.Cos(part.Angle)) * 0.5f);
-                    stats.Speed *= 1f + 0.22f * thrust;
+                    float thrust = Mathf.Lerp(effects.FlagellumFrontThrust, 1f, (1f - Mathf.Cos(part.Angle)) * 0.5f);
+                    stats.Speed *= 1f + effects.FlagellumSpeed * thrust;
                     break;
                 case PartKind.Eyespot:
-                    stats.MagnetBonus += 0.5f;
-                    stats.SightBonus  += 0.5f;
+                    stats.MagnetBonus += effects.EyespotMagnet;
+                    stats.SightBonus  += effects.EyespotSight;
                     break;
                 case PartKind.Vacuole:
-                    stats.DigestAll *= 1.2f;
+                    stats.DigestAll *= effects.VacuoleDigest;
                     break;
                 case PartKind.Cilia:
-                    stats.Acceleration *= 1.4f;
+                    stats.Acceleration *= effects.CiliaAcceleration;
                     break;
                 // Carnivore
                 case PartKind.Spike:
@@ -101,10 +103,10 @@ public sealed class CellStats
                     break;
                 case PartKind.Jaw:
                     stats.JawAngles.Add(part.Angle);
-                    stats.DigestMeat *= 1.2f;
+                    stats.DigestMeat *= effects.JawDigestMeat;
                     break;
                 case PartKind.Toxin:
-                    stats.Toxin *= 1.6f;
+                    stats.Toxin *= effects.ToxinDamage;
                     break;
                 default:
                     throw new System.ArgumentOutOfRangeException(nameof(design), $"design must hold known PartKinds only, got '{part.Kind}'.");
@@ -117,17 +119,17 @@ public sealed class CellStats
     // =============================   DIRECTIONS   ==============================
     // ===========================================================================
     //
+    //   Combat          Arcs and damage from data/balance.json (cell.combat).
     //   ContactDamage   Spike and jaw damage towards a local direction, any angle lists.
+    //   CanBite         Whether a jaw of an angle list points towards a local direction.
+    //   DamageFactor    Share of the damage that gets past the plates of an angle list.
     //   IsWithin        Whether a local direction lies within the arc of a part angle.
     //   *Toward/From    The same for the parts of this design.
     //
 
-    public const float SPIKE_ARC = 0.7f;            // half angle a spike covers, radians
-    public const float JAW_ARC = 0.8f;
-    public const float PLATE_ARC = 0.9f;
-    public const float SPIKE_DAMAGE = 8f;           // at REFERENCE_SIZE
-    public const float JAW_DAMAGE = 10f;
-    public const float PLATE_DAMAGE_FACTOR = 0.5f;
+
+    /// <summary>Arcs (half angles in radians) and damage (at REFERENCE_SIZE) of spikes, jaws and plates.</summary>
+    private static CellCombatBalance Combat => Balance.Current.Cell.Combat;
 
     /// <summary>Spike and jaw damage dealt towards a local direction, times the toxin.</summary>
     /// <param name="spikes">(Required) Spike angles relative to the facing.</param>
@@ -139,13 +141,35 @@ public sealed class CellStats
         float damage = 0f;
         foreach (float angle in spikes)
         {
-            if (IsWithin(localAngle, angle, SPIKE_ARC)) damage += SPIKE_DAMAGE;
+            if (IsWithin(localAngle, angle, Combat.SpikeArc)) damage += Combat.SpikeDamage;
         }
         foreach (float angle in jaws)
         {
-            if (IsWithin(localAngle, angle, JAW_ARC)) damage += JAW_DAMAGE;
+            if (IsWithin(localAngle, angle, Combat.JawArc)) damage += Combat.JawDamage;
         }
         return damage * toxin;
+    }
+
+    /// <summary>Whether a jaw at one of the angles points towards a local direction.</summary>
+    /// <example><code>CellStats.CanBite(new[] { 0f }, 0.5f)   // true, inside the jaw arc</code></example>
+    public static bool CanBite(IEnumerable<float> jaws, float localAngle)
+    {
+        foreach (float angle in jaws)
+        {
+            if (IsWithin(localAngle, angle, Combat.JawArc)) return true;
+        }
+        return false;
+    }
+
+    /// <summary>Share of the damage taken from a local direction, a plate towards it lets only part through.</summary>
+    /// <example><code>CellStats.DamageFactor(new[] { 0f }, Mathf.Pi)   // 1, the plate faces away</code></example>
+    public static float DamageFactor(IEnumerable<float> plates, float localAngle)
+    {
+        foreach (float angle in plates)
+        {
+            if (IsWithin(localAngle, angle, Combat.PlateArc)) return Combat.PlateDamageFactor;
+        }
+        return 1f;
     }
 
     /// <summary>Whether a local direction lies within arc of a part angle.</summary>
@@ -163,12 +187,12 @@ public sealed class CellStats
     /// <summary>Whether a jaw of this design points towards a local direction.</summary>
     public bool CanBiteToward(float localAngle)
     {
-        return JawAngles.Exists(angle => IsWithin(localAngle, angle, JAW_ARC));
+        return CanBite(JawAngles, localAngle);
     }
 
     /// <summary>Share of the damage taken from a local direction, plates halve it.</summary>
     public float DamageFactorFrom(float localAngle)
     {
-        return PlateAngles.Exists(angle => IsWithin(localAngle, angle, PLATE_ARC)) ? PLATE_DAMAGE_FACTOR : 1f;
+        return DamageFactor(PlateAngles, localAngle);
     }
 }

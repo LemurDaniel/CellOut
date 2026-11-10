@@ -1,7 +1,8 @@
 // NOTE:
 //   Catalog of every part the cell editor offers: what it costs, which diet it leans
-//   towards, where it can be placed and when it unlocks. Texts live in
-//   locale/translations.csv as PART_<KIND>_NAME / PART_<KIND>_DESC.
+//   towards, where it can be placed and when it unlocks. Costs and unlock ranges come
+//   from data/balance.json (Core/Balance.cs). Texts live in locale/translations.csv as
+//   PART_<KIND>_NAME / PART_<KIND>_DESC.
 //
 //   PartInfo info = PartCatalog.Get(PartKind.Jaw);
 //   bool isOpen   = PartCatalog.IsUnlocked(info, player.Stage, player.Diet);
@@ -74,36 +75,43 @@ public static class PartCatalog
     // ===========================================================================
     //
     //   PARTS            Every part with cost, diet, placement and unlock range.
-    //   All              Every part in palette order.
+    //   Part             One table row, numbers from data/balance.json.
+    //   All             Every part in palette order.
     //   Get              Info of one kind.
     //   IsUnlocked       Stage and diet position allow the part.
     //
 
     private const int SINGLE_STAGE = 1;
-    private const float ANY_MIN = -1f;
-    private const float ANY_MAX = 1f;
 
     /*
-      Unlock ranges on the diet bar (-1 herbivore .. 1 carnivore):
+      The table holds what a part is (diet class, placement), data/balance.json what it
+      costs and where on the diet bar (-1 herbivore .. 1 carnivore) it unlocks:
       - Basic parts of every class: always.
-      - Armor plate, armor cell:    herbivore side, diet <= -0.2.
-      - Cilia:                      the middle, -0.5 <= diet <= 0.5.
-      - Jaw, spike cell:            carnivore side, diet >= 0.2.
-      - Toxin:                      clearly carnivore, diet >= 0.5.
+      - Armor plate:                herbivore side.
+      - Cilia:                      the middle.
+      - Jaw:                        carnivore side.
+      - Toxin:                      clearly carnivore.
     */
     private static readonly PartInfo[] PARTS =
     {
-        new(PartKind.Chloroplast, DietClass.Herbivore, 4, Placement.Inner,  SINGLE_STAGE, ANY_MIN, ANY_MAX),
-        new(PartKind.FilterMouth, DietClass.Herbivore, 2, Placement.Rim,    SINGLE_STAGE, ANY_MIN, ANY_MAX),
-        new(PartKind.ArmorPlate,  DietClass.Herbivore, 4, Placement.Rim,    SINGLE_STAGE, ANY_MIN, -0.2f),
-        new(PartKind.Flagellum,   DietClass.Omnivore,  4, Placement.Rim,    SINGLE_STAGE, ANY_MIN, ANY_MAX),
-        new(PartKind.Eyespot,     DietClass.Omnivore,  2, Placement.Rim,    SINGLE_STAGE, ANY_MIN, ANY_MAX),
-        new(PartKind.Vacuole,     DietClass.Omnivore,  4, Placement.Inner,  SINGLE_STAGE, ANY_MIN, ANY_MAX),
-        new(PartKind.Cilia,       DietClass.Omnivore,  5, Placement.Rim,    SINGLE_STAGE, -0.5f,   0.5f),
-        new(PartKind.Spike,       DietClass.Carnivore, 2, Placement.Rim,    SINGLE_STAGE, ANY_MIN, ANY_MAX),
-        new(PartKind.Jaw,         DietClass.Carnivore, 5, Placement.Rim,    SINGLE_STAGE, 0.2f,    ANY_MAX),
-        new(PartKind.Toxin,       DietClass.Carnivore, 6, Placement.Inner,  SINGLE_STAGE, 0.5f,    ANY_MAX),
+        Part(PartKind.Chloroplast, DietClass.Herbivore, Placement.Inner),
+        Part(PartKind.FilterMouth, DietClass.Herbivore, Placement.Rim),
+        Part(PartKind.ArmorPlate,  DietClass.Herbivore, Placement.Rim),
+        Part(PartKind.Flagellum,   DietClass.Omnivore,  Placement.Rim),
+        Part(PartKind.Eyespot,     DietClass.Omnivore,  Placement.Rim),
+        Part(PartKind.Vacuole,     DietClass.Omnivore,  Placement.Inner),
+        Part(PartKind.Cilia,       DietClass.Omnivore,  Placement.Rim),
+        Part(PartKind.Spike,       DietClass.Carnivore, Placement.Rim),
+        Part(PartKind.Jaw,         DietClass.Carnivore, Placement.Rim),
+        Part(PartKind.Toxin,       DietClass.Carnivore, Placement.Inner),
     };
+
+    /// <summary>One table row: cost and unlock range come from Balance.Current.Cell.Parts.</summary>
+    private static PartInfo Part(PartKind kind, DietClass diet, Placement placement)
+    {
+        CellPartBalance tune = Balance.Current.Cell.Parts[kind];
+        return new PartInfo(kind, diet, tune.Cost, placement, SINGLE_STAGE, tune.MinDiet, tune.MaxDiet);
+    }
 
     /// <summary>Every part in palette order (herbivore, omnivore, carnivore).</summary>
     public static IReadOnlyList<PartInfo> All()

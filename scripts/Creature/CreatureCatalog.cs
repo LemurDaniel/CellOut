@@ -3,7 +3,8 @@
 //   organism: its category tab, cost, weight, where it sits on the body and which body
 //   type may use it (fish or marine mammal, chosen first in the CreatureEditor). Legs
 //   carry weight on land (Carry), wings lift it (Lift, flying itself comes later), see
-//   CreatureStats. Texts live in locale/translations.csv as CREATURE_<KIND>_NAME /
+//   CreatureStats. Cost, weight, carry, stride and lift come from data/balance.json
+//   (Core/Balance.cs). Texts live in locale/translations.csv as CREATURE_<KIND>_NAME /
 //   CREATURE_<KIND>_DESC, the tabs as CREATURE_CATEGORY_<CATEGORY>.
 //
 //   CreaturePartInfo info = CreatureCatalog.Get(CreaturePartKind.Fluke);
@@ -126,6 +127,7 @@ public static class CreatureCatalog
     // ===========================================================================
     //
     //   PARTS        Every part with category, cost, weight, mount and body type.
+    //   Part         One table row, numbers from data/balance.json.
     //   All          Every part in palette order.
     //   ForType      The parts a body type may use, in palette order.
     //   ForCategory  The parts of one tab a body type may use.
@@ -133,48 +135,56 @@ public static class CreatureCatalog
     //
 
     /*
-      Weights in kg of design scale: the clay blob weighs about 10 (CreatureStats).
-      Normal legs carry 14, so a blob with fins walks at about full speed on one pair.
-      Feather wings lift 10: a slim body with two pairs could fly, a fat one never.
+      The table holds what a part is (tab, mount, body type), data/balance.json its
+      numbers. Weights are kg of design scale: the clay blob weighs about 10 (CreatureStats).
+      Normal legs carry a little more than that, so a blob with fins walks at about full
+      speed on one pair. A slim body with two pairs of feather wings could fly, a fat one never.
     */
     private static readonly CreaturePartInfo[] PARTS =
     {
         // Fins
-        new(CreaturePartKind.CaudalFin,     CreatureCategory.Fins,    2, 0.6f, CreatureMount.Tail,  CreatureType.Fish),
-        new(CreaturePartKind.Fluke,         CreatureCategory.Fins,    2, 0.8f, CreatureMount.Tail,  CreatureType.MarineMammal),
-        new(CreaturePartKind.DorsalFin,     CreatureCategory.Fins,    1, 0.3f, CreatureMount.Top,   null),
-        new(CreaturePartKind.PectoralFin,   CreatureCategory.Fins,    1, 0.4f, CreatureMount.Limb,  null),
+        Part(CreaturePartKind.CaudalFin,     CreatureCategory.Fins,    CreatureMount.Tail,  CreatureType.Fish),
+        Part(CreaturePartKind.Fluke,         CreatureCategory.Fins,    CreatureMount.Tail,  CreatureType.MarineMammal),
+        Part(CreaturePartKind.DorsalFin,     CreatureCategory.Fins,    CreatureMount.Top,   null),
+        Part(CreaturePartKind.PectoralFin,   CreatureCategory.Fins,    CreatureMount.Limb,  null),
         // Weapons
-        new(CreaturePartKind.Jaw,           CreatureCategory.Weapons, 2, 0.9f, CreatureMount.Head,  null),
-        new(CreaturePartKind.Spines,        CreatureCategory.Weapons, 2, 0.7f, CreatureMount.Top,   CreatureType.Fish),
+        Part(CreaturePartKind.Jaw,           CreatureCategory.Weapons, CreatureMount.Head,  null),
+        Part(CreaturePartKind.Spines,        CreatureCategory.Weapons, CreatureMount.Top,   CreatureType.Fish),
         // Eyes
-        new(CreaturePartKind.PitEye,        CreatureCategory.Eyes,    1, 0.1f, CreatureMount.Flank, null),
-        new(CreaturePartKind.Eye,           CreatureCategory.Eyes,    2, 0.3f, CreatureMount.Flank, null),
-        new(CreaturePartKind.StalkEye,      CreatureCategory.Eyes,    3, 0.6f, CreatureMount.Flank, null),
+        Part(CreaturePartKind.PitEye,        CreatureCategory.Eyes,    CreatureMount.Flank, null),
+        Part(CreaturePartKind.Eye,           CreatureCategory.Eyes,    CreatureMount.Flank, null),
+        Part(CreaturePartKind.StalkEye,      CreatureCategory.Eyes,    CreatureMount.Flank, null),
         // Limbs: sculpted by their joints (1 to 4), a limb reaching the ground carries (CreatureStats)
-        new(CreaturePartKind.StubLimb,      CreatureCategory.Limbs,   1, 0.3f, CreatureMount.Limb,  null),
-        new(CreaturePartKind.BentLimb,      CreatureCategory.Limbs,   1, 0.45f, CreatureMount.Limb, null),
-        new(CreaturePartKind.Limb,          CreatureCategory.Limbs,   1, 0.6f, CreatureMount.Limb,  null),
-        new(CreaturePartKind.Tentacle,      CreatureCategory.Limbs,   2, 0.7f, CreatureMount.Limb,  null),
+        Part(CreaturePartKind.StubLimb,      CreatureCategory.Limbs,   CreatureMount.Limb,  null),
+        Part(CreaturePartKind.BentLimb,      CreatureCategory.Limbs,   CreatureMount.Limb,  null),
+        Part(CreaturePartKind.Limb,          CreatureCategory.Limbs,   CreatureMount.Limb,  null),
+        Part(CreaturePartKind.Tentacle,      CreatureCategory.Limbs,   CreatureMount.Limb,  null),
         // Feet
-        new(CreaturePartKind.Legs,          CreatureCategory.Feet,    2, 1.5f, CreatureMount.Limb,  null, Carry: 14f, Stride: 1f),
-        new(CreaturePartKind.StubbyLegs,    CreatureCategory.Feet,    2, 1.8f, CreatureMount.Limb,  null, Carry: 20f, Stride: 0.75f),
-        new(CreaturePartKind.ClawLegs,      CreatureCategory.Feet,    3, 2.0f, CreatureMount.Limb,  null, Carry: 12f, Stride: 1.15f),
-        new(CreaturePartKind.CrabLegs,      CreatureCategory.Feet,    2, 0.9f, CreatureMount.Limb,  null, Carry: 10f, Stride: 1.1f),
+        Part(CreaturePartKind.Legs,          CreatureCategory.Feet,    CreatureMount.Limb,  null),
+        Part(CreaturePartKind.StubbyLegs,    CreatureCategory.Feet,    CreatureMount.Limb,  null),
+        Part(CreaturePartKind.ClawLegs,      CreatureCategory.Feet,    CreatureMount.Limb,  null),
+        Part(CreaturePartKind.CrabLegs,      CreatureCategory.Feet,    CreatureMount.Limb,  null),
         // Hands
-        new(CreaturePartKind.Hands,         CreatureCategory.Hands,   2, 0.8f, CreatureMount.Limb,  null),
-        new(CreaturePartKind.Claws,         CreatureCategory.Hands,   3, 1.0f, CreatureMount.Limb,  null),
+        Part(CreaturePartKind.Hands,         CreatureCategory.Hands,   CreatureMount.Limb,  null),
+        Part(CreaturePartKind.Claws,         CreatureCategory.Hands,   CreatureMount.Limb,  null),
         // Brain
-        new(CreaturePartKind.SmallBrain,    CreatureCategory.Brain,   2, 0.4f, CreatureMount.Skull, null),
-        new(CreaturePartKind.BigBrain,      CreatureCategory.Brain,   4, 1.2f, CreatureMount.Skull, null),
+        Part(CreaturePartKind.SmallBrain,    CreatureCategory.Brain,   CreatureMount.Skull, null),
+        Part(CreaturePartKind.BigBrain,      CreatureCategory.Brain,   CreatureMount.Skull, null),
         // Lungs
-        new(CreaturePartKind.Lung,          CreatureCategory.Lungs,   2, 0.8f, CreatureMount.Inner, CreatureType.Fish),
-        new(CreaturePartKind.Blowhole,      CreatureCategory.Lungs,   1, 0.3f, CreatureMount.Top,   CreatureType.MarineMammal),
-        new(CreaturePartKind.BigLung,       CreatureCategory.Lungs,   3, 1.5f, CreatureMount.Inner, null),
+        Part(CreaturePartKind.Lung,          CreatureCategory.Lungs,   CreatureMount.Inner, CreatureType.Fish),
+        Part(CreaturePartKind.Blowhole,      CreatureCategory.Lungs,   CreatureMount.Top,   CreatureType.MarineMammal),
+        Part(CreaturePartKind.BigLung,       CreatureCategory.Lungs,   CreatureMount.Inner, null),
         // Wings
-        new(CreaturePartKind.MembraneWings, CreatureCategory.Wings,   3, 1.5f, CreatureMount.Top,   null, Lift: 6f),
-        new(CreaturePartKind.FeatherWings,  CreatureCategory.Wings,   4, 2.5f, CreatureMount.Top,   null, Lift: 10f),
+        Part(CreaturePartKind.MembraneWings, CreatureCategory.Wings,   CreatureMount.Top,   null),
+        Part(CreaturePartKind.FeatherWings,  CreatureCategory.Wings,   CreatureMount.Top,   null),
     };
+
+    /// <summary>One table row: cost, weight, carry, stride and lift come from Balance.Current.Creature.Parts.</summary>
+    private static CreaturePartInfo Part(CreaturePartKind kind, CreatureCategory category, CreatureMount mount, CreatureType? onlyFor)
+    {
+        CreaturePartBalance tune = Balance.Current.Creature.Parts[kind];
+        return new CreaturePartInfo(kind, category, tune.Cost, tune.Weight, mount, onlyFor, tune.Carry, tune.Stride, tune.Lift);
+    }
 
     /// <summary>Every part in palette order.</summary>
     public static IReadOnlyList<CreaturePartInfo> All()

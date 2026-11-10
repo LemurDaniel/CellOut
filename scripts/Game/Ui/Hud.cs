@@ -151,7 +151,7 @@ public partial class Hud : CanvasLayer
     {
         if (0 == _player.Stage)
         {
-            return string.Format(Tr("GOAL_COLLECT"), (int)_player.Biomass, (int)Player.STAGE_THRESHOLDS[1]);
+            return string.Format(Tr("GOAL_COLLECT"), (int)_player.Biomass, (int)Balance.Current.Player.SingleCellAt);
         }
 
         var parts = new List<string>

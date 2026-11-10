@@ -4,7 +4,7 @@
 //   wings and the evolution point bonus of a brain. The one formula behind
 //   Player.ApplyCreature and the stats column of the CreatureEditor, so the preview
 //   always shows what the player gets. Multipliers are relative to the base values of
-//   the Player (1 = unchanged).
+//   the Player (1 = unchanged). The numbers come from data/balance.json (Core/Balance.cs).
 //
 //   CreatureStats stats = CreatureStats.From(design);
 //   float landShare     = stats.LandSpeed;      // share of the swim speed of the body size
@@ -84,7 +84,7 @@ public sealed class CreatureStats
     public float Lift { get; private set; }
 
     /// <summary>Speed on land as share of the swim speed of the body size.</summary>
-    public float LandSpeed { get; private set; } = CRAWL_SPEED;
+    public float LandSpeed { get; private set; } = Balance.Current.Creature.Land.CrawlSpeed;
 
     /// <summary>Weight per carrying capacity, above 1 the legs struggle. Infinite without legs.</summary>
     public float Load => Carry > 0f ? Weight / Carry : float.PositiveInfinity;
@@ -103,28 +103,20 @@ public sealed class CreatureStats
     //   3. Land    Legs carry the weight: walking speed from stride and load.
     //
 
-    public const float CRAWL_SPEED = 0.3f;           // share of the swim speed without legs on land
-    public const float WALK_SPEED = 0.85f;           // normal legs at load 1
-    private const float BODY_DENSITY = 7.5f;         // kg per unit volume, the blob weighs about 10
-    private const int BASE_VERTEBRAE = 5;
-    private const float MIN_LOAD_FACTOR = 0.4f;      // overloaded legs still drag the body along
-    private const float MAX_LOAD_FACTOR = 1.2f;      // strong legs under a light body
-    private const float WING_FLAP_BONUS = 0.08f;     // per pair, flapping helps a little on land
-    private const float LIMB_DRAG = 0.95f;           // legs and wings slow the swimming per pair
-    private const float LIMB_CARRY = 10f;            // a sculpted limb pair that reaches the ground, weaker than ready-made legs
-    private const float LIMB_STRIDE = 0.9f;
-    private const float LIMB_REACH = 0.2f;           // a sculpted limb pair held up grabs food like a short arm
+    private const int BASE_VERTEBRAE = 5;           // body length the vertebra bonuses count from
+    private const float CLAW_ANGLE = 0.5f;           // claws scratch this far off the nose, radians
 
     /*
-      Traits multiplied together:
-      - Type:      fish +10% speed, marine mammal +30% health
+      Traits multiplied together, every number from data/balance.json (creature.body,
+      creature.land, creature.effects):
+      - Type:      a fish swims faster, a marine mammal is tougher
       - Girth:     thick bodies are tougher and slower (mean girth 0.25 .. 1)
-      - Length:    every vertebra above five +3% speed and +5% health
-      - Weight:    body volume times BODY_DENSITY plus every part
+      - Length:    every vertebra above BASE_VERTEBRAE adds speed and health
+      - Weight:    body volume times the density plus every part
       - Parts:     see the switch, one line per part, a single half of a pair counts half;
                    a sculpted limb whose tip reaches the ground is a leg (CreatureDesign.IsWalkingLimb)
-      - On land:   without legs CRAWL_SPEED, otherwise
-                   WALK_SPEED * stride * clamp(1.5 - 0.5 * load) * (1 + 0.08 per wing pair)
+      - On land:   without legs the crawl speed, otherwise
+                   walk speed * stride * clamp(loadBase - loadSlope * load) * (1 + flap bonus per wing pair)
                    stride = mean of the leg kinds, weighted by what they carry
     */
     /// <summary>Computes every trait of a body plan.</summary>
@@ -134,6 +126,9 @@ public sealed class CreatureStats
     public static CreatureStats From(CreatureDesign design)
     {
         var stats = new CreatureStats();
+        CreatureBodyBalance    body    = Balance.Current.Creature.Body;
+        CreatureLandBalance    land    = Balance.Current.Creature.Land;
+        CreatureEffectsBalance effects = Balance.Current.Creature.Effects;
 
         // ---------------------------------------------------------------------------
         // Body
@@ -142,9 +137,11 @@ public sealed class CreatureStats
 
         float girth = design.MeanGirth;
         int   extra = design.Girths.Count - BASE_VERTEBRAE;
-        stats.Health    = (CreatureType.MarineMammal == design.Type ? 1.3f : 1f) * (0.7f + 0.6f * girth) * (1f + 0.05f * extra);
-        stats.SwimSpeed = (CreatureType.Fish == design.Type ? 1.1f : 1f) * (1.15f - 0.3f * girth) * (1f + 0.03f * extra);
-        stats.Weight    = design.Volume() * BODY_DENSITY;
+        float typeHealth = CreatureType.MarineMammal == design.Type ? body.MammalHealth : 1f;
+        float typeSwim   = CreatureType.Fish == design.Type ? body.FishSwimSpeed : 1f;
+        stats.Health    = typeHealth * (body.HealthBase + body.HealthPerGirth * girth) * (1f + body.HealthPerVertebra * extra);
+        stats.SwimSpeed = typeSwim * (body.SwimBase - body.SwimPerGirth * girth) * (1f + body.SwimPerVertebra * extra);
+        stats.Weight    = design.Volume() * body.Density;
 
         // ---------------------------------------------------------------------------
         // Parts
@@ -169,22 +166,22 @@ public sealed class CreatureStats
             {
                 // Fins
                 case CreaturePartKind.CaudalFin:
-                    stats.SwimSpeed *= 1.3f;
+                    stats.SwimSpeed *= effects.CaudalFinSwim;
                     break;
                 case CreaturePartKind.Fluke:
-                    stats.SwimSpeed    *= 1.25f;
-                    stats.Acceleration *= 1.2f;
+                    stats.SwimSpeed    *= effects.FlukeSwim;
+                    stats.Acceleration *= effects.FlukeAcceleration;
                     break;
                 case CreaturePartKind.DorsalFin:
-                    stats.Acceleration *= 1.25f;
+                    stats.Acceleration *= effects.DorsalFinAcceleration;
                     break;
                 case CreaturePartKind.PectoralFin:
-                    stats.Acceleration *= Scaled(1.3f);
+                    stats.Acceleration *= Scaled(effects.PectoralFinAcceleration);
                     break;
                 // Weapons: the jaw bites forward, spines hurt at both flanks and the back
                 case CreaturePartKind.Jaw:
                     stats._jawAngles.Add(0f);
-                    stats.DigestMeat *= 1.2f;
+                    stats.DigestMeat *= effects.JawDigestMeat;
                     break;
                 case CreaturePartKind.Spines:
                     stats._spikeAngles.Add(Mathf.Pi * 0.5f);
@@ -193,28 +190,28 @@ public sealed class CreatureStats
                     break;
                 // Eyes: food is pulled in from farther away
                 case CreaturePartKind.PitEye:
-                    stats.MagnetBonus += 0.3f * share;
+                    stats.MagnetBonus += effects.PitEyeMagnet * share;
                     break;
                 case CreaturePartKind.Eye:
-                    stats.MagnetBonus += 0.5f * share;
+                    stats.MagnetBonus += effects.EyeMagnet * share;
                     break;
                 case CreaturePartKind.StalkEye:
-                    stats.MagnetBonus += 0.8f * share;
+                    stats.MagnetBonus += effects.StalkEyeMagnet * share;
                     break;
                 // Sculpted limb: reaching the ground it is a leg (carries, LAND below), else an arm that grabs
                 case CreaturePartKind.StubLimb:
                 case CreaturePartKind.BentLimb:
                 case CreaturePartKind.Limb:
                 case CreaturePartKind.Tentacle:
-                    stats.SwimSpeed *= Scaled(LIMB_DRAG);
+                    stats.SwimSpeed *= Scaled(effects.LimbDrag);
                     if (design.IsWalkingLimb(part))
                     {
-                        stats.Carry += LIMB_CARRY * share;
-                        strideCarry += LIMB_STRIDE * LIMB_CARRY * share;
+                        stats.Carry += effects.LimbCarry * share;
+                        strideCarry += effects.LimbStride * effects.LimbCarry * share;
                     }
                     else
                     {
-                        stats.MagnetBonus += LIMB_REACH * share;
+                        stats.MagnetBonus += effects.LimbReach * share;
                     }
                     break;
                 // Feet: carry on land (LAND below), drag a little in the water
@@ -222,39 +219,39 @@ public sealed class CreatureStats
                 case CreaturePartKind.StubbyLegs:
                 case CreaturePartKind.ClawLegs:
                 case CreaturePartKind.CrabLegs:
-                    stats.SwimSpeed *= Scaled(LIMB_DRAG);
+                    stats.SwimSpeed *= Scaled(effects.LimbDrag);
                     break;
                 // Hands grab food, claws scratch at both front flanks (a single claw at its own flank,
                 // +Z is +Y on the plane, see Plane3D)
                 case CreaturePartKind.Hands:
-                    stats.MagnetBonus += 0.4f * share;
+                    stats.MagnetBonus += effects.HandsMagnet * share;
                     break;
                 case CreaturePartKind.Claws:
-                    stats.MagnetBonus += 0.15f * share;
-                    if (part.Side >= 0) stats._spikeAngles.Add(0.5f);
-                    if (part.Side <= 0) stats._spikeAngles.Add(-0.5f);
+                    stats.MagnetBonus += effects.ClawsMagnet * share;
+                    if (part.Side >= 0) stats._spikeAngles.Add(CLAW_ANGLE);
+                    if (part.Side <= 0) stats._spikeAngles.Add(-CLAW_ANGLE);
                     break;
                 // Brain: more evolution points per level, the big one also steers better
                 case CreaturePartKind.SmallBrain:
-                    stats.EpPerLevelBonus += 1;
+                    stats.EpPerLevelBonus += effects.SmallBrainEp;
                     break;
                 case CreaturePartKind.BigBrain:
-                    stats.EpPerLevelBonus += 2;
-                    stats.Acceleration    *= 1.15f;
+                    stats.EpPerLevelBonus += effects.BigBrainEp;
+                    stats.Acceleration    *= effects.BigBrainAcceleration;
                     break;
                 // Lungs: air on land (CreatureDesign.BreathesAir), more air means more health
                 case CreaturePartKind.Lung:
                     break;
                 case CreaturePartKind.Blowhole:
-                    stats.Health *= 1.25f;
+                    stats.Health *= effects.BlowholeHealth;
                     break;
                 case CreaturePartKind.BigLung:
-                    stats.Health *= 1.2f;
+                    stats.Health *= effects.BigLungHealth;
                     break;
                 // Wings: lift for later, a little flapping help on land, drag in the water
                 case CreaturePartKind.MembraneWings:
                 case CreaturePartKind.FeatherWings:
-                    stats.SwimSpeed *= Scaled(LIMB_DRAG);
+                    stats.SwimSpeed *= Scaled(effects.LimbDrag);
                     wingPairs       += share;
                     break;
                 default:
@@ -269,12 +266,12 @@ public sealed class CreatureStats
 
         if (stats.Carry <= 0f)
         {
-            stats.LandSpeed = CRAWL_SPEED;
+            stats.LandSpeed = land.CrawlSpeed;
             return stats;
         }
         float stride     = strideCarry / stats.Carry;
-        float loadFactor = Mathf.Clamp(1.5f - 0.5f * stats.Load, MIN_LOAD_FACTOR, MAX_LOAD_FACTOR);
-        stats.LandSpeed  = WALK_SPEED * stride * loadFactor * (1f + WING_FLAP_BONUS * wingPairs);
+        float loadFactor = Mathf.Clamp(land.LoadBase - land.LoadSlope * stats.Load, land.MinLoadFactor, land.MaxLoadFactor);
+        stats.LandSpeed  = land.WalkSpeed * stride * loadFactor * (1f + land.WingFlapBonus * wingPairs);
         return stats;
     }
 }

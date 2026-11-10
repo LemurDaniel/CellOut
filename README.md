@@ -93,8 +93,9 @@ shaders/   membrane, ocean, greyout,         # Cell membrane, ocean floor,
            editor_panel                      # editor grey-out and panel
 locale/    translations.csv                  # All UI texts, German + English
 fonts/     CellOut, CellOutDisplay           # Own game fonts: text + titles (generated)
-tests/     SmokeTest                         # Headless run through all stages
-tools/     Test-CellOut.ps1                  # Build + import + smoke test
+data/      balance.json                      # Every tunable gameplay number
+tests/     SmokeTest, unit/                  # Headless run through all stages, xUnit tests of the pure logic
+tools/     Test-CellOut.ps1                  # Build + unit tests + import + smoke test
            font/                             # Node generator of the game font
 ```
 
