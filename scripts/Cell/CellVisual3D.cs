@@ -152,6 +152,8 @@ public partial class CellVisual3D : Node3D
     //                 moves divided cells out of their mothers.
     //   3. Animate    Membrane stretch and flash, pseudopods, flagella, eyes and DNA.
     //
+    //   BlendDnaFrom hands the DNA a start pose, Animate eases it into its loop.
+    //
 
     private sealed record SplitCell(Node3D Root, Vector3 From, Vector3 To);
 
@@ -164,6 +166,9 @@ public partial class CellVisual3D : Node3D
     private readonly List<Node3D> _eyes = new();
     private readonly List<Node3D> _spinners = new();
     private Node3D _dna;
+    private Transform3D _dnaFrom;                   // handed over pose, turned like the world (BlendDnaFrom)
+    private float _dnaBlendSeconds;
+    private float _dnaBlendStart = float.NegativeInfinity;     // _time of BlendDnaFrom
     private readonly List<SplitCell> _splitting = new();
     private float _splitTime = SPLIT_SECONDS;
     private int _builtCellCount;
@@ -280,12 +285,36 @@ public partial class CellVisual3D : Node3D
         // DNA of the protocell: drifts on a slow loop through the cell, tumbles and spins around its axis
         if (null != _dna)
         {
-            float drift = _time * 0.35f + Body.AnimSeed;
-            _dna.Position = new Vector3(Mathf.Sin(drift) * 0.22f, 0.04f + Mathf.Sin(drift * 1.7f) * 0.03f, Mathf.Sin(drift * 0.8f + 1f) * 0.2f);
-            _dna.Basis    = new Basis(Vector3.Up, _time * 0.25f + Body.AnimSeed)
-                * new Basis(Vector3.Back, Mathf.Sin(_time * 0.4f) * 0.35f)
-                * new Basis(Vector3.Right, _time * 0.9f);
+            float drift    = _time * 0.35f + Body.AnimSeed;
+            var   animated = new Transform3D(
+                new Basis(Vector3.Up, _time * 0.25f + Body.AnimSeed)
+                    * new Basis(Vector3.Back, Mathf.Sin(_time * 0.4f) * 0.35f)
+                    * new Basis(Vector3.Right, _time * 0.9f),
+                new Vector3(Mathf.Sin(drift) * 0.22f, 0.04f + Mathf.Sin(drift * 1.7f) * 0.03f, Mathf.Sin(drift * 0.8f + 1f) * 0.2f));
+
+            // A handed over pose stays put in the world while the cell turns, then eases into the loop
+            float blend = _dnaBlendSeconds > 0f ? (_time - _dnaBlendStart) / _dnaBlendSeconds : 1f;
+            if (blend < 1f)
+            {
+                var from = new Transform3D(new Basis(Vector3.Up, -Rotation.Y) * _dnaFrom.Basis, _dnaFrom.Origin);
+                animated = from.InterpolateWith(animated, Ease.Smooth(Mathf.Clamp(blend, 0f, 1f)));
+            }
+            _dna.Transform = animated;
         }
+    }
+
+    /// <summary>
+    /// The protocell DNA starts in a handed over pose and eases into its own loop, e.g. from
+    /// the helix the RNA prelude formed (Prelude/View/RnaGenesis.cs).
+    /// </summary>
+    /// <param name="pose">(Required) Pose in body sizes around the cell center, turned like the world.</param>
+    /// <param name="seconds">(Required) Length of the blend.</param>
+    /// <example><code>player.Visual.BlendDnaFrom(prelude.DnaPose, 1.2f);</code></example>
+    public void BlendDnaFrom(Transform3D pose, float seconds)
+    {
+        _dnaFrom         = pose;
+        _dnaBlendSeconds = seconds;
+        _dnaBlendStart   = _time;
     }
 
     // ===========================================================================

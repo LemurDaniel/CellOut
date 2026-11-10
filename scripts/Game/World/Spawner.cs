@@ -1,9 +1,11 @@
 // NOTE:
-//   Fills the world around the player: the starting soup (and the new sea after the
-//   evolution) bit by bit inside the view, later food and cells in a ring just outside
-//   it. Sizes are relative to the player, kinds depend on the stage. A popped cell
-//   leaves meat. It does not process on its own: Main calls Refill once per physics
-//   frame, after the contacts.
+//   Fills the world around the player: the starting cells (and the new sea after the
+//   evolution) bit by bit inside the view, later cells in a ring just outside it. Food
+//   never appears in sight: it comes as whole patches, all pieces at once, at a spot
+//   outside the view, the soup between them stays empty and the player has to go
+//   looking (rule in CLAUDE.md). A popped cell leaves meat right where it popped.
+//   Sizes are relative to the player, kinds depend on the stage. It does not process on
+//   its own: Main calls Refill once per physics frame, after the contacts.
 //
 //   var spawner = new Spawner();
 //   spawner.Setup(session, followCamera);
@@ -16,6 +18,7 @@
 //   Chapters:
 //     SETTINGS   The session, the camera and the splash signal.
 //     SPAWN      The starting queue, the refill, food, cells and their spawn points.
+//     PATCHES    Whole food patches outside the view.
 //
 
 using Godot;
@@ -34,9 +37,8 @@ public partial class Spawner : Node
 
     [Signal] public delegate void SplashRequestedEventHandler(Vector2 position, float radius, Color color);
 
-    private const int MAX_FOOD = 140;
+    private const int MAX_FOOD = 80;               // a new patch only comes while it still fits under this
     private const int MAX_CRITTERS = 24;
-    public const int START_FOOD = 90;
     public const int START_CRITTERS = 8;
 
     private WorldSession _session;
@@ -60,28 +62,31 @@ public partial class Spawner : Node
     // ================================   SPAWN   ================================
     // ===========================================================================
     //
-    //   StartPopulating   Queues the starting food and cells, the soup is empty before.
+    //   StartPopulating   The first food patches outside the view, queues the starting cells.
     //   Refill            Spawns the queue first, then keeps the world topped up outside the view.
-    //   UpdatePopulating  Spawns the queue bit by bit inside the view, cells with a plop.
-    //   SpawnFood         One piece of food (molecule, sea or land food), size and value relative to the player.
+    //   UpdatePopulating  Spawns the cell queue bit by bit inside the view, with a plop.
+    //   SpawnFood         One piece of food at a point (molecule, sea or land food), size and value relative to the player.
     //   SpawnCritter      One cell, kind and size depend on the stage, never right on top of the player.
     //   SpawnPosition     A point inside the view or in a ring just outside it, in the sea if asked.
     //   OnCritterPopped   A popped cell leaves four rich meat chunks.
     //
 
-    public const float POPULATE_SECONDS = 5f;      // the starting soup fills over this time
+    public const float POPULATE_SECONDS = 5f;      // the starting cells arrive over this time
     private const float SEA_FOOD_LOOK = 2.2f;      // sea and land food are drawn bigger than their value size,
     private const float LAND_FOOD_LOOK = 2.6f;     // next to a creature a molecule sized apple looked lost
 
-    private int _pendingFood;
     private int _pendingCritters;
     private float _populateTime;
 
-    /// <summary>Queues START_FOOD pieces of food and START_CRITTERS cells, they pop up over POPULATE_SECONDS.</summary>
+    /// <summary>START_PATCHES food patches outside the view at once, START_CRITTERS cells pop up over POPULATE_SECONDS.</summary>
     /// <example><code>spawner.StartPopulating();</code></example>
     public void StartPopulating()
     {
-        _pendingFood     = START_FOOD;
+        for (int i = 0; i < START_PATCHES; i++)
+        {
+            SpawnPatch();
+        }
+        _patchCooldown   = PATCH_INTERVAL;
         _pendingCritters = START_CRITTERS;
         _populateTime    = 0f;
     }
@@ -94,9 +99,13 @@ public partial class Spawner : Node
         {
             return;
         }
-        if (FoodLayer.GetChildCount() < MAX_FOOD)
+
+        // A whole new patch once the eaten or left behind ones made room for it
+        _patchCooldown -= dt;
+        if (_patchCooldown <= 0f && FoodLayer.GetChildCount() + PATCH_MAX_FOOD <= MAX_FOOD)
         {
-            SpawnFood(isInView: false);
+            SpawnPatch();
+            _patchCooldown = PATCH_INTERVAL;
         }
         if (CritterLayer.GetChildCount() < MAX_CRITTERS && Rand.Chance(0.05f))
         {
@@ -104,26 +113,17 @@ public partial class Spawner : Node
         }
     }
 
-    /// <summary>
-    /// Spawns as much of the queue as the elapsed share of POPULATE_SECONDS allows:
-    /// molecules evenly, cells evenly but starting a second later.
-    /// </summary>
+    /// <summary>Spawns as many cells of the queue as the elapsed share of POPULATE_SECONDS allows, starting a second in.</summary>
     /// <returns>True while the queue is not empty, the normal refill waits meanwhile.</returns>
     private bool UpdatePopulating(float dt)
     {
-        if (0 == _pendingFood && 0 == _pendingCritters)
+        if (0 == _pendingCritters)
         {
             return false;
         }
         _populateTime += dt;
-        float share       = Mathf.Clamp(_populateTime / POPULATE_SECONDS, 0f, 1f);
         float cellShare   = Mathf.Clamp((_populateTime - 1f) / (POPULATE_SECONDS - 1f), 0f, 1f);
-        int   foodDue     = Mathf.CeilToInt(START_FOOD * share) - (START_FOOD - _pendingFood);
         int   crittersDue = Mathf.CeilToInt(START_CRITTERS * cellShare) - (START_CRITTERS - _pendingCritters);
-        for (int i = 0; i < foodDue && _pendingFood > 0; i++, _pendingFood--)
-        {
-            SpawnFood(isInView: true);
-        }
         for (int i = 0; i < crittersDue && _pendingCritters > 0; i++, _pendingCritters--)
         {
             Critter critter = SpawnCritter(isInView: true);
@@ -142,11 +142,10 @@ public partial class Spawner : Node
       - Organism: sea food in the water, land food (fruit, mushrooms, berries) on the islands
         only with IS_LAND_FOOD_SPAWNED, else that spot stays empty
     */
-    private void SpawnFood(bool isInView)
+    private void SpawnFood(Vector2 position)
     {
-        float   size     = Player.BodySize();
-        Vector2 position = SpawnPosition(isInView, isSeaOnly: false);
-        var     food     = new Food { Habitat = Player.IsOrganism ? FoodHabitat.Sea : FoodHabitat.Soup };
+        float size = Player.BodySize();
+        var   food = new Food { Habitat = Player.IsOrganism ? FoodHabitat.Sea : FoodHabitat.Soup };
         if (Player.IsOrganism && null != Coast && Coast.IsOnLand(position))
         {
             if (!IS_LAND_FOOD_SPAWNED)
@@ -197,7 +196,7 @@ public partial class Spawner : Node
         }
 
         // In the organism stage the sea is full of creatures instead of cells
-        var critter = new Critter { Target = Player };
+        var critter = new Critter { Target = Player, FoodLayer = FoodLayer };
         critter.Setup(radius, kind, playerSize, Player.Stage);
         if (Player.IsOrganism)
         {
@@ -255,5 +254,46 @@ public partial class Spawner : Node
             food.Value   *= POP_FOOD_BONUS;
             FoodLayer.CallDeferred(Node.MethodName.AddChild, food);
         }
+    }
+
+    // ===========================================================================
+    // ===============================   PATCHES   ===============================
+    // ===========================================================================
+    //
+    //   SpawnPatch    A whole food patch at once at a spot outside the view.
+    //   PatchCenter   A point so far out that the whole patch disc lies outside the view.
+    //
+
+    private const int START_PATCHES = 3;
+    private const float PATCH_INTERVAL = 2.5f;     // seconds between two new patches at most
+    private const int PATCH_MIN_FOOD = 10;
+    private const int PATCH_MAX_FOOD = 18;
+    private const float PATCH_MIN_RADIUS = 2.5f;   // in player sizes
+    private const float PATCH_MAX_RADIUS = 4.5f;
+    private const float PATCH_NEAR = 0.15f;        // view radii between the view edge and the patch disc
+    private const float PATCH_FAR = 0.8f;
+
+    private float _patchCooldown;
+
+    /// <summary>All pieces of a patch at once, denser in the middle, out of sight of the player.</summary>
+    private void SpawnPatch()
+    {
+        float   radius = Player.BodySize() * Rand.Range(PATCH_MIN_RADIUS, PATCH_MAX_RADIUS);
+        Vector2 center = PatchCenter(radius);
+        int     count  = PATCH_MIN_FOOD + Rand.Index(PATCH_MAX_FOOD - PATCH_MIN_FOOD + 1);
+
+        // The plain roll packs the middle, the square root would spread the pieces evenly
+        for (int i = 0; i < count; i++)
+        {
+            SpawnFood(center + Vector2.FromAngle(Rand.Angle()) * radius * Rand.Range(0f, 1f));
+        }
+        Log.Verbose("Spawner", $"Food patch of {count} at {center}, radius {radius:F0}.");
+    }
+
+    private Vector2 PatchCenter(float radius)
+    {
+        float viewRadius = _camera.ViewRadius();
+        float distance   = viewRadius * (1f + Rand.Range(PATCH_NEAR, PATCH_FAR)) + radius;
+        return Player.GlobalPosition + Vector2.FromAngle(Rand.Angle()) * distance;
     }
 }

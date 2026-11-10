@@ -1,5 +1,7 @@
 // NOTE:
-//   Food on the plane, eaten when the player touches it. Logic in 2D, rendered in 3D by
+//   Food on the plane. A cell that touches it swallows it like a smaller cell: the
+//   membrane flows around it, it is pulled to the center and shrinks (ENGULF), the
+//   ContactResolver hands out the biomass once it is digested. Logic in 2D, rendered in 3D by
 //   habitat (set by Main before AddChild):
 //     - Soup   drifting biomolecules of the primordial soup: sugar ring, amino chain, lipid
 //     - Sea    from the organism on, under the water surface: algae ball, glowing plankton,
@@ -14,6 +16,7 @@
 //
 //   Chapters:
 //     SETUP AND DRIFT   Kind, habitat, size, value and the drift on the plane.
+//     ENGULF            Being pulled into a cell and shrinking there.
 //     BUILD VISUAL      Molecule, sea food or land food of the kind, in unit size.
 //
 
@@ -65,7 +68,7 @@ public partial class Food : Node2D
         Size   = size;
         Kind   = kind;
         Value  = BaseValue(kind) * Mathf.Pow(size / 3.5f, 1.5f) * 0.5f;
-        _drift = Vector2.FromAngle(Rand.Angle()) * size * Rand.Range(0.4f, 1.5f);
+        _drift = Vector2.FromAngle(Rand.Angle()) * size * Rand.Range(0.1f, 0.4f);     // slow, the food patches of the Spawner keep their shape
         _spin  = Rand.Range(-1.5f, 1.5f);
     }
 
@@ -134,24 +137,83 @@ public partial class Food : Node2D
     public override void _Process(double delta)
     {
         float dt = (float)delta;
-        Position += _drift * dt;
+        if (!IsEngulfed)
+        {
+            Position += _drift * dt;
+        }
         _bob     += dt;
         _age     += dt;
         _visual.GlobalPosition = VisualPosition();
         _visual.Rotate(_spinAxis, _spin * dt);
-        _visual.Scale = Vector3.One * Size * LookScale * GrowIn();
+        _visual.Scale = Vector3.One * Size * LookScale * GrowIn() * _engulfScale;
     }
 
-    /// <summary>Soup and sea food bob (the sea food under the surface), land food sits on the ground.</summary>
+    /// <summary>Soup and sea food bob (the sea food under the surface), land food sits on the ground. Swallowed soup food settles in the middle of the cell.</summary>
     private Vector3 VisualPosition()
     {
         float height = Habitat switch
         {
             FoodHabitat.Land => GroundHeight,
             FoodHabitat.Sea  => (Mathf.Sin(_bob * 1.3f) * 0.3f - SEA_DEPTH) * Size * LookScale - Plane3D.SeaDrop,
-            _                => Mathf.Sin(_bob * 1.3f) * Size * 0.4f,
+            _                => Mathf.Sin(_bob * 1.3f) * Size * 0.4f * (1f - _engulfPull),
         };
         return Plane3D.To3D(GlobalPosition, height - Plane3D.Drop(GlobalPosition));
+    }
+
+    // ===========================================================================
+    // ===============================   ENGULF   ================================
+    // ===========================================================================
+    //
+    //   Engulfer        The cell swallowing it, null while free.
+    //   IsEngulfed      Whether a cell swallows it right now.
+    //   EngulfProgress  0 at the touch .. 1 digested.
+    //   StartEngulf     Caught: remembers the eater and the spot at the touch, the drift stops.
+    //   AdvanceEngulf   Pulls it to the center of the eater and shrinks it, true once digested.
+    //   ReleaseEngulf   The eater is gone: it floats on with its old size.
+    //
+    //   Same flow as Cell/Critter.cs (ENGULF), shorter and without struggling.
+    //
+
+    private const float ENGULF_SHRINK = 0.35f;      // share of the size left when digested
+
+    private Vector2 _engulfOffset;
+    private float _engulfPull;                      // SmoothStep of the progress, also lowers the bobbing
+    private float _engulfScale = 1f;
+
+    public Node2D Engulfer { get; private set; }
+    public bool IsEngulfed => null != Engulfer;
+    public float EngulfProgress { get; private set; }
+
+    /// <summary>Starts being swallowed by a cell.</summary>
+    /// <param name="eater">(Required) The player or a critter.</param>
+    public void StartEngulf(Node2D eater)
+    {
+        Engulfer       = eater ?? throw new System.ArgumentNullException(nameof(eater), "eater must be the cell that swallows the food.");
+        EngulfProgress = 0f;
+        _engulfOffset  = GlobalPosition - eater.GlobalPosition;
+    }
+
+    /// <summary>Pulls the food towards the center of its eater and shrinks it.</summary>
+    /// <param name="dt">(Required) Frame time in seconds.</param>
+    /// <param name="seconds">(Required) Duration of the whole swallow.</param>
+    /// <returns>True once digested, the ContactResolver then frees it and hands out the biomass.</returns>
+    /// <example><code>if (food.AdvanceEngulf(dt, 0.6f)) food.QueueFree();</code></example>
+    public bool AdvanceEngulf(float dt, float seconds)
+    {
+        EngulfProgress = Mathf.Min(1f, EngulfProgress + dt / Mathf.Max(seconds, 0.01f));
+        _engulfPull    = Mathf.SmoothStep(0f, 1f, EngulfProgress);
+        _engulfScale   = Mathf.Lerp(1f, ENGULF_SHRINK, _engulfPull);
+        GlobalPosition = Engulfer.GlobalPosition + _engulfOffset * (1f - _engulfPull);
+        return EngulfProgress >= 1f;
+    }
+
+    /// <summary>The eater vanished: the food floats on where it is, at its old size.</summary>
+    public void ReleaseEngulf()
+    {
+        Engulfer       = null;
+        EngulfProgress = 0f;
+        _engulfPull    = 0f;
+        _engulfScale   = 1f;
     }
 
     /// <summary>0 to 1 over the first GROW_IN_SECONDS with a little overshoot, new food pops in.</summary>

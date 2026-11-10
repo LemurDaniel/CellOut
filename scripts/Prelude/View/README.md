@@ -7,5 +7,5 @@ The components of the RNA prelude (`Prelude/RnaWorld.cs`): what is drawn and mov
 | `RnaPalette.cs` | Colors of the bases and strands, the shared glowing materials (per base, good and bad mutation) and the ring in the wanted color. |
 | `RnaStrand.cs` | One strand, player or rival: head with eyes (and ring), beads and bonds of its `RnaChain`, swimming, breaking, the wander and bite rest of a rival. |
 | `RnaSoup.cs` | The free nucleotides: beads with their letter, drifting and bobbing, the nearest one to a point. |
-| `RnaVesicle.cs` | The lipid vesicle of the goal: pops up, wobbles and flashes, tells whether a point is inside. |
-| `RnaHud.cs` | View: banner that fades out, goal, wanted base with the next ones and one line per mutation, all via `Tr()`. |
+| `RnaGenesis.cs` | The way to the protocell on the player strand itself: it coils into a helix, lipids form a shell, the membrane closes, a partner strand grows base by base (RNA becomes DNA), two heartbeats. |
+| `RnaHud.cs` | View: banner that fades out, goal, wanted base with the next ones, one line per mutation and the evolve button at the goal, all via `Tr()`. |

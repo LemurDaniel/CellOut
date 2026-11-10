@@ -115,7 +115,6 @@ public partial class Main : Node2D
 
         _contacts = new ContactResolver();
         _contacts.Setup(_session);
-        _contacts.SplashRequested += SpawnSplash;
         AddChild(_contacts);
 
         _spawner = new Spawner();
@@ -184,9 +183,17 @@ public partial class Main : Node2D
     {
         Hud.Visible = true;
         _spawner.StartPopulating();
-        Log.Verbose("Main", $"Populating: {Spawner.START_FOOD} molecules and {Spawner.START_CRITTERS} cells over {Spawner.POPULATE_SECONDS} s.");
+        Log.Verbose("Main", $"Populating: food patches outside the view, {Spawner.START_CRITTERS} cells over {Spawner.POPULATE_SECONDS} s.");
         SpawnSplash(Player.GlobalPosition, Player.BodySize() * 1.4f, Player.BodyColor);
-        Hud.ShowBanner("BANNER_START_TITLE", "BANNER_START_TEXT");
+        // The game title already opened the RNA prelude, the protocell gets its own stage banner
+        if (_startFlow.HasPlayedPrelude)
+        {
+            Hud.ShowBanner("BANNER_PROTOCELL_TITLE", "BANNER_PROTOCELL_TEXT");
+        }
+        else
+        {
+            Hud.ShowBanner("BANNER_START_TITLE", "BANNER_START_TEXT");
+        }
         Log.Verbose("Main", "Intro finished -> game running.");
     }
 
@@ -553,11 +560,12 @@ public partial class Main : Node2D
         return _coast.SpawnCoast(isNear);
     }
 
-    /// <summary>Stage jumps of the F10 menu, only forward. Editors that open on the way close again.</summary>
+    /// <summary>Stage jumps of the F10 menu, only forward. A running RNA prelude ends first, editors that open on the way close again.</summary>
     /// <param name="target">(Required) What to jump to.</param>
     /// <example><code>main.CheatTo(CheatTarget.Organism);</code></example>
     public void CheatTo(CheatTarget target)
     {
+        _startFlow.SkipPrelude();
         if (IsInMenu || IsEvolving || _cutscenes.IsShortPlaying)
         {
             return;

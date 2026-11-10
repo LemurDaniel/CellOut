@@ -1,6 +1,7 @@
 // NOTE:
 //   NPC cells: flee from bigger cells, hunt smaller ones (the player and other critters),
-//   keep their distance to equal ones and drift otherwise. Spawned by Main.
+//   graze on food nearby, keep their distance to equal ones and drift otherwise. Spawned by Main,
+//   the ContactResolver lets them eat the food they touch.
 //
 //   var critter = new Critter();
 //   critter.Setup(radius, CritterKind.Hunter, player.BodySize());
@@ -11,7 +12,7 @@
 //     SETUP        Size, look, parts and speed per kind.
 //     EAT AND DIE  Eating rules, growing after a meal and taking damage.
 //     ENGULF       Being slowly wrapped, pulled in and digested by a bigger cell.
-//     STEER        Flee, hunt, separate or wander, once per physics frame.
+//     STEER        Flee, hunt, graze, separate or wander, once per physics frame.
 //
 
 using Godot;
@@ -27,7 +28,7 @@ public partial class Critter : CellBody
     // ===========================================================================
     //
     //   Rules   How much bigger a predator must be and how long a meal lasts.
-    //   Hunt    Health, speed, senses and the hunting state.
+    //   Hunt    Health, speed, senses, the hunting state and the food it grazes on.
     //
 
     // ---------------------------------------------------------------------------
@@ -45,12 +46,15 @@ public partial class Critter : CellBody
 
     // ---------------------------------------------------------------------------
     // Hunt
-    //   Health, speed, senses and the hunting state.
+    //   Health, speed, senses, the hunting state and the food it grazes on.
     // ---------------------------------------------------------------------------
 
     public CritterKind Kind { get; private set; } = CritterKind.Bacterium;
     public float Hp { get; private set; } = 10f;
     public Player Target { get; set; }
+
+    /// <summary>(Optional) The layer with the food it grazes on, null: it never grazes.</summary>
+    public Node2D FoodLayer { get; set; }
     public float BumpCooldown { get; set; }
     private float _speed = 80f;
     private float _sense = 300f;
@@ -237,8 +241,9 @@ public partial class Critter : CellBody
     // ================================   STEER   ================================
     // ===========================================================================
     //
-    //   1. Senses   Collects threats, the closest prey and too close neighbors.
-    //   2. Decide   Fleeing beats hunting, hunting beats wandering, separation always adds.
+    //   1. Senses   Collects threats, the closest prey, the closest food and too close neighbors.
+    //   2. Decide   Fleeing beats hunting, hunting beats grazing, grazing beats wandering,
+    //               separation always adds.
     //   3. Move     Eases the velocity towards the desired direction.
     //
 
@@ -256,7 +261,7 @@ public partial class Critter : CellBody
 
         // ---------------------------------------------------------------------------
         // Senses
-        //   Collects threats, the closest prey and too close neighbors.
+        //   Collects threats, the closest prey, the closest food and too close neighbors.
         // ---------------------------------------------------------------------------
 
         Vector2 flee      = Vector2.Zero;
@@ -311,9 +316,31 @@ public partial class Critter : CellBody
             }
         }
 
+        // Food within the senses, the closest piece
+        Vector2 foodDir  = Vector2.Zero;
+        float   foodDist = float.PositiveInfinity;
+        if (null != FoodLayer && IsInstanceValid(FoodLayer))
+        {
+            foreach (Node node in FoodLayer.GetChildren())
+            {
+                if (node is not Food food || food.IsQueuedForDeletion())
+                {
+                    continue;
+                }
+                Vector2 toFood   = food.Position - Position;
+                float   distance = toFood.Length();
+                if (distance < _sense && distance < foodDist)
+                {
+                    foodDir  = toFood;
+                    foodDist = distance;
+                }
+            }
+        }
+
         // ---------------------------------------------------------------------------
         // Decide
-        //   Fleeing beats hunting, hunting beats wandering, separation always adds.
+        //   Fleeing beats hunting, hunting beats grazing, grazing beats wandering,
+        //   separation always adds.
         // ---------------------------------------------------------------------------
 
         Vector2 desired;
@@ -324,6 +351,10 @@ public partial class Critter : CellBody
         else if (!float.IsInfinity(preyDist) && _sated <= 0f)
         {
             desired = preyDir.Normalized();
+        }
+        else if (!float.IsInfinity(foodDist))
+        {
+            desired = foodDir.Normalized() * Tune.WanderSpeed;     // grazing is calm, no chase
         }
         else
         {

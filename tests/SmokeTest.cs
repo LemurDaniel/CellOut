@@ -53,6 +53,7 @@ public partial class SmokeTest : Node
     private readonly List<int> _stagesSeen = new();
     private Critter _prey;
     private bool _isPreySpawned;
+    private Food _grazedFood;
     private int _editorSessions;
     private bool _isDropPreviewOk;
     private bool _isCellGizmoOk;
@@ -410,6 +411,11 @@ public partial class SmokeTest : Node
         _prey.Setup(size * 0.5f, CritterKind.Bacterium, size);
         _main.CritterLayer.AddChild(_prey);
         _isPreySpawned = true;
+
+        // A piece of food right on the hunter, the cell eats it without the player
+        _grazedFood = new Food { Position = position };
+        _grazedFood.Setup(size * 0.2f, FoodKind.Sugar);
+        _main.FoodLayer.AddChild(_grazedFood);
     }
 
     // ===========================================================================
@@ -428,6 +434,7 @@ public partial class SmokeTest : Node
     //   Spiel nicht pausiert    No choice panel is left open.
     //   Futter gespawnt         Food exists.
     //   Zellen gespawnt         Critters exist.
+    //   Zellen fressen Futter   A cell eats the food it touches.
     //   Zellen fressen Zellen   The hunter ate the prey.
     //   Umfließen               A swallowed cell is halfway in and shrunk at half time, at the center and digested at the end.
     //   Verdaut werden          Digestion inside a bigger cell costs health, but no push back and no grace period.
@@ -534,6 +541,7 @@ public partial class SmokeTest : Node
             ("Futter gespawnt", _main.FoodLayer.GetChildCount() > 0),
             ("Zellen gespawnt", _main.CritterLayer.GetChildCount() > 0),
             ("Zellen fressen Zellen", _isPreySpawned && !IsInstanceValid(_prey)),
+            ("Zellen fressen Futter", _isPreySpawned && !IsInstanceValid(_grazedFood)),
             ("Umfließen", ProbeEngulf()),
             ("Verdaut werden", ProbeDigest()),
             ("Gegner-Teile", ProbeCritterParts()),
@@ -609,7 +617,7 @@ public partial class SmokeTest : Node
     //   ProbeRimLift          Spikes above each other at one angle fit, the same spot twice slides aside, lift clamps at the bottom pole.
     //   ProbeDropPreview      Ghost on a free rim spot, gone after placing, slid on the taken spot; a height handle raises the back.
     //   ProbeIntro            One long frame past the end: Finished fired, camera at CameraEnd.
-    //   ProbePrelude          RNA pairing, a mutation, the goal, bites (far miss, chain hit) and Skip.
+    //   ProbePrelude          RNA pairing, a mutation, the goal, evolve, bites (far miss, chain hit) and the genesis.
     //   ProbeMutations        Tough and Sluggish on a fresh protocell: HP, EP and speed.
     //   ProbeClusterLayout    Concrete cell positions of 1 and 2 cells, size of the 64 cell cluster.
     //   ProbeEvolveCutscene   One long frame past the end: Finished fired, 512 cells shown.
@@ -829,16 +837,16 @@ public partial class SmokeTest : Node
         var  prelude    = new RnaWorld { Camera = camera, Center = Vector2.Zero, Size = 1f };
         bool isFinished = false;
         int  mutations  = -1;
-        prelude.Finished += (_, kinds) =>
-        {
-            isFinished = true;
-            mutations  = kinds.Length;
-        };
+        prelude.Evolving += (_, kinds) => mutations = kinds.Length;
+        prelude.Finished += () => isFinished = true;
         AddChild(prelude);
 
         // Two paired start links, A-U and G-C pair, a wrong base sticks as a mutation
         bool isStartOk    = 2 == prelude.PairedCount && RnaBase.U == RnaWorld.Pair(RnaBase.A) && RnaBase.G == RnaWorld.Pair(RnaBase.C);
         bool isMutationOk = !prelude.Attach(RnaWorld.Pair(prelude.Wanted)) && 1 == prelude.MutationCount && 2 == prelude.PairedCount && 1 == prelude.Mutations.Count;
+
+        // No evolving before the goal
+        bool isEarlyEvolveBlocked = !prelude.Evolve() && !prelude.IsEvolving;
         while (!prelude.IsGoalReached)
         {
             prelude.Attach(prelude.Wanted);
@@ -850,10 +858,21 @@ public partial class SmokeTest : Node
             && 3 == prelude.BreakAt(new Vector2(0f, RnaWorld.LINK_SPACING * (RnaWorld.GOAL_LINKS - 1)), 0.01f)
             && RnaWorld.GOAL_LINKS - 2 == prelude.LinkCount
             && 1 == prelude.MutationCount;
+
+        // Back at the goal: evolve once (a second press does nothing), the cell forms, a long frame ends it
+        while (!prelude.IsGoalReached)
+        {
+            prelude.Attach(prelude.Wanted);
+        }
+        var  end           = new Transform3D(Basis.Identity, new Vector3(0f, 30f, 10f));
+        prelude.Evolving  += (_, _) => prelude.CameraEnd = end;
+        bool isEvolveOk    = prelude.Evolve() && prelude.IsEvolving && !prelude.Evolve() && 1 == mutations && !isFinished;
+        prelude._Process(RnaGenesis.DURATION + 0.1);
+        bool isGenesisOk   = isFinished && camera.GlobalTransform.Origin.IsEqualApprox(end.Origin);
         prelude.Skip();
         prelude.QueueFree();
         camera.QueueFree();
-        return isStartOk && isMutationOk && isGoalOk && isBreakOk && isFinished && 1 == mutations;
+        return isStartOk && isMutationOk && isEarlyEvolveBlocked && isGoalOk && isBreakOk && isEvolveOk && isGenesisOk;
     }
 
     private bool ProbeMutations()

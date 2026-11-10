@@ -1,9 +1,12 @@
 // NOTE:
 //   Plays the cutscenes one after the other for a movie render: intro, the single cell
 //   stage with its editor transition, the multicellular stage with its editor transition.
+//   With CELLOUT_REEL_PRELUDE=1 it plays the RNA prelude instead: the strand reaches its
+//   goal with one mutation, evolves and the cell forms around it (Prelude/View/RnaGenesis.cs).
 //   No checks, the frames are for the eye. Quits by itself.
 //
 //   godot --path . res://tests/CutsceneReel.tscn --write-movie <dir>/f.png --fixed-fps 30
+//   $env:CELLOUT_REEL_PRELUDE = '1'; godot --path . res://tests/CutsceneReel.tscn --write-movie <dir>/f.png --fixed-fps 30
 
 //
 //   Chapters:
@@ -20,8 +23,9 @@ public partial class CutsceneReel : Node
     // ============================   PLAY THE REEL   ============================
     // ===========================================================================
     //
-    //   1. Start    Instantiates the main scene and keeps running while it is paused.
-    //   2. Script   Intro, single cell, editor, multicellular, editor, quit.
+    //   1. Start     Instantiates the main scene and keeps running while it is paused.
+    //   2. Script    Intro, single cell, editor, multicellular, editor, quit.
+    //   3. Prelude   RNA world, goal, evolve, the cell forms, quit.
     //
 
     private const int INTRO_FRAME = 2;
@@ -30,6 +34,12 @@ public partial class CutsceneReel : Node
     private const int MULTI_FRAME = 350;
     private const int CLOSE_SECOND_FRAME = 480;
     private const int QUIT_FRAME = 520;
+
+    // Prelude: the camera flies down for 1.6 s, the genesis takes 5.6 s = 168 frames
+    private static readonly bool IS_PRELUDE = "1" == OS.GetEnvironment("CELLOUT_REEL_PRELUDE");
+    private const int PRELUDE_GOAL_FRAME = 70;
+    private const int PRELUDE_EVOLVE_FRAME = 100;
+    private const int PRELUDE_QUIT_FRAME = 320;
 
     private Main _main;
     private int _frame;
@@ -59,6 +69,11 @@ public partial class CutsceneReel : Node
         {
             return;
         }
+        if (IS_PRELUDE)
+        {
+            PlayPrelude();
+            return;
+        }
         switch (_frame)
         {
             case INTRO_FRAME:
@@ -82,5 +97,47 @@ public partial class CutsceneReel : Node
                 GetTree().Quit();
                 break;
         }
+    }
+
+    // ---------------------------------------------------------------------------
+    // Prelude
+    //   RNA world, goal, evolve, the cell forms, quit.
+    // ---------------------------------------------------------------------------
+
+    private void PlayPrelude()
+    {
+        RnaWorld prelude = FindPrelude(_main);
+        switch (_frame)
+        {
+            case INTRO_FRAME:
+                _main.StartGame();
+                break;
+            case PRELUDE_GOAL_FRAME:
+                prelude?.Attach(RnaWorld.Pair(prelude.Wanted));
+                while (null != prelude && !prelude.IsGoalReached)
+                {
+                    prelude.Attach(prelude.Wanted);
+                }
+                break;
+            case PRELUDE_EVOLVE_FRAME:
+                prelude?.Evolve();
+                break;
+            case PRELUDE_QUIT_FRAME:
+                GetTree().Quit();
+                break;
+        }
+    }
+
+    private static RnaWorld FindPrelude(Node node)
+    {
+        foreach (Node child in node.GetChildren())
+        {
+            RnaWorld found = child as RnaWorld ?? FindPrelude(child);
+            if (null != found)
+            {
+                return found;
+            }
+        }
+        return null;
     }
 }

@@ -1,6 +1,7 @@
 // NOTE:
 //   The way into the game: the title menu over the paused soup, the RNA prelude
-//   (Prelude/RnaWorld.cs), the intro that builds the protocell, then the birth. Pauses
+//   (Prelude/RnaWorld.cs) that ends with the protocell forming around the strand, then
+//   the birth. Without the prelude (cutscene reel) the intro builds the protocell. Pauses
 //   the tree and hides the player while it runs, Main hides the HUD and reacts to
 //   Finished (HUD, populating, start banner).
 //
@@ -57,15 +58,19 @@ public partial class StartFlow : Node
     //
     //   1. Menu      Pauses the soup, hides the player, camera high above the spawn.
     //   2. Start     Fades the menu, then the RNA prelude (also after a retry).
-    //   3. Prelude   The RNA strand swims until it reaches a lipid vesicle (Prelude/RnaWorld.cs).
-    //   4. Intro     Flies the camera to the gameplay pose while the intro builds the protocell.
+    //   3. Prelude   The RNA strand copies its template, evolves and a cell forms around it (Prelude/RnaWorld.cs).
+    //   4. Intro     Without the prelude: flies the camera to the gameplay pose while the intro builds the protocell.
     //   5. Birth     Shows the player, resumes the game and reports Finished.
     //
 
     /// <summary>Whether the title menu or the intro still runs, the game is paused meanwhile.</summary>
     public bool IsInMenu { get; private set; }
 
+    /// <summary>Whether the last start went through the RNA prelude, Main picks the start banner by it.</summary>
+    public bool HasPlayedPrelude { get; private set; }
+
     private TitleMenu _menu;
+    private RnaWorld _prelude;
     private bool _isIntroRunning;
 
     // ---------------------------------------------------------------------------
@@ -103,6 +108,7 @@ public partial class StartFlow : Node
         {
             return;
         }
+        HasPlayedPrelude = false;
         if (isInstant)
         {
             if (IsInstanceValid(_menu))
@@ -130,30 +136,59 @@ public partial class StartFlow : Node
 
     // ---------------------------------------------------------------------------
     // Prelude
-    //   The RNA strand swims until it reaches a lipid vesicle (Prelude/RnaWorld.cs).
+    //   The RNA strand copies its template, evolves and a cell forms around it (Prelude/RnaWorld.cs).
     // ---------------------------------------------------------------------------
+
+    private const float DNA_BLEND_SECONDS = 1.2f;
 
     private void StartPrelude()
     {
         float size    = Player.BodySize();
         var   prelude = new RnaWorld { Camera = _camera.Camera, Center = Player.GlobalPosition, Size = size };
+        _prelude         = prelude;
+        HasPlayedPrelude = true;
         AddChild(prelude);
         prelude.CameraMoved += (focus, distance) => _camera.FollowBackdrop(focus, size, distance);
 
-        // The protocell is born where the strand found its vesicle and keeps its mutations (traits, EP, tint)
-        prelude.Finished += (vesicle, mutations) =>
+        // The protocell is born where the strand evolved and keeps its mutations (traits, EP, tint),
+        // the forming cell takes its color, the game camera takes the zoom over and the prelude
+        // camera glides into the gameplay pose around the cell. At the birth the DNA of the
+        // protocell starts where the formed helix lies.
+        prelude.Evolving += (center, mutations) =>
         {
-            prelude.QueueFree();
-            Player.GlobalPosition = vesicle;
+            Player.GlobalPosition = center;
             Player.ApplyMutations(mutations.Select(kind => (MutationKind)kind).ToList());
-            StartIntro();
+            prelude.CellColor = Player.BodyColor;
+            _camera.TakeOverZoom(prelude.Zoom, prelude.CameraDistance);
+            prelude.CameraEnd = _camera.PeekGamePose();
+        };
+        prelude.Finished += () =>
+        {
+            Player.Visual.BlendDnaFrom(prelude.DnaPose, DNA_BLEND_SECONDS);
+            prelude.QueueFree();
+            _prelude = null;
+            OnIntroFinished();
         };
         Log.Verbose("StartFlow", "RNA prelude started.");
     }
 
+    /// <summary>Ends a running RNA prelude at once (F10 cheats), the protocell is born right away.</summary>
+    /// <returns>False when no prelude runs.</returns>
+    /// <example><code>if (startFlow.SkipPrelude()) { /* the game runs now */ }</code></example>
+    public bool SkipPrelude()
+    {
+        if (null == _prelude || !IsInstanceValid(_prelude))
+        {
+            return false;
+        }
+        Log.Verbose("StartFlow", "RNA prelude skipped from outside.");
+        _prelude.Skip();
+        return true;
+    }
+
     // ---------------------------------------------------------------------------
     // Intro
-    //   Flies the camera to the gameplay pose while the intro builds the protocell.
+    //   Without the prelude: flies the camera to the gameplay pose while the intro builds the protocell.
     // ---------------------------------------------------------------------------
 
     private void StartIntro()

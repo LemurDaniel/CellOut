@@ -1,18 +1,17 @@
 // NOTE:
-//   Resolves everything that touches: the player eats food, bigger cells swallow smaller
-//   ones with pseudopods (the player too, in both directions), equal ones push apart.
+//   Resolves everything that touches: cells swallow food and smaller cells with
+//   pseudopods (the player too, in both directions), equal ones push apart.
 //   It does not process on its own: Main calls Resolve once per physics frame, between
 //   the coast update and the refill of the Spawner.
 //
 //   var contacts = new ContactResolver();
 //   contacts.Setup(session);
-//   contacts.SplashRequested += SpawnSplash;
 //   AddChild(contacts);
 //   contacts.Resolve(dt, playerSize, playerPosition, viewRadius);   // in _PhysicsProcess
 
 //
 //   Chapters:
-//     SETTINGS           The session, the splash signal and the kill reward.
+//     SETTINGS           The session and the kill reward.
 //     RESOLVE CONTACTS   Food, engulfing, player vs. cells and cells vs. cells per physics frame.
 //     ENGULF             Swallows in progress, the player inside a bigger cell, cell pairs.
 //
@@ -28,12 +27,9 @@ public partial class ContactResolver : Node
     // ==============================   SETTINGS   ===============================
     // ===========================================================================
     //
-    //   SplashRequested   A plop is due on the plane, Main spawns it.
-    //   Setup             The session with player, layers and coast, before AddChild.
-    //   KillReward        Biomass for an eaten cell.
+    //   Setup        The session with player, layers and coast, before AddChild.
+    //   KillReward   Biomass for an eaten cell.
     //
-
-    [Signal] public delegate void SplashRequestedEventHandler(Vector2 position, float radius, Color color);
 
     private const float CRITTER_GROWTH_CAP = 3f;    // critters grow up to this many player sizes
     private const float DESPAWN_VIEWS = 2.5f;       // food and cells this many view radii away despawn
@@ -66,7 +62,7 @@ public partial class ContactResolver : Node
     // ==========================   RESOLVE CONTACTS   ===========================
     // ===========================================================================
     //
-    //   1. Food               Attracts, swallows and cleans up food.
+    //   1. Food               Attracts and cleans up food, the player and cells start swallowing what they touch.
     //   2. Engulf             Pulls swallowed cells into their eaters, digests them when done.
     //   3. Player vs. cells   Swallow smaller cells, get swallowed by bigger ones, bump equal ones,
     //                         cells far away despawn.
@@ -85,12 +81,16 @@ public partial class ContactResolver : Node
 
         // ---------------------------------------------------------------------------
         // Food
-        //   Attracts, swallows and cleans up food.
+        //   Attracts and cleans up food, the player and cells start swallowing what they touch.
         // ---------------------------------------------------------------------------
 
         foreach (Node node in FoodLayer.GetChildren())
         {
             var   food     = (Food)node;
+            if (food.IsEngulfed || food.IsQueuedForDeletion())
+            {
+                continue;     // ENGULF moves it now
+            }
             if (null != Coast && FoodHabitat.Land == food.Habitat)
             {
                 food.GroundHeight = Coast.GroundHeight(food.Position) * playerSize;
@@ -109,11 +109,21 @@ public partial class ContactResolver : Node
             {
                 food.Position = food.Position.MoveToward(playerPosition, playerSize * 3f * dt);
             }
-            if (distance < playerSize * 0.9f)
+            if (distance < playerSize + food.Size * 0.5f)
             {
-                Player.AddBiomass(food.Value, food.IsMeat ? BiomassSource.Meat : BiomassSource.Plant);
-                EmitSignal(SignalName.SplashRequested, food.Position, food.Size * 3f, food.ColorOf());
-                food.QueueFree();
+                food.StartEngulf(Player);
+                continue;
+            }
+
+            // A cell that touches it swallows it too, the patch empties without the player
+            foreach (Node critterNode in CritterLayer.GetChildren())
+            {
+                if (critterNode is Critter grazer && !grazer.IsEngulfed && !grazer.IsQueuedForDeletion()
+                    && grazer.Position.DistanceTo(food.Position) < grazer.Radius + food.Size * 0.5f)
+                {
+                    food.StartEngulf(grazer);
+                    break;
+                }
             }
         }
 
@@ -210,12 +220,15 @@ public partial class ContactResolver : Node
     // ===========================================================================
     //
     //   UpdateEngulfing          Advances every swallow, hands out the reward of finished ones.
+    //   UpdateFoodEngulfing      The same for swallowed food: biomass for the player, nothing for a critter.
     //   EngulfPlayer             One frame of a bigger cell swallowing the player.
     //   ResolveCritterContacts   Checks every pair of cells once: start swallowing or push apart.
     //
 
     private const float ENGULF_SECONDS = 1.4f;     // from the first touch to digested
     private const float ENGULF_CONTACT = 0.3f;     // share of the prey radius that must touch the player
+    private const float FOOD_ENGULF_SECONDS = 0.6f;
+    private const float FOOD_ENGULF_REACH = 0.6f;  // food is small, the pseudopods reach out less than for a cell
 
     /*
       Every frame, for each swallowed cell:
@@ -277,6 +290,45 @@ public partial class ContactResolver : Node
                 hunter.Devour(prey.EngulfRadius, playerSize * CRITTER_GROWTH_CAP);
             }
             prey.QueueFree();
+        }
+        UpdateFoodEngulfing(dt);
+    }
+
+    /// <summary>Advances every swallowed piece of food, a smaller reach than for cells, runs after the reset of the reach.</summary>
+    private void UpdateFoodEngulfing(float dt)
+    {
+        foreach (Node node in FoodLayer.GetChildren())
+        {
+            if (node is not Food food || !food.IsEngulfed || food.IsQueuedForDeletion())
+            {
+                continue;
+            }
+
+            // Its eater is gone (eaten, freed)
+            if (food.Engulfer is not CellBody eater || !IsInstanceValid(eater) || eater.IsQueuedForDeletion())
+            {
+                food.ReleaseEngulf();
+                continue;
+            }
+
+            // Pseudopods towards the food, unless a bigger swallow already reaches further
+            float reach = Mathf.Sin(food.EngulfProgress * Mathf.Pi) * FOOD_ENGULF_REACH;
+            if (reach >= eater.EngulfReach)
+            {
+                eater.EngulfReach = reach;
+                eater.EngulfPoint = food.GlobalPosition;
+            }
+            if (!food.AdvanceEngulf(dt, FOOD_ENGULF_SECONDS))
+            {
+                continue;
+            }
+
+            // Digested: biomass only for the player, critters graze without growing
+            if (eater == Player)
+            {
+                Player.AddBiomass(food.Value, food.IsMeat ? BiomassSource.Meat : BiomassSource.Plant);
+            }
+            food.QueueFree();
         }
     }
 

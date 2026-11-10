@@ -134,7 +134,7 @@ public partial class FollowCamera : Node
     //   world bends to a planet (Plane3D.SetCurve).
     //
 
-    private const float ZOOM_STEP = 1.15f;
+    public const float ZOOM_STEP = 1.15f;           // the RNA prelude zooms in the same steps
     public const float MIN_ZOOM = 0.5f;
     public const float MAX_ZOOM = 2.5f;
     private const float TP_BLEND_SECONDS = 2.2f;
@@ -213,6 +213,17 @@ public partial class FollowCamera : Node
                 return false;
         }
         return true;
+    }
+
+    /// <summary>Takes over the zoom and the distance of another camera (the RNA prelude), so the game goes on from there.</summary>
+    /// <param name="zoomFactor">(Required) Wheel zoom, clamped to MIN_ZOOM..MAX_ZOOM.</param>
+    /// <param name="distance">(Required) Current distance to the focus, the camera eases out from it.</param>
+    /// <example><code>followCamera.TakeOverZoom(prelude.Zoom, prelude.CameraDistance);</code></example>
+    public void TakeOverZoom(float zoomFactor, float distance)
+    {
+        ZoomFactor   = Mathf.Clamp(zoomFactor, MIN_ZOOM, MAX_ZOOM);
+        _camDistance = distance;
+        Log.Verbose("FollowCamera", $"Zoom {ZoomFactor:F2} and distance {distance:F0} taken over.");
     }
 
     /// <summary>Zooms out (positive steps) or in (negative steps), clamped to MIN_ZOOM..MAX_ZOOM.</summary>

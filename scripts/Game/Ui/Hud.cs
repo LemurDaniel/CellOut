@@ -1,6 +1,6 @@
 // NOTE:
-//   HUD: stage, progress, health, air on land, banners, the diet bar, the editor, division and
-//   organism buttons and the language switch.
+//   HUD: stage, progress, health, air on land, banners, the diet bar, the editor icon bottom
+//   left (grey without points), the division and organism buttons and the language switch.
 //   Every text is a key in locale/translations.csv (German and English), translated
 //   here with Tr. Created by Main, which calls Bind(player).
 
@@ -25,8 +25,8 @@ public partial class Hud : CanvasLayer
     //   Bind          Follows the stats of the player.
     //   Refresh       Writes stage, goal, progress and health into the widgets.
     //   GoalText      Translated goal line of the current stage.
-    //   EditorRequested   The evolve button was pressed, Main opens the editor.
-    //   _Process      Offered buttons breathe, the air bar follows the breath.
+    //   EditorRequested   The editor icon was pressed, Main opens the editor.
+    //   _Process      Offered buttons and the ready editor icon breathe, the air bar follows the breath.
     //   ShowBanner    Big title with subtitle, fades out after a few seconds.
     //
 
@@ -52,11 +52,12 @@ public partial class Hud : CanvasLayer
     private const float OFFER_POP_SECONDS = 0.5f;
 
     private Button _divideButton;
-    private Button _evolveButton;
     private Button _organismButton;
+    private Button _editorIcon;
+    private Label _editorBadge;
     private float _time;
     private float _divideShownAt;
-    private float _evolveShownAt;
+    private float _editorReadyAt;
     private float _organismShownAt;
 
     public override void _Ready()
@@ -68,6 +69,7 @@ public partial class Hud : CanvasLayer
         BuildBanner();
         BuildLanguageButton();
         BuildActionButtons();
+        BuildEditorIcon();
         ApplyTexts();
     }
 
@@ -93,12 +95,23 @@ public partial class Hud : CanvasLayer
         _dietBar.Value   = _player.Diet;
         _dietBar.Visible = _player.Stage >= Player.SINGLE_STAGE;
 
-        // Offered actions pop in: divide once allowed, the editor once points wait,
-        // the organism once the full cluster is big enough
-        _divideShownAt         = Offer(_divideButton, _player.CanDivide, _divideShownAt);
-        _organismShownAt       = Offer(_organismButton, _player.CanEvolve, _organismShownAt);
-        _evolveShownAt         = Offer(_evolveButton, _player.Stage >= Player.SINGLE_STAGE && _player.EvolutionPoints > 0, _evolveShownAt);
-        _evolveButton.Text     = string.Format(Tr("EDITOR_OPEN"), _player.EvolutionPoints);
+        // Offered actions pop in: divide once allowed, the organism once the full cluster is big enough
+        _divideShownAt   = Offer(_divideButton, _player.CanDivide, _divideShownAt);
+        _organismShownAt = Offer(_organismButton, _player.CanEvolve, _organismShownAt);
+
+        // The editor icon is there from the single cell on, grey without points, it punches once points arrive
+        bool isEditorReady = _player.EvolutionPoints > 0;
+        if (isEditorReady && _editorIcon.Disabled)
+        {
+            _editorReadyAt = _time;
+            EditorStyle.Punch(_editorIcon, 1.25f);
+        }
+        _editorIcon.Visible     = _player.Stage >= Player.SINGLE_STAGE;
+        _editorIcon.Disabled    = !isEditorReady;
+        _editorIcon.TooltipText = string.Format(Tr("EDITOR_OPEN"), _player.EvolutionPoints);
+        _editorBadge.Text       = _player.EvolutionPoints.ToString();
+        _editorBadge.Visible    = isEditorReady;
+        _editorIcon.QueueRedraw();
     }
 
     /// <summary>Shows or hides an action button, a newly shown one pops in.</summary>
@@ -125,8 +138,11 @@ public partial class Hud : CanvasLayer
             _airBar.Value   = _player.Air * 100f;
         }
         Breathe(_divideButton, _divideShownAt, 0f);
-        Breathe(_evolveButton, _evolveShownAt, 1.3f);
         Breathe(_organismButton, _organismShownAt, 2.6f);
+        if (!_editorIcon.Disabled)
+        {
+            Breathe(_editorIcon, _editorReadyAt, 1.3f);
+        }
     }
 
     /// <summary>A gentle pulse once the pop-in is over, which tweens the same scale.</summary>
@@ -242,7 +258,9 @@ public partial class Hud : CanvasLayer
     //   BuildDietBar          Herbivore / omnivore / carnivore bar top right, from stage 1 on.
     //   BuildBanner           Centered title and subtitle, invisible until ShowBanner.
     //   BuildLanguageButton   Language switch bottom right.
-    //   BuildActionButtons    Editor, divide and organism buttons bottom center, each hidden until offered.
+    //   BuildActionButtons    Divide and organism buttons bottom center, each hidden until offered.
+    //   BuildEditorIcon       Round editor icon bottom left with a drawn helix and the points badge.
+    //   DrawHelix             The helix of the editor icon, white when ready, grey without points.
     //   NewLabel              Label with outline that ignores the mouse and is translated here.
     //   NewBar                Rounded progress bar without percentage.
     //   SetAlpha              Sets the modulate alpha of a control.
@@ -335,15 +353,83 @@ public partial class Hud : CanvasLayer
         row.AddThemeConstantOverride("separation", 18);
         bottom.AddChild(row);
 
-        _evolveButton = NewActionButton(new Color(0.95f, 0.85f, 0.35f));
-        _evolveButton.Pressed += () => EmitSignal(SignalName.EditorRequested);
-        row.AddChild(_evolveButton);
         _divideButton = NewActionButton(new Color(0.55f, 0.95f, 0.7f));
         _divideButton.Pressed += () => _player?.Divide();
         row.AddChild(_divideButton);
         _organismButton = NewActionButton(new Color(0.95f, 0.65f, 0.45f));
         _organismButton.Pressed += () => _player?.RequestEvolve();
         row.AddChild(_organismButton);
+    }
+
+    private const float EDITOR_ICON_SIZE = 76f;
+    private static readonly Color EDITOR_ACCENT = new(0.95f, 0.85f, 0.35f);
+    private static readonly Color EDITOR_GREY = new(0.55f, 0.6f, 0.62f);
+
+    private void BuildEditorIcon()
+    {
+        // No focus: E opens the editor through Main, a focused button would fire twice
+        _editorIcon = new Button
+        {
+            CustomMinimumSize = Vector2.One * EDITOR_ICON_SIZE,
+            Size              = Vector2.One * EDITOR_ICON_SIZE,
+            FocusMode         = Control.FocusModeEnum.None,
+            AutoTranslateMode = AutoTranslateModeEnum.Disabled,
+            Disabled          = true,
+            Visible           = false,
+        };
+        _editorIcon.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.BottomLeft);
+        _editorIcon.GrowVertical = Control.GrowDirection.Begin;
+        _editorIcon.Position    += new Vector2(24f, -24f);
+        _editorIcon.PivotOffset  = Vector2.One * EDITOR_ICON_SIZE * 0.5f;
+        EditorStyle.ApplyButton(_editorIcon, EDITOR_ACCENT);
+        int round = (int)(EDITOR_ICON_SIZE * 0.5f);
+        var grey  = EditorStyle.Pill(EDITOR_GREY.Darkened(0.65f), EDITOR_GREY.Darkened(0.2f));
+        _editorIcon.AddThemeStyleboxOverride("disabled", grey);
+        foreach (string state in new[] { "normal", "hover", "pressed", "disabled" })
+        {
+            ((StyleBoxFlat)_editorIcon.GetThemeStylebox(state)).SetCornerRadiusAll(round);
+        }
+        _editorIcon.Pressed += () => EmitSignal(SignalName.EditorRequested);
+        _editorIcon.Draw    += DrawHelix;
+        AddChild(_editorIcon);
+
+        // Points badge on the upper right rim
+        _editorBadge = NewLabel(16);
+        _editorBadge.HorizontalAlignment = HorizontalAlignment.Center;
+        StyleBoxFlat badge = EditorStyle.Pill(EDITOR_ACCENT.Darkened(0.2f), Colors.White, 0.5f);
+        badge.SetContentMarginAll(1);
+        badge.ContentMarginLeft  = 7;
+        badge.ContentMarginRight = 7;
+        _editorBadge.AddThemeStyleboxOverride("normal", badge);
+        _editorBadge.Position = new Vector2(EDITOR_ICON_SIZE - 26f, -8f);
+        _editorIcon.AddChild(_editorBadge);
+    }
+
+    /// <summary>Two strands winding around the middle with rungs between them, like the DNA of the protocell.</summary>
+    private void DrawHelix()
+    {
+        const int   STEPS  = 24;
+        const float TURNS  = 1.25f;
+        Color   color  = _editorIcon.Disabled ? EDITOR_GREY : Colors.White;
+        Vector2 center = Vector2.One * EDITOR_ICON_SIZE * 0.5f;
+        float   height = EDITOR_ICON_SIZE * 0.52f;
+        float   width  = EDITOR_ICON_SIZE * 0.2f;
+        var     left   = new Vector2[STEPS + 1];
+        var     right  = new Vector2[STEPS + 1];
+        for (int i = 0; i <= STEPS; i++)
+        {
+            float t     = (float)i / STEPS;
+            float phase = t * TURNS * Mathf.Tau;
+            float y     = center.Y + (t - 0.5f) * height;
+            left[i]  = new Vector2(center.X + Mathf.Sin(phase) * width, y);
+            right[i] = new Vector2(center.X - Mathf.Sin(phase) * width, y);
+            if (0 == i % 4 && i > 0 && i < STEPS)
+            {
+                _editorIcon.DrawLine(left[i], right[i], new Color(color, 0.6f), 2f, true);
+            }
+        }
+        _editorIcon.DrawPolyline(left, color, 3f, true);
+        _editorIcon.DrawPolyline(right, color, 3f, true);
     }
 
     /// <summary>Pill button without focus: Space and E act through the game, a focused button would fire twice.</summary>

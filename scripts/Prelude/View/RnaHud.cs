@@ -1,17 +1,20 @@
 // NOTE:
 //   The HUD of the RNA prelude (Prelude/RnaWorld.cs): the banner in the upper middle that
-//   fades out, and the status top left with the goal, the wanted base with the next ones
-//   and one line per mutation. A view: it only shows what Refresh hands in, every text
-//   goes through Tr() (locale/translations.csv). Builds itself when it enters the tree.
+//   fades out, the status top left with the goal, the wanted base with the next ones
+//   and one line per mutation, and the evolve button bottom center once the goal is reached.
+//   A view: it only shows what Refresh hands in and reports the button through a signal,
+//   every text goes through Tr() (locale/translations.csv). Builds itself when it enters the tree.
 //
 //   var hud = new RnaHud();
 //   AddChild(hud);
-//   hud.Refresh(new RnaHud.State(paired, goal, isGoalReached, wanted, upcoming, mutations));
+//   hud.EvolvePressed += () => prelude.Evolve();
+//   hud.Refresh(new RnaHud.State(paired, goal, isGoalReached, isEvolving, wanted, upcoming, mutations));
+//   hud.FadeOut();                     // the strand evolves, the cutscene takes the screen
 
 //
 //   Chapters:
-//     BUILD     Banner and status labels.
-//     REFRESH   Shows the state of the player chain.
+//     BUILD     Banner, status labels and the evolve button.
+//     REFRESH   Shows the state of the player chain, fades out for the cutscene.
 //
 
 using System.Collections.Generic;
@@ -25,14 +28,20 @@ public partial class RnaHud : CanvasLayer
     // ================================   BUILD   ================================
     // ===========================================================================
     //
-    //   UPCOMING_SHOWN   Template bases shown after the wanted one.
-    //   _Ready           Banner, goal, the wanted base and mutations.
-    //   NewLabel         HUD label with outline, translated by hand.
+    //   EvolvePressed       The evolve button was pressed.
+    //   UPCOMING_SHOWN      Template bases shown after the wanted one.
+    //   _Ready              Banner, goal, the wanted base, mutations and the evolve button.
+    //   BuildEvolveButton   Pill button bottom center like the stage buttons of the game HUD, hidden until offered.
+    //   NewLabel            HUD label with outline, translated by hand.
     //
+
+    [Signal] public delegate void EvolvePressedEventHandler();
 
     public const int UPCOMING_SHOWN = 2;            // template bases shown after the wanted one
     private const float BANNER_HOLD = 3.5f;
     private const float BANNER_FADE = 1.2f;
+    private const float FADE_OUT = 0.4f;
+    private static readonly Color EVOLVE_ACCENT = new(0.95f, 0.65f, 0.45f);    // like the organism button of the game HUD
 
     private Label _banner;
     private Label _bannerSub;
@@ -42,16 +51,21 @@ public partial class RnaHud : CanvasLayer
     private readonly Label[] _upcoming = new Label[UPCOMING_SHOWN];
     private Label _mutationLabel;
     private VBoxContainer _mutationList;
+    private Button _evolveButton;
+    private Control _root;
 
     public override void _Ready()
     {
         Layer = 10;
+        _root = new Control { MouseFilter = Control.MouseFilterEnum.Ignore };
+        _root.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+        AddChild(_root);
 
         // Banner in the upper middle, fades out after BANNER_HOLD
         var box = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
         box.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.TopWide);
         box.OffsetTop = 110;
-        AddChild(box);
+        _root.AddChild(box);
         _banner    = NewLabel(64);
         GameFonts.UseDisplay(_banner);
         _bannerSub = NewLabel(20);
@@ -69,7 +83,7 @@ public partial class RnaHud : CanvasLayer
         corner.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.TopLeft);
         corner.AddThemeConstantOverride("margin_left", 24);
         corner.AddThemeConstantOverride("margin_top", 20);
-        AddChild(corner);
+        _root.AddChild(corner);
         var status = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
         corner.AddChild(status);
         _goalLabel = NewLabel(22);
@@ -90,6 +104,30 @@ public partial class RnaHud : CanvasLayer
         _mutationList = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
         _mutationList.AddThemeConstantOverride("separation", 0);
         status.AddChild(_mutationList);
+        BuildEvolveButton();
+    }
+
+    private void BuildEvolveButton()
+    {
+        var bottom = new MarginContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
+        bottom.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+        bottom.AddThemeConstantOverride("margin_bottom", 40);
+        _root.AddChild(bottom);
+
+        // No focus: Space evolves through RnaWorld, a focused button would fire twice
+        _evolveButton = new Button
+        {
+            CustomMinimumSize   = new Vector2(280, 54),
+            FocusMode           = Control.FocusModeEnum.None,
+            AutoTranslateMode   = AutoTranslateModeEnum.Disabled,
+            SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter,
+            SizeFlagsVertical   = Control.SizeFlags.ShrinkEnd,
+            Visible             = false,
+        };
+        _evolveButton.AddThemeFontSizeOverride("font_size", 20);
+        EditorStyle.ApplyButton(_evolveButton, EVOLVE_ACCENT);
+        _evolveButton.Pressed += () => EmitSignal(SignalName.EvolvePressed);
+        bottom.AddChild(_evolveButton);
     }
 
     private static Label NewLabel(int fontSize)
@@ -105,28 +143,32 @@ public partial class RnaHud : CanvasLayer
     // ===============================   REFRESH   ===============================
     // ===========================================================================
     //
-    //   State     What the HUD shows: the goal, the wanted bases and the mutations.
-    //   Refresh   Writes every text new, also after a language change.
+    //   State     What the HUD shows: the goal, the wanted bases, the mutations and whether it evolves.
+    //   Refresh   Writes every text new, also after a language change, offers the evolve button.
+    //   FadeOut   Fades the whole HUD out when the strand evolves.
     //
 
     /// <summary>The state of the player chain the HUD shows.</summary>
     /// <param name="PairedCount">(Required) Links that paired correctly.</param>
     /// <param name="GoalLinks">(Required) Paired links the goal needs.</param>
-    /// <param name="IsGoalReached">(Required) The vesicle is called, the goal line points to it.</param>
+    /// <param name="IsGoalReached">(Required) Enough paired links, the evolve button is offered.</param>
+    /// <param name="IsEvolving">(Required) The strand already evolves, the button is gone.</param>
     /// <param name="Wanted">(Required) The base the next link needs.</param>
     /// <param name="Upcoming">(Required) The bases wanted after it, at most UPCOMING_SHOWN are shown.</param>
     /// <param name="Mutations">(Required) The traits of the mutation links on the chain.</param>
-    public readonly record struct State(int PairedCount, int GoalLinks, bool IsGoalReached, RnaBase Wanted, IReadOnlyList<RnaBase> Upcoming, IReadOnlyList<MutationKind> Mutations);
+    public readonly record struct State(int PairedCount, int GoalLinks, bool IsGoalReached, bool IsEvolving, RnaBase Wanted, IReadOnlyList<RnaBase> Upcoming, IReadOnlyList<MutationKind> Mutations);
 
     /// <summary>Shows a state, every text freshly translated.</summary>
     /// <param name="state">(Required) The state of the player chain.</param>
     public void Refresh(State state)
     {
-        _banner.Text    = Tr("PRELUDE_TITLE");
+        _banner.Text    = Tr("BANNER_START_TITLE");
         _bannerSub.Text = Tr("PRELUDE_TEXT");
 
         // The wanted base big in its color, the next ones small and dim behind it
-        _goalLabel.Text     = state.IsGoalReached ? Tr("PRELUDE_GOAL_VESICLE") : string.Format(Tr("PRELUDE_GOAL"), state.PairedCount, state.GoalLinks);
+        _goalLabel.Text     = state.IsGoalReached ? Tr("PRELUDE_GOAL_EVOLVE") : string.Format(Tr("PRELUDE_GOAL"), state.PairedCount, state.GoalLinks);
+        _evolveButton.Text    = Tr("ORGANISM_BUTTON");
+        _evolveButton.Visible = state.IsGoalReached && !state.IsEvolving;
         _wantedLabel.Text   = Tr("PRELUDE_WANTED");
         _wantedBase.Text    = state.Wanted.ToString();
         _wantedBase.AddThemeColorOverride("font_color", RnaPalette.ColorOf(state.Wanted));
@@ -153,5 +195,12 @@ public partial class RnaHud : CanvasLayer
             line.AddThemeColorOverride("font_color", mutation.IsGood ? new Color(0.6f, 1f, 0.65f) : new Color(1f, 0.5f, 0.5f));
             _mutationList.AddChild(line);
         }
+    }
+
+    /// <summary>Fades the whole HUD out, the cutscene of the evolving strand takes the screen.</summary>
+    public void FadeOut()
+    {
+        _evolveButton.Visible = false;
+        CreateTween().SetPauseMode(Tween.TweenPauseMode.Process).TweenProperty(_root, "modulate:a", 0f, FADE_OUT);
     }
 }

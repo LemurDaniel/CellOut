@@ -163,7 +163,7 @@ public partial class Intro : Node3D
         Material material = CellVisual3D.Material(LIPID_COLOR, 0.2f, 0.3f);
         for (int i = 0; i < LIPIDS; i++)
         {
-            (Vector3 target, Basis facing) = ShellSpot(i);
+            (Vector3 target, Basis facing) = ShellSpot(i, LIPIDS);
             MeshInstance3D mesh = CellVisual3D.AddMesh(this, CellVisual3D.RodMesh(), material, Vector3.Zero, Vector3.One * 0.001f);
             mesh.CastShadow = GeometryInstance3D.ShadowCastingSetting.Off;
             _lipids.Add(new Lipid(mesh, Rand.Angle(), Rand.Range(3f, 8f), Rand.Range(-0.4f, 1f), Rand.Range(0f, 0.5f), target, facing));
@@ -345,7 +345,8 @@ public partial class Intro : Node3D
     // ===========================================================================
     //
     //   Rod         Transform of the unit rod (RodMesh, along +Y) from one point to another, also used by RnaWorld.
-    //   ShellSpot   Spot i of LIPIDS on the flattened membrane, evenly spread, and its facing outwards.
+    //   ShellSpot   Spot i of n on the flattened membrane, evenly spread, and its facing outwards,
+    //               also used by Prelude/View/RnaGenesis.cs.
     //
 
     /// <summary>Transform that stretches the unit rod from one point to another.</summary>
@@ -371,10 +372,13 @@ public partial class Intro : Node3D
     /// Fibonacci sphere: height 1 - 2 (i + 0.5) / n, one golden angle further around per
     /// spot, which spreads the spots evenly. Flattened like the membrane (FLATTEN).
     /// </summary>
-    private static (Vector3 Spot, Basis Facing) ShellSpot(int index)
+    /// <param name="index">(Required) Number of the spot, 0 .. count - 1.</param>
+    /// <param name="count">(Required) Spots on the whole shell.</param>
+    /// <returns>The spot in body sizes and the facing that turns +Y outwards.</returns>
+    public static (Vector3 Spot, Basis Facing) ShellSpot(int index, int count)
     {
         const float GOLDEN_ANGLE = 2.39996f;
-        float   y      = 1f - 2f * (index + 0.5f) / LIPIDS;
+        float   y      = 1f - 2f * (index + 0.5f) / count;
         float   ring   = Mathf.Sqrt(1f - y * y);
         float   around = index * GOLDEN_ANGLE;
         var     normal = new Vector3(Mathf.Cos(around) * ring, y, Mathf.Sin(around) * ring);
