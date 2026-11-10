@@ -2,7 +2,7 @@
 //   Loader for the generated tree models (tools/blender/models/trees.py, assets/models/tree/):
 //   merges every mesh of a .glb into one ArrayMesh (one surface per Blender material) for
 //   multimeshes and gives every surface the wind shader (shaders/tree.gdshader) with the
-//   color of its material name. Used by World/Coast.cs (TREES).
+//   color of its material name. Used by Creature/Coast.cs (TREES).
 //
 //   ArrayMesh fern = TreeModels.MeshOf(TreeSpecies.Fern);
 //   float trunk = TreeModels.TRUNK_SHARE[(int)TreeSpecies.Fern] * height;   // trunk radius
@@ -29,7 +29,7 @@ public static class TreeModels
     //
     //   COUNT         Number of species.
     //   PATHS         Model per species.
-    //   TRUNK_SHARE   Trunk radius per unit of tree height, the collision of World/Coast.cs.
+    //   TRUNK_SHARE   Trunk radius per unit of tree height, the collision of Creature/Coast.cs.
     //
 
     public const int COUNT = 5;

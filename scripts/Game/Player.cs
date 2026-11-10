@@ -260,6 +260,7 @@ public partial class Player : CellBody
     //   IsOrganism       From stage 4 on: the body is a creature (also the land animal).
     //   EvolveAt         Biomass from which the full cluster may evolve, the next division step.
     //   CanEvolve        Full cluster (MAX_CELLS) and EvolveAt reached.
+    //   EvolvedAt        Biomass at the moment of becoming an organism.
     //   RequestEvolve    Asks Main to play the cutscene and open the creature editor.
     //   BecomeOrganism   Takes over the shaped body plan: one body, stage 4, every trait from the creature.
     //   CommitCreature   A later creature editor session: new body plan, points left.
@@ -274,6 +275,9 @@ public partial class Player : CellBody
     public float EvolveAt => DIVISION_BIOMASS * Mathf.Pow(DIVISION_GROWTH, System.Numerics.BitOperations.Log2(MAX_CELLS));
 
     public bool CanEvolve => MULTICELLULAR_STAGE == Stage && MAX_CELLS == CellCount && Biomass >= EvolveAt;
+
+    /// <summary>Biomass when the cluster became an organism (at least EvolveAt), 0 before. Later steps like the coast grow from it.</summary>
+    public float EvolvedAt { get; private set; }
 
     /// <summary>Asks Main to start the evolution into an organism, when CanEvolve allows it.</summary>
     /// <returns>True when the request went out.</returns>
@@ -306,6 +310,7 @@ public partial class Player : CellBody
         EvolutionPoints = pointsLeft;
         CellCount       = 1;
         Stage           = ORGANISM_STAGE;
+        EvolvedAt       = Biomass;
         UpdateRadius();
         ApplyDesign();
         Hp = MaxHp;
@@ -651,6 +656,7 @@ public partial class Player : CellBody
     // ===============================   GROWTH   ================================
     // ===========================================================================
     //
+    //   ApplyMutations Traits, EP and protocell hue from the mutations of the RNA prelude.
     //   AdvanceStage   Nucleus at stage 1, multicellular at stage 2 (from Divide), EP bonus on both.
     //   ApplyDesign    Recomputes every trait from the placed parts (or the creature) and the divisions,
     //                  takes the custom color of the design.
@@ -670,6 +676,35 @@ public partial class Player : CellBody
 
     private const float PROTOCELL_HP = 50f;
     private const float CELL_HP = 60f;
+    private const float MUTATION_HUE_SHIFT = 0.07f;  // per mutation of the RNA prelude
+
+    private readonly List<MutationKind> _mutations = new();
+
+    /// <summary>Mutations from the RNA prelude, their traits last through the cell phase (ApplyDesign).</summary>
+    public IReadOnlyList<MutationKind> Mutations => _mutations;
+
+    /// <summary>
+    /// Takes over the mutations the RNA strand caught in the prelude (Prelude/RnaWorld.cs):
+    /// their traits (Prelude/Mutation.cs), EP_PER_MUTATION evolution points each and a hue shift of the protocell.
+    /// </summary>
+    /// <param name="mutations">(Required) Mutations of the strand, empty changes nothing.</param>
+    /// <example><code>player.ApplyMutations(new[] { MutationKind.Tough, MutationKind.Sluggish });</code></example>
+    public void ApplyMutations(IReadOnlyList<MutationKind> mutations)
+    {
+        if (0 == mutations.Count || !IsProtocell)
+        {
+            return;
+        }
+        _mutations.AddRange(mutations);
+        EvolutionPoints += Mutation.EP_PER_MUTATION * mutations.Count;
+
+        Color tinted = PROTOCELL_COLOR;
+        tinted.H    = Mathf.Wrap(PROTOCELL_COLOR.H + MUTATION_HUE_SHIFT * _mutations.Count, 0f, 1f);
+        _stageColor = tinted;
+        ApplyDesign();
+        Log.Verbose("Player", $"Mutations from the prelude: {string.Join(", ", mutations)} -> {EvolutionPoints} EP, hue {tinted.H:F2}.");
+        EmitSignal(SignalName.StatsChanged);
+    }
 
     private void AdvanceStage()
     {
@@ -731,6 +766,16 @@ public partial class Player : CellBody
             _spikeAngles.AddRange(cell.SpikeAngles);
             _jawAngles.AddRange(cell.JawAngles);
             _plateAngles.AddRange(cell.PlateAngles);
+
+            // The mutations of the RNA prelude ride along through the cell phase
+            foreach (MutationKind kind in _mutations)
+            {
+                Mutation mutation = Mutation.Get(kind);
+                hpMultiplier     *= mutation.Health;
+                _speedMultiplier *= mutation.Speed;
+                _digestAll       *= mutation.Digest;
+                MagnetRange      *= mutation.Magnet;
+            }
         }
 
         hpMultiplier *= 1f + HP_PER_DIVISION * Divisions;

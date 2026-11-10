@@ -7,17 +7,19 @@
 //
 //   Chapters:
 //     BUILD WORLD          Environment, light, camera, layers, player and HUD.
-//     MENU AND INTRO       Title menu over the paused soup, then the birth of the protocell.
+//     MENU AND INTRO       Title menu over the paused soup, the RNA prelude, then the birth of the protocell.
 //     FOLLOW CAMERA        Tilted chase camera with wheel zoom, third person over the islands, sky and planet.
 //     RESOLVE CONTACTS     Food, player vs. cells and cells vs. cells per physics frame.
 //     SPAWN                Food and cells around the view.
 //     REACT TO EVENTS      Pops, the cell editor, stage changes and deaths.
+//     PLAY SHORT CUTSCENES The stage cutscene and the transition into an editor.
 //     EVOLVE INTO ORGANISM Cutscene from 64 cells to the clay blob, creature editor, the new sea.
 //     COAST AND CHEATS     The coast of the organism stage, land checks, the F10 stage jumps.
 //     HELPERS              Value scale, kill reward, view radius, splash and layers.
 //
 
 using System.Collections.Generic;
+using System.Linq;
 using Godot;
 
 namespace CellOut;
@@ -146,7 +148,7 @@ public partial class Main : Node2D
 
         ShowMenu();
 
-        // Try again after a game over: no title menu, straight into the intro
+        // Try again after a game over: no title menu, straight into the RNA prelude
         if (_isRestartQueued)
         {
             _isRestartQueued = false;
@@ -158,9 +160,11 @@ public partial class Main : Node2D
     // ===========================   MENU AND INTRO   ============================
     // ===========================================================================
     //
-    //   1. Menu     Pauses the soup, hides player and HUD, camera high above the spawn.
-    //   2. Start    Flies the camera down while the intro builds the protocell.
-    //   3. Birth    Shows player and HUD, resumes the game, the soup starts filling, start banner.
+    //   1. Menu      Pauses the soup, hides player and HUD, camera high above the spawn.
+    //   2. Start     Fades the menu, then the RNA prelude (also after a retry).
+    //   3. Prelude   The RNA strand swims until it reaches a lipid vesicle (Prelude/RnaWorld.cs).
+    //   4. Intro     Flies the camera to the gameplay pose while the intro builds the protocell.
+    //   5. Birth     Shows player and HUD, resumes the game, the soup starts filling, start banner.
     //
 
     private const float MENU_CAMERA_DISTANCE = 26f;  // in player sizes
@@ -200,13 +204,14 @@ public partial class Main : Node2D
 
     // ---------------------------------------------------------------------------
     // Start
-    //   Flies the camera down while the intro builds the protocell.
+    //   Fades the menu, then the RNA prelude (also after a retry).
     // ---------------------------------------------------------------------------
 
-    /// <summary>Leaves the title menu: plays the intro, or skips it.</summary>
-    /// <param name="isInstant">(Optional) Skips menu fade and intro, e.g. in the smoke test. Defaults to false.</param>
+    /// <summary>Leaves the title menu: plays the RNA prelude and the intro, or skips them.</summary>
+    /// <param name="isInstant">(Optional) Skips menu fade, prelude and intro, e.g. in the smoke test. Defaults to false.</param>
+    /// <param name="isPreludeSkipped">(Optional) Goes straight to the intro, e.g. for the cutscene reel. Defaults to false.</param>
     /// <example><code>main.StartGame(isInstant: true);</code></example>
-    public void StartGame(bool isInstant = false)
+    public void StartGame(bool isInstant = false, bool isPreludeSkipped = false)
     {
         if (!IsInMenu || _isIntroRunning)
         {
@@ -223,20 +228,58 @@ public partial class Main : Node2D
             return;
         }
 
-        // The gameplay pose comes from UpdateCamera, then the camera returns to the menu pose for the flight
-        Transform3D menuPose = _camera.GlobalTransform;
-        float       far      = _camera.Far;
-        UpdateCamera(0f);
-        Transform3D gamePose = _camera.GlobalTransform;
-        _camera.GlobalTransform = menuPose;
-        _camera.Far             = Mathf.Max(far, _camera.Far);
-
         // The menu fades itself out, also when the start did not come from its button
         _isIntroRunning = true;
         if (IsInstanceValid(_menu))
         {
             _menu.Start();
         }
+        if (isPreludeSkipped)
+        {
+            StartIntro();
+            return;
+        }
+        StartPrelude();
+    }
+
+    // ---------------------------------------------------------------------------
+    // Prelude
+    //   The RNA strand swims until it reaches a lipid vesicle (Prelude/RnaWorld.cs).
+    // ---------------------------------------------------------------------------
+
+    private void StartPrelude()
+    {
+        float size    = Player.BodySize();
+        var   prelude = new RnaWorld { Camera = _camera, Center = Player.GlobalPosition, Size = size };
+        AddChild(prelude);
+        prelude.CameraMoved += (focus, distance) => _backdrop.Follow(focus, size, ViewRadiusAt(distance));
+
+        // The protocell is born where the strand found its vesicle and keeps its mutations (traits, EP, tint)
+        prelude.Finished += (vesicle, mutations) =>
+        {
+            prelude.QueueFree();
+            Player.GlobalPosition = vesicle;
+            Player.ApplyMutations(mutations.Select(kind => (MutationKind)kind).ToList());
+            StartIntro();
+        };
+        Log.Verbose("Main", "RNA prelude started.");
+    }
+
+    // ---------------------------------------------------------------------------
+    // Intro
+    //   Flies the camera to the gameplay pose while the intro builds the protocell.
+    // ---------------------------------------------------------------------------
+
+    private void StartIntro()
+    {
+        // The gameplay pose comes from UpdateCamera, then the camera returns to its current pose for the flight
+        Transform3D startPose = _camera.GlobalTransform;
+        float       far       = _camera.Far;
+        UpdateCamera(0f);
+        Transform3D gamePose = _camera.GlobalTransform;
+        _camera.GlobalTransform = startPose;
+        _camera.Far             = Mathf.Max(far, _camera.Far);
+
         var intro = new Intro
         {
             Camera    = _camera,
@@ -251,7 +294,7 @@ public partial class Main : Node2D
         Vector2 spawn = Player.GlobalPosition;
         float   size  = Player.BodySize();
         intro.CameraMoved += distance => _backdrop.Follow(spawn, size, ViewRadiusAt(distance));
-        _backdrop.Follow(spawn, size, ViewRadiusAt(menuPose.Origin.DistanceTo(Plane3D.To3D(spawn))));
+        _backdrop.Follow(spawn, size, ViewRadiusAt(startPose.Origin.DistanceTo(Plane3D.To3D(spawn))));
         intro.Finished += () =>
         {
             intro.QueueFree();
@@ -1009,12 +1052,13 @@ public partial class Main : Node2D
     // ===========================================================================
     //
     //   OnCritterPopped    A popped cell leaves four rich meat chunks.
-    //   OnEvolutionReady   A stage advance opens the cell editor.
+    //   OnEvolutionReady   A stage advance opens the cell editor (after its stage cutscene).
     //   OpenEditor         Pauses and opens the cell editor, as organism the creature editor
-    //                      (E, HUD button, stage advance).
+    //                      (E, HUD button, stage advance), after the editor transition.
+    //   OpenEditorNow      The editor of the stage, without transition.
     //   OnEditorClosed     Resumes the game.
     //   OnPlayerDivided    Plop around the cluster, banner at 64 cells.
-    //   OnStageChanged     Banner per stage.
+    //   OnStageChanged     Stage cutscene, then the banner of the stage.
     //   OnPlayerDied       Game over: splash, the soup pauses, the game over screen shows.
     //   Restart            Reloads the scene, straight into a new game or to the title menu.
     //   OnPlayerLostCells  Red plops at the cluster edge and banner, the cluster lives on.
@@ -1045,6 +1089,13 @@ public partial class Main : Node2D
             Editor.Refresh();
             return;
         }
+
+        // The stage cutscene runs first, the editor follows when it is done (PLAY SHORT CUTSCENES)
+        if (_shortCutscene is StageCutscene)
+        {
+            _isEditorQueued = true;
+            return;
+        }
         OpenEditor();
     }
 
@@ -1052,22 +1103,34 @@ public partial class Main : Node2D
     /// Pauses and opens the cell editor, from the single cell on and outside the menu.
     /// An organism gets the creature editor instead.
     /// </summary>
-    /// <returns>True when an editor opened.</returns>
+    /// <returns>True when an editor opens, right away with IsAnimationSkipped, else after the transition.</returns>
     /// <example><code>main.OpenEditor();   // what E and the HUD button do</code></example>
     public bool OpenEditor()
     {
-        if (IsInMenu || IsEvolving || Editor.IsOpen || CreatureEditor.IsOpen || Player.Stage < Player.SINGLE_STAGE)
+        bool isBusy = IsInMenu || IsEvolving || null != _shortCutscene || Editor.IsOpen || CreatureEditor.IsOpen;
+        if (isBusy || Player.Stage < Player.SINGLE_STAGE)
         {
             return false;
         }
         GetTree().Paused = true;
+        if (IsAnimationSkipped)
+        {
+            OpenEditorNow();
+            return true;
+        }
+        PlayEditorTransition();
+        return true;
+    }
+
+    /// <summary>The editor of the stage: the creature editor for an organism, else the cell editor.</summary>
+    private void OpenEditorNow()
+    {
         if (Player.IsOrganism)
         {
             CreatureEditor.Open(Player, isFirstShaping: false);
-            return true;
+            return;
         }
         Editor.Open(Player);
-        return true;
     }
 
     private void OnEditorClosed()
@@ -1085,21 +1148,22 @@ public partial class Main : Node2D
         }
     }
 
+    /// <summary>Stage cutscene, then the banner. The organism already had the evolve cutscene, it only gets its banner.</summary>
     private void OnStageChanged(int stage)
     {
         switch (stage)
         {
-            case 1:
-                Hud.ShowBanner("BANNER_SINGLE_TITLE", "BANNER_SINGLE_TEXT");
+            case Player.SINGLE_STAGE:
+                PlayStageCutscene(stage, "BANNER_SINGLE_TITLE", "BANNER_SINGLE_TEXT");
                 break;
             case Player.MULTICELLULAR_STAGE:
-                Hud.ShowBanner("BANNER_MULTI_TITLE", "BANNER_MULTI_TEXT");
+                PlayStageCutscene(stage, "BANNER_MULTI_TITLE", "BANNER_MULTI_TEXT");
                 break;
             case Player.ORGANISM_STAGE:
                 Hud.ShowBanner("BANNER_ORGANISM_TITLE", "BANNER_ORGANISM_TEXT");
                 break;
             case Player.LAND_STAGE:
-                Hud.ShowBanner("BANNER_LAND_TITLE", "BANNER_LAND_TEXT");
+                PlayStageCutscene(stage, "BANNER_LAND_TITLE", "BANNER_LAND_TEXT");
                 break;
         }
     }
@@ -1120,7 +1184,7 @@ public partial class Main : Node2D
     // Survives the scene reload: the new Main starts the game right away instead of the menu
     private static bool _isRestartQueued;
 
-    /// <summary>A fresh soup: reloads the scene, a restart skips the title menu and plays the intro.</summary>
+    /// <summary>A fresh soup: reloads the scene, a restart skips the title menu and plays the RNA prelude.</summary>
     /// <param name="isToMenu">(Required) True shows the title menu, false starts a new game at once.</param>
     public void Restart(bool isToMenu)
     {
@@ -1139,6 +1203,77 @@ public partial class Main : Node2D
             SpawnSplash(edge, Player.Radius * 1.5f, new Color(1f, 0.4f, 0.4f));
         }
         Hud.ShowBanner("BANNER_CELLS_LOST_TITLE", "BANNER_CELLS_LOST_TEXT");
+    }
+
+    // ===========================================================================
+    // =========================   PLAY SHORT CUTSCENES   ========================
+    // ===========================================================================
+    //
+    //   IsAnimationSkipped     Plays both instantly, e.g. in the smoke test and for the F10 cheats.
+    //   PlayStageCutscene      Pauses, hides the HUD, shows the stage, then banner and a queued editor.
+    //   PlayEditorTransition   Dive into the body, the editor opens when the screen is covered.
+    //   PlayerCenter           The rendered center of the player body in 3D.
+    //
+    //   Only one short cutscene runs at a time. A stage advance during one gets its banner only.
+    //
+
+    /// <summary>(Optional) Skips the stage cutscenes and the editor transition. Defaults to false.</summary>
+    public bool IsAnimationSkipped { get; set; }
+
+    private Node3D _shortCutscene;
+    private bool _isEditorQueued;
+
+    /// <summary>Celebrates a stage advance, the banner and a queued editor follow when it is done.</summary>
+    /// <param name="stage">(Required) The stage just reached.</param>
+    /// <param name="titleKey">(Required) Banner title key in locale/translations.csv.</param>
+    /// <param name="textKey">(Required) Banner text key.</param>
+    private void PlayStageCutscene(int stage, string titleKey, string textKey)
+    {
+        if (IsAnimationSkipped || IsInMenu || IsEvolving || null != _shortCutscene)
+        {
+            Log.Verbose("Main", $"Stage {stage} without cutscene (skipped: {IsAnimationSkipped}, busy: {null != _shortCutscene}).");
+            Hud.ShowBanner(titleKey, textKey);
+            return;
+        }
+        GetTree().Paused = true;
+        Hud.Visible      = false;
+        var cutscene = new StageCutscene { Camera = _camera, Center = PlayerCenter(), Size = Player.BodySize(), Stage = stage };
+        _shortCutscene = cutscene;
+        AddChild(cutscene);
+        cutscene.Finished += () =>
+        {
+            cutscene.QueueFree();
+            _shortCutscene   = null;
+            Hud.Visible      = true;
+            GetTree().Paused = false;
+            Hud.ShowBanner(titleKey, textKey);
+            if (_isEditorQueued)
+            {
+                _isEditorQueued = false;
+                OpenEditor();
+            }
+        };
+    }
+
+    /// <summary>Dives into the body, the editor opens when the screen is covered. The game is already paused.</summary>
+    private void PlayEditorTransition()
+    {
+        var transition = new EditorTransition { Camera = _camera, Center = PlayerCenter(), Size = Player.BodySize(), Tint = Player.BodyColor };
+        _shortCutscene = transition;
+        AddChild(transition);
+
+        // The transition fades its flash out over the editor and frees itself
+        transition.Finished += () =>
+        {
+            _shortCutscene = null;
+            OpenEditorNow();
+        };
+    }
+
+    /// <summary>The creature visual of an organism (lifted on land, dropped on the planet), else the cell on the plane.</summary>
+    private Vector3 PlayerCenter()
+    {
+        return Player.IsOrganism && null != Player.CreatureVisual ? Player.CreatureVisual.GlobalPosition : Plane3D.To3D(Player.GlobalPosition);
     }
 
     // ===========================================================================
@@ -1166,7 +1301,7 @@ public partial class Main : Node2D
     /// <example><code>if (player.CanEvolve) main.StartEvolve(isInstant: true);</code></example>
     public bool StartEvolve(bool isInstant = false)
     {
-        if (IsEvolving || IsInMenu || !Player.CanEvolve)
+        if (IsEvolving || IsInMenu || null != _shortCutscene || !Player.CanEvolve)
         {
             return false;
         }
@@ -1260,7 +1395,8 @@ public partial class Main : Node2D
 
     public Coast Coast { get; private set; }
 
-    public float CoastAt => Player.EvolveAt * COAST_GROWTH;
+    // Grows from the biomass of the evolution, not from EvolveAt: a long multicellular phase must not bring the coast right away
+    public float CoastAt => Mathf.Max(Player.EvolveAt, Player.EvolvedAt) * COAST_GROWTH;
 
     private void UpdateCoast()
     {
@@ -1309,11 +1445,28 @@ public partial class Main : Node2D
     /// <example><code>main.CheatTo(CheatTarget.Organism);</code></example>
     public void CheatTo(CheatTarget target)
     {
-        if (IsInMenu || IsEvolving)
+        if (IsInMenu || IsEvolving || null != _shortCutscene)
         {
             return;
         }
         Log.Verbose("Main", $"Cheat -> {target}.");
+
+        // Stage jumps skip the short cutscenes, the recursion restores the flag on the way out
+        bool wasSkipped = IsAnimationSkipped;
+        IsAnimationSkipped = true;
+        try
+        {
+            ApplyCheat(target);
+        }
+        finally
+        {
+            IsAnimationSkipped = wasSkipped;
+        }
+    }
+
+    /// <summary>The jump itself, see CheatTo.</summary>
+    private void ApplyCheat(CheatTarget target)
+    {
         switch (target)
         {
             case CheatTarget.Points:

@@ -204,7 +204,7 @@ public partial class CellVisual3D : Node3D
         GlobalPosition = Plane3D.To3D(Body.GlobalPosition, -Plane3D.Drop(Body.GlobalPosition));
         Rotation       = new Vector3(0f, Plane3D.FacingToYaw(Body.Facing), 0f);
         Scale          = Vector3.One * Body.Radius;
-        Visible        = !Body.IsHidden && !(Body.IsGhost && _time % 0.2f < 0.1f);
+        Visible        = !Body.IsHidden && !(Body.IsGhost && !GetTree().Paused && _time % 0.2f < 0.1f);   // the invulnerable time stands still while paused
 
         // Divided cells glide out of their mothers with a little overshoot
         if (_splitTime < SPLIT_SECONDS)

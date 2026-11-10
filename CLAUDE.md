@@ -1,10 +1,10 @@
 # CLAUDE.md – Cell Out
 
-Evolutionsspiel in Godot 4.7 .NET (C#): Protozelle → Einzeller → Mehrzeller → Lebewesen → Landtier. F10 öffnet ein Cheat-Menü mit Stufen-Sprüngen. Stand und Entscheidungen: `PROGRESS.md`.
+Evolutionsspiel in Godot 4.7 .NET (C#): (RNA-Welt als spielbare Vorstufe, `Prelude/`) → Protozelle → Einzeller → Mehrzeller → Lebewesen → Landtier. F10 öffnet ein Cheat-Menü mit Stufen-Sprüngen. Stand und Entscheidungen: `PROGRESS.md`.
 
 ## Regeln
 - Code Style: Projekt-Skill `.claude/skills/code-style/` (Kopie des User-Skills, auf C#/PowerShell/JS/Python gekürzt; Header mit Usage, Kapitel-/Abschnitts-Banner, englische Kommentare und Bezeichner, `UPPER_SNAKE`-Konstanten, `is`/`has`-Bools, `null` links). Vor dem Schreiben laden.
-- C#: Namespace `CellOut`, `public partial class`, Dateiname = Klassenname. Shelves unter `scripts/` (`Core`, `Cells`, `World`, `Ui`), jeder Ordner mit README.
+- C#: Namespace `CellOut`, `public partial class`, Dateiname = Klassenname. Shelves unter `scripts/` primär nach Ära, sekundär nach Domain: `Core` (stage-neutrale Helfer), `Game` (Loop, `Player`, Cutscenes, `Ui`, alles über mehrere Ären), `Prelude` (RNA-Welt), `Cell` (Protozelle–Mehrzeller, `Editor/`), `Creature` (Lebewesen–Landtier, `Editor/`). Jeder Ordner mit README.
 - Keine fremden Assets: Grafik prozedural in 3D (Primitive-Meshes + Shader in `shaders/`). Ausnahme: eigene, generierte Modelle aus `tools/blender/` (Builder je Familie in `models/*.py`, registriert in `build.models.py`, `Build-Models.ps1 [-Only tree/]` → `assets/models/creature/`, `cell/`, `tree/`), geladen über `Core/PartModels.cs` (Teile) bzw. `Core/TreeModels.cs` (Bäume, Multimesh), nie von Hand in Blender ändern. Neue Modell-Familie = neues Modul in `tools/blender/models/`. Logik bleibt 2D auf der Ebene, Umrechnung über `Plane3D`. Ab Landtier krümmt sich die Welt (Planet): neue Szenerie-Shader binden `shaders/planet.gdshaderinc` ein (`planet_bend` im vertex), Körper ziehen `Plane3D.Drop()` von ihrer Höhe ab.
 - Neue Zell-Visuals in `CellVisual3D.BuildCell()` (Einheitsgröße, +X = vorne), Merkmal als Property in `CellBody` + in `ComputeSignature()` aufnehmen.
 - Gameplay-Werte immer relativ zu `Player.BodySize()` (Spawngröße, Tempo, Schaden, Zoom). Keine absoluten Pixelwerte.

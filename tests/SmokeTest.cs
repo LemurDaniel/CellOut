@@ -2,7 +2,7 @@
 //   Headless smoke test: starts the main scene, boosts biomass through all stages,
 //   places parts in every cell editor, kills and respawns the player, lets a hunter
 //   eat a bacterium, grows the full cluster and evolves it into an organism in the
-//   creature editor, walks it onto the island coast with the F10 cheats (third person), and checks swim speed, wheel zoom, the German/English texts and
+//   creature editor, walks it onto the island coast with the F10 cheats (third person), and checks the RNA prelude, swim speed, wheel zoom, the German/English texts and
 //   the editor rules (direction, thrust, diet, unlocks, refunds).
 //   Exit code 0 = all checks passed, 1 = a check failed. A frame cap prevents endless runs.
 //   Run by tools/Test-CellOut.ps1 after `dotnet build`.
@@ -105,6 +105,7 @@ public partial class SmokeTest : Node
                 && GetTree().Paused
                 && 0 == _main.FoodLayer.GetChildCount()
                 && 0 == _main.CritterLayer.GetChildCount();
+            _main.IsAnimationSkipped = true;
             _main.StartGame(isInstant: true);
             player.StageChanged += stage => _stagesSeen.Add(stage);
             player.Died         += () => _hasDied = true;
@@ -451,6 +452,8 @@ public partial class SmokeTest : Node
     //   Titelmenü               The game starts paused in the menu over an empty soup, StartGame leaves it.
     //   Intro endet             The intro ends in the gameplay camera pose and fires Finished.
     //   Evolve-Cutscene         The cutscene divides on to 512 cells and fires Finished.
+    //   Stufen-Cutscene         The stage cutscene fires Finished and puts the camera back where it was.
+    //   Editor-Übergang         The editor transition fires Finished once, puts the camera back and frees itself.
     //   Lebewesen               64 cells evolve: editor opens, the player becomes an organism, game resumes.
     //   Kreatur-Editor          Type first, fish parts refused, costs paid, one part per tail, part size clamped and free, tab switch, girth clamped,
     //                           coral by default, translucent picked for free.
@@ -510,7 +513,11 @@ public partial class SmokeTest : Node
             ("Zell-Gizmo", _isCellGizmoOk),
             ("Titelmenü", _isMenuShown && !_main.IsInMenu),
             ("Intro endet", ProbeIntro()),
+            ("RNA-Welt", ProbePrelude()),
+            ("Mutationen", ProbeMutations()),
             ("Evolve-Cutscene", ProbeEvolveCutscene()),
+            ("Stufen-Cutscene", ProbeStageCutscene()),
+            ("Editor-Übergang", ProbeEditorTransition()),
             ("Lebewesen", _isEvolveOk),
             ("Kreatur-Editor", _isCreatureEditorOk),
             ("Kreatur im Spiel", ProbeOrganismPlayer(player)),
@@ -519,6 +526,7 @@ public partial class SmokeTest : Node
             ("Kreatur-Geometrie", ProbeCreatureGeometry()),
             ("Texte Kreatur", ProbeCreatureTexts("en") && ProbeCreatureTexts("de")),
             ("Küste", ProbeCoast()),
+            ("Küste nach Evolve-Biomasse", player.EvolvedAt >= GROW_BIOMASS && _main.CoastAt > player.EvolvedAt),
             ("Landtier per Cheat", _isCheatPointsOk && player.IsLandAnimal && player.IsOnLand),
             ("Third Person", ProbeThirdPerson()),
             ("Futter Meer/Land", ProbeFoodHabitats()),
@@ -554,8 +562,12 @@ public partial class SmokeTest : Node
     //   ProbeRimLift          Spikes above each other at one angle fit, the same spot twice slides aside, lift clamps at the bottom pole.
     //   ProbeDropPreview      Ghost on a free rim spot, gone after placing, slid on the taken spot; a height handle raises the back.
     //   ProbeIntro            One long frame past the end: Finished fired, camera at CameraEnd.
+    //   ProbePrelude          RNA pairing, a mutation, the goal, bites (far miss, chain hit) and Skip.
+    //   ProbeMutations        Tough and Sluggish on a fresh protocell: HP, EP and speed.
     //   ProbeClusterLayout    Concrete cell positions of 1 and 2 cells, size of the 64 cell cluster.
     //   ProbeEvolveCutscene   One long frame past the end: Finished fired, 512 cells shown.
+    //   ProbeStageCutscene    One long frame past the end: Finished fired, camera back at its start pose.
+    //   ProbeEditorTransition One long frame past the end: Finished fired, camera back, queued for freeing.
     //   ProbeOrganismPlayer   Stage 4, one body, creature visual shown, cells hidden, no more division.
     //   ProbeCreatureStats    Loose organisms: fluke speed, jaw and spine directions.
     //   OrganismProbe         A loose player grown to 64 cells and turned into an organism.
@@ -763,6 +775,56 @@ public partial class SmokeTest : Node
         return isFinished && isAtEnd;
     }
 
+    private bool ProbePrelude()
+    {
+        var camera = new Camera3D();
+        AddChild(camera);
+        var  prelude    = new RnaWorld { Camera = camera, Center = Vector2.Zero, Size = 1f };
+        bool isFinished = false;
+        int  mutations  = -1;
+        prelude.Finished += (_, kinds) =>
+        {
+            isFinished = true;
+            mutations  = kinds.Length;
+        };
+        AddChild(prelude);
+
+        // Two paired start links, A-U and G-C pair, a wrong base sticks as a mutation
+        bool isStartOk    = 2 == prelude.PairedCount && RnaBase.U == RnaWorld.Pair(RnaBase.A) && RnaBase.G == RnaWorld.Pair(RnaBase.C);
+        bool isMutationOk = !prelude.Attach(RnaWorld.Pair(prelude.Wanted)) && 1 == prelude.MutationCount && 2 == prelude.PairedCount && 1 == prelude.Mutations.Count;
+        while (!prelude.IsGoalReached)
+        {
+            prelude.Attach(prelude.Wanted);
+        }
+        bool isGoalOk = RnaWorld.GOAL_LINKS == prelude.PairedCount && RnaWorld.GOAL_LINKS + 1 == prelude.LinkCount;
+
+        // A far bite misses, a bite into the second-to-last paired link (straight behind the head) breaks off three links, the mutation stays
+        bool isBreakOk = 0 == prelude.BreakAt(new Vector2(100f, 100f), 0.5f)
+            && 3 == prelude.BreakAt(new Vector2(0f, RnaWorld.LINK_SPACING * (RnaWorld.GOAL_LINKS - 1)), 0.01f)
+            && RnaWorld.GOAL_LINKS - 2 == prelude.LinkCount
+            && 1 == prelude.MutationCount;
+        prelude.Skip();
+        prelude.QueueFree();
+        camera.QueueFree();
+        return isStartOk && isMutationOk && isGoalOk && isBreakOk && isFinished && 1 == mutations;
+    }
+
+    private bool ProbeMutations()
+    {
+        // Tough (+5 % HP) and Sluggish (-3 % speed) on a fresh protocell: 50 * 1.05 HP, two EP more, slower
+        var probe = new Player();
+        AddChild(probe);
+        int   pointsBefore = probe.EvolutionPoints;
+        float speedBefore  = probe.CurrentSpeed();
+        probe.ApplyMutations(new[] { MutationKind.Tough, MutationKind.Sluggish });
+        bool isOk = Mathf.IsEqualApprox(probe.MaxHp, 52.5f)
+            && pointsBefore + 2 * Mutation.EP_PER_MUTATION == probe.EvolutionPoints
+            && Mathf.IsEqualApprox(probe.CurrentSpeed(), speedBefore * 0.97f)
+            && 2 == probe.Mutations.Count;
+        probe.QueueFree();
+        return isOk;
+    }
+
     private static bool ProbeSingleDeath()
     {
         var  probe   = new Player();
@@ -842,6 +904,44 @@ public partial class SmokeTest : Node
         cutscene.QueueFree();
         camera.QueueFree();
         return isFinished && isFullAtStart && isAtEnd;
+    }
+
+    private bool ProbeStageCutscene()
+    {
+        var camera = new Camera3D();
+        AddChild(camera);
+        var start = new Vector3(0f, 9f, 4f);
+        camera.Position = start;
+        var  cutscene   = new StageCutscene { Camera = camera, Center = Vector3.Zero, Size = 1f, Stage = Player.MULTICELLULAR_STAGE };
+        bool isFinished = false;
+        cutscene.Finished += () => isFinished = true;
+        AddChild(cutscene);
+
+        cutscene._Process(0.6);
+        bool isDiving = camera.Position.DistanceTo(Vector3.Zero) < start.Length() * 0.8f;
+        cutscene._Process(10.0);
+        bool isBack = camera.Position.IsEqualApprox(start);
+        cutscene.QueueFree();
+        camera.QueueFree();
+        return isFinished && isDiving && isBack;
+    }
+
+    private bool ProbeEditorTransition()
+    {
+        var camera = new Camera3D();
+        AddChild(camera);
+        var start = new Vector3(0f, 9f, 4f);
+        camera.Position = start;
+        var  transition = new EditorTransition { Camera = camera, Center = Vector3.Zero, Size = 1f };
+        int  finished   = 0;
+        transition.Finished += () => finished++;
+        AddChild(transition);
+        transition._Process(10.0);
+        transition._Process(0.1);
+        bool isBack  = camera.Position.IsEqualApprox(start);
+        bool isFreed = transition.IsQueuedForDeletion();
+        camera.QueueFree();
+        return 1 == finished && isBack && isFreed;
     }
 
     private static bool ProbeOrganismPlayer(Player player)
