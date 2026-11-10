@@ -57,6 +57,7 @@ public partial class Main : Node2D
     public override void _Ready()
     {
         GD.Randomize();
+        UserSettings.Load();   // language and graphics tier, before anything is built
 
         // ---------------------------------------------------------------------------
         // Scene

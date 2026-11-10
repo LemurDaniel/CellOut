@@ -27,6 +27,7 @@ public partial class TitleMenu : CanvasLayer
     //
     //   StartPressed      The player wants to play, the menu is fading out already.
     //   LanguagePressed   The language button was pressed, Main toggles via the HUD.
+    //   CycleGraphics     The graphics button: next tier (Core/GraphicsQuality.cs), remembered for the next start.
     //   Start             Fades out, emits StartPressed once and frees the menu.
     //   _UnhandledInput   Enter and Space start as well.
     //   _Notification     Re-translates after a locale change.
@@ -55,6 +56,14 @@ public partial class TitleMenu : CanvasLayer
             .SetTrans(Tween.TransitionType.Back).SetEase(Tween.EaseType.In);
         fade.Chain().TweenCallback(Callable.From(QueueFree));
         EmitSignal(SignalName.StartPressed);
+    }
+
+    /// <summary>Switches to the next graphics tier and remembers it.</summary>
+    private void CycleGraphics()
+    {
+        GraphicsQuality.Use(GraphicsQuality.Next());
+        UserSettings.SaveGraphics(GraphicsQuality.Tier);
+        Translate();
     }
 
     public override void _UnhandledInput(InputEvent @event)
@@ -115,7 +124,7 @@ public partial class TitleMenu : CanvasLayer
     // ===========================================================================
     //
     //   _Ready      Keeps running while paused, builds and fades in.
-    //   BuildUi     Vignette, centered logo with tag line, start and language buttons.
+    //   BuildUi     Vignette, centered logo with tag line, start button, graphics and language buttons.
     //   Translate   Texts of tag line and buttons.
     //   NewLabel    Label with outline, translated here.
     //
@@ -129,6 +138,7 @@ public partial class TitleMenu : CanvasLayer
     private Label _tagLine;
     private Button _startButton;
     private Button _languageButton;
+    private Button _graphicsButton;
 
     public override void _Ready()
     {
@@ -209,16 +219,30 @@ public partial class TitleMenu : CanvasLayer
         _startButton.MouseExited  += () => EditorStyle.ScaleTo(_startButton, 1f);
         buttonRow.AddChild(_startButton);
 
-        // Language switch bottom right, like in the HUD
+        // Settings bottom right: the language switch like in the HUD
         _languageButton = new Button
         {
             FocusMode         = Control.FocusModeEnum.None,
             AutoTranslateMode = AutoTranslateModeEnum.Disabled,
         };
         _languageButton.AddThemeFontSizeOverride("font_size", 14);
-        _languageButton.SizeFlagsHorizontal = Control.SizeFlags.ShrinkEnd;
-        _languageButton.SizeFlagsVertical   = Control.SizeFlags.ShrinkEnd;
-        _languageButton.Pressed            += () => EmitSignal(SignalName.LanguagePressed);
+        _languageButton.Pressed += () => EmitSignal(SignalName.LanguagePressed);
+
+        // Graphics tier next to it, a click cycles Low, Medium, High
+        _graphicsButton = new Button
+        {
+            FocusMode         = Control.FocusModeEnum.None,
+            AutoTranslateMode = AutoTranslateModeEnum.Disabled,
+        };
+        _graphicsButton.AddThemeFontSizeOverride("font_size", 14);
+        _graphicsButton.Pressed += CycleGraphics;
+
+        var settings = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
+        settings.AddThemeConstantOverride("separation", 10);
+        settings.SizeFlagsHorizontal = Control.SizeFlags.ShrinkEnd;
+        settings.SizeFlagsVertical   = Control.SizeFlags.ShrinkEnd;
+        settings.AddChild(_graphicsButton);
+        settings.AddChild(_languageButton);
 
         // A margin container keeps it inside the screen at every size, also when the text grows
         var corner = new MarginContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
@@ -227,7 +251,7 @@ public partial class TitleMenu : CanvasLayer
         {
             corner.AddThemeConstantOverride(side, 20);
         }
-        corner.AddChild(_languageButton);
+        corner.AddChild(settings);
         _root.AddChild(corner);
     }
 
@@ -236,6 +260,7 @@ public partial class TitleMenu : CanvasLayer
         _tagLine.Text        = Tr("MENU_TAGLINE");
         _startButton.Text    = Tr("MENU_START");
         _languageButton.Text = Tr("LANGUAGE_BUTTON");
+        _graphicsButton.Text = string.Format(Tr("GRAPHICS_BUTTON"), Tr($"GRAPHICS_{GraphicsQuality.Tier}".ToUpperInvariant()));
     }
 
     private static Label NewLabel(int fontSize)

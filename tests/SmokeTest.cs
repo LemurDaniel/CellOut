@@ -470,8 +470,53 @@ public partial class SmokeTest : Node
     //   Fliegen                 A blob with one feather pair is too heavy, a slim body with two pairs could fly.
     //   Hirn                    A big brain adds 2 EP per level (4 instead of 2).
     //   Teil-Modelle            Every Blender part model (creature and cell) loads with meshes and its looping animation.
+    //   Grafikstufen            The tier cycles Low, Medium, High, owners hear the change, depth blur only above Low.
+    //   Wasserfarben            The water follows the stage: primordial, pond, sea; the lens and the depth fog are set.
     //
 
+    /// <summary>
+    /// Graphics tiers: Low, Medium and High cycle (the OpenGL fallback only has Low), every
+    /// switch raises Changed, depth of field exists above Low only. The tier of the run is restored.
+    /// </summary>
+    private static bool ProbeGraphicsTiers()
+    {
+        GraphicsTier before  = GraphicsQuality.Tier;
+        int          changes = 0;
+        void Count() => changes++;
+        GraphicsQuality.Changed += Count;
+
+        GraphicsQuality.Use(GraphicsTier.Low);
+        bool isLowPlain = GraphicsTier.Low == GraphicsQuality.Tier && !GraphicsQuality.HasDepthOfField;
+        bool isCycling  = GraphicsQuality.IsFallback
+            ? GraphicsTier.Low == GraphicsQuality.Next()
+            : GraphicsTier.Medium == GraphicsQuality.Next();
+        GraphicsQuality.Use(GraphicsQuality.Next());
+        bool isBlurred = GraphicsQuality.IsFallback || GraphicsQuality.HasDepthOfField;
+        GraphicsQuality.Use(GraphicsTier.High);
+        bool isAround = GraphicsTier.Low == GraphicsQuality.Next();
+
+        GraphicsQuality.Changed -= Count;
+        GraphicsQuality.Use(before);
+        return isLowPlain && isCycling && isBlurred && isAround && 3 == changes;
+    }
+
+    /// <summary>
+    /// Water colors: every early stage has its own palette, the sea from the cluster on, a
+    /// blend lies between two palettes, and the running game has its depth fog switched on.
+    /// </summary>
+    private bool ProbeWater()
+    {
+        bool isStaged = SoupPalette.PRIMORDIAL == SoupPalette.For(0)
+            && SoupPalette.POND == SoupPalette.For(Player.SINGLE_STAGE)
+            && SoupPalette.SEA == SoupPalette.For(Player.MULTICELLULAR_STAGE)
+            && SoupPalette.SEA == SoupPalette.For(Player.LAND_STAGE);
+        SoupPalette half = SoupPalette.PRIMORDIAL.Lerp(SoupPalette.SEA, 0.5f);
+        bool isBlended = half.Background.IsEqualApprox(SoupPalette.PRIMORDIAL.Background.Lerp(SoupPalette.SEA.Background, 0.5f))
+            && SoupPalette.SEA.Light.IsEqualApprox(SoupPalette.PRIMORDIAL.Lerp(SoupPalette.SEA, 2f).Light);
+        Godot.Collections.Array<Node> worlds = _main.FindChildren("*", nameof(WorldEnvironment), recursive: true, owned: false);
+        bool isFogged = worlds.Any(world => world.GetParent() is FollowCamera && ((WorldEnvironment)world).Environment.FogEnabled);
+        return isStaged && isBlended && isFogged;
+    }
     private void Check(Player player)
     {
         var checks = new List<(string Name, bool IsPassed)>
@@ -537,6 +582,8 @@ public partial class SmokeTest : Node
             ("Fliegen", ProbeFlight()),
             ("Hirn", ProbeBrain()),
             ("Teil-Modelle", ProbeModels()),
+            ("Grafikstufen", ProbeGraphicsTiers()),
+            ("Wasserfarben", ProbeWater()),
         };
 
         bool isOk = true;

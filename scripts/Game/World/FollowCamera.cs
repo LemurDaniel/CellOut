@@ -6,7 +6,7 @@
 //
 //   var followCamera = new FollowCamera();
 //   followCamera.Setup(session);
-//   AddChild(followCamera);            // builds environment, sun, camera and backdrop
+//   AddChild(followCamera);            // builds environment, sun, camera, backdrop and lens
 //   followCamera.StartClose();         // once the player is in the tree
 //   followCamera.Advance(dt);          // in _Process
 //   if (followCamera.HandleInput(@event)) GetViewport().SetInputAsHandled();
@@ -28,18 +28,17 @@ public partial class FollowCamera : Node
     private const float CAM_FOV = 50f;
     private const float CAM_TILT = 0.5f;            // tilt from vertical in radians
     private const float CAM_DISTANCE = 14f;         // camera distance in player sizes
-    private static readonly Color BACKGROUND_COLOR = new(0.04f, 0.13f, 0.17f);
-    private static readonly Color SOUP_AMBIENT = new(0.5f, 0.8f, 0.85f);
     private static readonly Color SKY_AMBIENT = new(0.78f, 0.84f, 0.92f);
     private const float SOUP_AMBIENT_ENERGY = 0.6f;
-    private const float SKY_AMBIENT_ENERGY = 0.8f;
+    private const float SKY_AMBIENT_ENERGY = 0.6f;
 
     // ===========================================================================
     // =============================   BUILD SCENE   =============================
     // ===========================================================================
     //
     //   Setup    The session with player and coast, before AddChild.
-    //   _Ready   Environment, sun, camera and backdrop.
+    //   _Ready   Environment, sun, camera, backdrop and lens, all set to the graphics tier.
+    //   ApplyGraphics   Viewport, environment and depth of field for the current tier (Core/GraphicsQuality.cs).
     //   Camera   The world camera, cutscenes borrow it.
     //
 
@@ -50,6 +49,8 @@ public partial class FollowCamera : Node
     private DirectionalLight3D _sun;
     private Godot.Environment _environment;
     private Backdrop _backdrop;
+    private SoupLens _lens;
+    private CameraAttributesPractical _attributes;
 
     private Player Player => _session.Player;
     private Coast Coast => _session.Coast;
@@ -66,15 +67,12 @@ public partial class FollowCamera : Node
         var environment = new Godot.Environment
         {
             BackgroundMode     = Godot.Environment.BGMode.Color,
-            BackgroundColor    = BACKGROUND_COLOR,
+            BackgroundColor    = _palette.Background,
             AmbientLightSource = Godot.Environment.AmbientSource.Color,
-            AmbientLightColor  = SOUP_AMBIENT,
+            AmbientLightColor  = _palette.Ambient,
             AmbientLightEnergy = SOUP_AMBIENT_ENERGY,
-            GlowEnabled        = true,
-            GlowIntensity      = 0.7f,
-            GlowBloom          = 0.05f,
-            SsaoEnabled        = true,                   // contact shadows where parts meet the body, radius in Advance
-            SsaoIntensity      = 1.6f,
+            // The sky is a backdrop only: as reflection source it would lay a pale sheen over every surface
+            ReflectedLightSource = Godot.Environment.ReflectionSource.Disabled,
         };
         _environment = environment;
         AddChild(new WorldEnvironment { Environment = environment });
@@ -89,12 +87,31 @@ public partial class FollowCamera : Node
         };
         AddChild(_sun);
 
-        Camera = new Camera3D { Fov = CAM_FOV };
+        _attributes = new CameraAttributesPractical();
+        Camera = new Camera3D { Fov = CAM_FOV, Attributes = _attributes };
         AddChild(Camera);
         Camera.MakeCurrent();
 
         _backdrop = new Backdrop();
         AddChild(_backdrop);
+        _lens = new SoupLens();
+        AddChild(_lens);
+
+        ApplyGraphics();
+        GraphicsQuality.Changed += ApplyGraphics;
+    }
+
+    public override void _ExitTree()
+    {
+        GraphicsQuality.Changed -= ApplyGraphics;
+    }
+
+    /// <summary>Glow, contact shadows (their radius follows the body in Advance), anti-aliasing and depth of field of the tier.</summary>
+    private void ApplyGraphics()
+    {
+        GraphicsQuality.ApplyTo(GetViewport());
+        GraphicsQuality.ApplyTo(_environment);
+        GraphicsQuality.ApplyTo(_attributes);
     }
 
     // ===========================================================================
@@ -108,6 +125,7 @@ public partial class FollowCamera : Node
     //   YawBehind      Camera yaw behind a facing.
     //   FollowFacing   Swings the third person camera behind the walking creature.
     //   Advance        Eases view, distance and focus, then moves camera, planet, sky and backdrop.
+    //   UpdateWater    Colors of the stage, the fade into the depth, depth of field and the lens.
     //   UpdateSky      From the dark soup to sky, sunlight and haze over the open sea.
     //
     //   Top view: tilted CAM_TILT from vertical, screen up = -y on the plane.
@@ -247,7 +265,7 @@ public partial class FollowCamera : Node
       2. Pose      Yaw and tilt from the top view pose to the orbit pose, distance and the
                    look-up point eased, the camera never dips into a hill.
       3. Planet    Curvature with the blend, flat around the camera.
-      4. Scenery   Shadows, contact shadows, sky and backdrop grow along.
+      4. Scenery   Shadows, contact shadows, water, sky and backdrop grow along.
     */
     /// <summary>Chase camera, top view or third person, its distance relative to the player size.</summary>
     /// <param name="dt">(Required) Frame time, 0 snaps focus and view to the player.</param>
@@ -303,15 +321,57 @@ public partial class FollowCamera : Node
         // Scenery: light, contact shadows and backdrop grow along, so shadows and motes fit at every size
         _sun.DirectionalShadowMaxDistance = Mathf.Lerp(_camDistance * 3f, playerSize * TP_SHADOW_DISTANCE, _view);
         _environment.SsaoRadius           = playerSize * SSAO_RADIUS;
+        UpdateWater(dt, playerSize);
         UpdateSky(playerSize);
         _backdrop.IsMotesShown = _view < 0.5f;
         _backdrop.Follow(new Vector2(_camFocus.X, _camFocus.Z), playerSize, ViewRadius());
     }
 
+    private const float PALETTE_SPEED = 0.6f;        // share per second the water eases towards the colors of a new stage
+    private const float DEPTH_FOG_START = 0.6f;      // the water thickens from this far below the plane, in player sizes
+    private const float DEPTH_FOG_DENSITY = 0.13f;   // per player size: the sea floor (3 sizes down) keeps about three quarters of its color
+    private const float FOCUS_FAR = 1.12f;           // depth of field: sharp up to this share of the camera distance, the floor lies behind
+    private const float FOCUS_FAR_BLEND = 0.5f;      // then blurring over this share of the distance
+    private const float FOCUS_NEAR = 0.55f;          // blobs between camera and cell blur in front of this share
+    private const float FOCUS_NEAR_BLEND = 0.3f;
+    private const float LAND_CONTRAST = 1.1f;        // third person: color grading of the open land
+    private const float LAND_SATURATION = 1.25f;
+    private const float TP_FOCUS_FAR = 60f;          // third person: sharp this many player sizes deep, only the far islands soften
+
+    private SoupPalette _palette = SoupPalette.PRIMORDIAL;
+
+    /*
+      The water around the player, everything relative to the body size:
+      - Colors:   ease towards the palette of the stage (SoupPalette), snap at dt 0
+      - Depth:    height fog below the plane, so the floor and deep motes sink into the water color
+      - Focus:    the plane of the player is sharp, floor and near blobs blur (tier Medium and High)
+      - Lens:     light shafts and vignette, fading out with the third person view
+    */
+    /// <summary>Colors, depth fade, depth of field and lens of the water.</summary>
+    private void UpdateWater(float dt, float playerSize)
+    {
+        SoupPalette target = SoupPalette.For(Player.Stage);
+        _palette = dt <= 0f ? target : _palette.Lerp(target, dt * PALETTE_SPEED);
+        _backdrop.Tint(_palette);
+        _environment.BackgroundColor = _palette.Background;
+
+        _attributes.DofBlurFarDistance    = Mathf.Lerp(_camDistance * FOCUS_FAR, playerSize * TP_FOCUS_FAR, _view);
+        _attributes.DofBlurFarTransition  = Mathf.Lerp(_camDistance * FOCUS_FAR_BLEND, playerSize * TP_FOCUS_FAR, _view);
+        _attributes.DofBlurNearDistance   = _camDistance * FOCUS_NEAR * (1f - _view);
+        _attributes.DofBlurNearTransition = _camDistance * FOCUS_NEAR_BLEND;
+
+        // Forward+ lights the open land flatter than the water: a little more contrast and color up there
+        _environment.AdjustmentEnabled    = true;
+        _environment.AdjustmentContrast   = Mathf.Lerp(1f, LAND_CONTRAST, _view);
+        _environment.AdjustmentSaturation = Mathf.Lerp(1f, LAND_SATURATION, _view);
+
+        _lens.Light(_palette.Light, 1f - _view, (_camFocus.X + _camFocus.Z * 0.5f) / Mathf.Max(ViewRadius(), 0.001f));
+    }
+
     private static readonly Color SKY_TOP = new(0.24f, 0.5f, 0.86f);
     private static readonly Color SKY_HORIZON = new(0.7f, 0.84f, 0.95f);
     private static readonly Color SEA_BELOW = new(0.07f, 0.3f, 0.42f);
-    private const float FOG_DENSITY = 0.0025f;       // per player size, half the light at ~280 sizes
+    private const float FOG_DENSITY = 0.0007f;       // per player size, half the light at ~1000 sizes: only far islands haze
     private ProceduralSkyMaterial _sky;
 
     /// <summary>Background, ambient light and haze between the soup (view 0) and the open sky (view 1).</summary>
@@ -319,9 +379,15 @@ public partial class FollowCamera : Node
     {
         if (_view <= 0f)
         {
+            // Under water: no haze with the distance, the water thickens with the depth instead
             _environment.BackgroundMode     = Godot.Environment.BGMode.Color;
-            _environment.FogEnabled         = false;
-            _environment.AmbientLightColor  = SOUP_AMBIENT;
+            _environment.FogEnabled         = true;
+            _environment.FogLightColor      = _palette.Background;
+            _environment.FogDensity         = 0f;
+            _environment.FogHeight          = -playerSize * DEPTH_FOG_START;
+            _environment.FogHeightDensity   = DEPTH_FOG_DENSITY / playerSize;
+            _environment.FogSunScatter      = 0f;
+            _environment.AmbientLightColor  = _palette.Ambient;
             _environment.AmbientLightEnergy = SOUP_AMBIENT_ENERGY;
             return;
         }
@@ -331,16 +397,17 @@ public partial class FollowCamera : Node
             _sky = new ProceduralSkyMaterial { SunAngleMax = 20f };
             _environment.Sky = new Sky { SkyMaterial = _sky };
         }
-        _sky.SkyTopColor                = BACKGROUND_COLOR.Lerp(SKY_TOP, _view);
-        _sky.SkyHorizonColor            = BACKGROUND_COLOR.Lerp(SKY_HORIZON, _view);
-        _sky.GroundHorizonColor         = BACKGROUND_COLOR.Lerp(SKY_HORIZON, _view);
-        _sky.GroundBottomColor          = BACKGROUND_COLOR.Lerp(SEA_BELOW, _view);
+        _sky.SkyTopColor                = _palette.Background.Lerp(SKY_TOP, _view);
+        _sky.SkyHorizonColor            = _palette.Background.Lerp(SKY_HORIZON, _view);
+        _sky.GroundHorizonColor         = _palette.Background.Lerp(SKY_HORIZON, _view);
+        _sky.GroundBottomColor          = _palette.Background.Lerp(SEA_BELOW, _view);
         _environment.BackgroundMode     = Godot.Environment.BGMode.Sky;
         _environment.FogEnabled         = true;
         _environment.FogLightColor      = SKY_HORIZON;
         _environment.FogDensity         = FOG_DENSITY * _view / playerSize;
+        _environment.FogHeightDensity   = 0f;
         _environment.FogSkyAffect       = 0f;
-        _environment.AmbientLightColor  = SOUP_AMBIENT.Lerp(SKY_AMBIENT, _view);
+        _environment.AmbientLightColor  = _palette.Ambient.Lerp(SKY_AMBIENT, _view);
         _environment.AmbientLightEnergy = Mathf.Lerp(SOUP_AMBIENT_ENERGY, SKY_AMBIENT_ENERGY, _view);
     }
 

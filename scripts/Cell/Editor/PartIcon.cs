@@ -49,7 +49,7 @@ public partial class PartIcon : SubViewportContainer
             AmbientLightSource = Godot.Environment.AmbientSource.Color,
             AmbientLightColor  = new Color(0.68f, 0.74f, 0.88f),
             AmbientLightEnergy = 0.7f,
-            SsaoEnabled        = true,                   // contact shadows where parts meet the body (unit scale)
+            SsaoEnabled        = GraphicsTier.Low != GraphicsQuality.Tier,   // contact shadows where parts meet the body (unit scale)
             SsaoRadius         = 0.35f,
             SsaoIntensity      = 1.6f,
         };

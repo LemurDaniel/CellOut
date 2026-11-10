@@ -202,13 +202,14 @@ public partial class Hud : CanvasLayer
     private const string LOCALE_GERMAN = "de";
     private const string LOCALE_ENGLISH = "en";
 
-    /// <summary>Switches between German and English, every text follows via _Notification.</summary>
+    /// <summary>Switches between German and English and remembers it, every text follows via _Notification.</summary>
     public void ToggleLanguage()
     {
         bool   isGerman = TranslationServer.GetLocale().StartsWith(LOCALE_GERMAN);
         string locale   = isGerman ? LOCALE_ENGLISH : LOCALE_GERMAN;
         Log.Verbose("Hud", $"Language switched to '{locale}'.");
         TranslationServer.SetLocale(locale);
+        UserSettings.SaveLocale(locale);
     }
 
     public override void _Notification(int what)
