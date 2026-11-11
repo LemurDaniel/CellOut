@@ -3,9 +3,10 @@
 //   (shaders/greyout.gdshader) and the panel that slides in from the left (background:
 //   shaders/editor_panel.gdshader, a wobbling membrane edge) with header (title, diet
 //   bar), body (palette left, preview right, both handed in) and footer (info card,
-//   points badge, done button). The panel and its highlights take on a hint of the diet.
-//   A view: CellEditor feeds it through Refresh and ShowInfo, it reports DonePressed,
-//   SlidOut and AccentChanged.
+//   size slider of the picked part, points badge, done button). The panel and its
+//   highlights take on a hint of the diet.
+//   A view: CellEditor feeds it through Refresh, ShowInfo and ShowSize, it reports
+//   DonePressed, PartSizeChanged, SlidOut and AccentChanged.
 //   Looks and tweens: EditorStyle.
 //
 //   var panel = new CellEditorPanel();
@@ -20,7 +21,7 @@
 //     EVENTS AND SETUP   What the panel reports and the views it frames.
 //     SLIDE              Slides the panel in and out and fades the grey-out.
 //     DIET TINT          The panel and its highlights take on a hint of the diet.
-//     REFRESH            Title, points, diet preview and the info card.
+//     REFRESH            Title, points, diet preview, the info card and the size slider.
 //     BUILD UI           Grey-out, panel, header, body and footer.
 //
 
@@ -36,13 +37,17 @@ public partial class CellEditorPanel : Control
     // ===========================================================================
     //
     //   DonePressed     The done button was clicked.
-    //   SlidOut         The panel finished sliding out and is hidden now.
+    //   PartSizeChanged The size slider was moved (new size).
+    //   SlidOut       The panel finished sliding out and is hidden now.
     //   AccentChanged   The diet tint moved on: the accent color for other highlights.
     //   Setup           Hands in the palette and the preview shown in the body.
     //
 
     /// <summary>The done button was clicked.</summary>
     public event Action DonePressed;
+
+    /// <summary>The size slider was moved: the new size of the picked part.</summary>
+    public event Action<float> PartSizeChanged;
 
     /// <summary>The panel finished sliding out and hid itself.</summary>
     public event Action SlidOut;
@@ -170,6 +175,7 @@ public partial class CellEditorPanel : Control
     //
     //   Refresh        Updates title, points, done button, diet preview and the tint.
     //   ShowInfo       Name and description of a part in the info card, empty without one.
+    //   ShowSize       Slider and percent of the picked part, hidden without one.
     //   UnlockHintKey  Which diet side unlocks a locked part.
     //
 
@@ -216,6 +222,21 @@ public partial class CellEditorPanel : Control
         _infoText.Text = isUnlocked ? Tr(info.DescriptionKey) : Tr(UnlockHintKey(info));
     }
 
+    /// <summary>Shows the size slider for the picked part.</summary>
+    /// <param name="size">(Required) Size of the picked part (1 = normal), null hides the slider.</param>
+    /// <example><code>panel.ShowSize(1.3f);   // slider at 130 %</code></example>
+    public void ShowSize(float? size)
+    {
+        _sizeRow.Visible = null != size;
+        if (null == size)
+        {
+            return;
+        }
+        _sizeLabel.Text = Tr("CREATURE_PART_SIZE");
+        _sizeValue.Text = string.Format(Tr("CREATURE_UNIT_PERCENT"), Mathf.RoundToInt(size.Value * 100f));
+        _sizeSlider.SetValueNoSignal(size.Value);
+    }
+
     private static string UnlockHintKey(PartInfo info)
     {
         return info.MaxDiet < 1f && info.MinDiet > -1f
@@ -229,7 +250,7 @@ public partial class CellEditorPanel : Control
     //
     //   _Ready         Builds everything hidden and closed, follows the window size.
     //   BuildPanel     Grey-out over the game, the membrane panel with header, body and footer.
-    //   BuildFooter    Info card, points badge and the done button.
+    //   BuildFooter    Info card, size slider, points badge and the done button.
     //   NewLabel       Label with outline, translated here.
     //
 
@@ -245,6 +266,10 @@ public partial class CellEditorPanel : Control
     private Label _pointsLabel;
     private Label _infoName;
     private Label _infoText;
+    private HBoxContainer _sizeRow;
+    private Label _sizeLabel;
+    private HSlider _sizeSlider;
+    private Label _sizeValue;
     private Button _doneButton;
     private DietBar _dietBar;
 
@@ -329,6 +354,28 @@ public partial class CellEditorPanel : Control
         _infoText.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         card.AddChild(_infoName);
         card.AddChild(_infoText);
+
+        // Size slider of the picked part, only shown while one is picked
+        _sizeRow = new HBoxContainer { SizeFlagsVertical = SizeFlags.ShrinkCenter, Visible = false };
+        _sizeRow.AddThemeConstantOverride("separation", 10);
+        footer.AddChild(_sizeRow);
+        _sizeLabel  = NewLabel(17);
+        _sizeValue  = NewLabel(17);
+        _sizeValue.CustomMinimumSize = new Vector2(64f, 0f);
+        _sizeSlider = new HSlider
+        {
+            MinValue          = CellDesign.MIN_PART_SIZE,
+            MaxValue          = CellDesign.MAX_PART_SIZE,
+            Step              = 0.05,
+            Value             = 1.0,
+            CustomMinimumSize = new Vector2(180f, 28f),
+            SizeFlagsVertical = SizeFlags.ShrinkCenter,
+            FocusMode         = FocusModeEnum.None,
+        };
+        _sizeSlider.ValueChanged += value => PartSizeChanged?.Invoke((float)value);
+        _sizeRow.AddChild(_sizeLabel);
+        _sizeRow.AddChild(_sizeSlider);
+        _sizeRow.AddChild(_sizeValue);
 
         // Points badge and done button
         _pointsBadge = new PanelContainer { SizeFlagsVertical = SizeFlags.ShrinkCenter, MouseFilter = MouseFilterEnum.Ignore };

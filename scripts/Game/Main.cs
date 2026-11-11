@@ -264,9 +264,9 @@ public partial class Main : Node2D
     // ===========================   REACT TO EVENTS   ===========================
     // ===========================================================================
     //
-    //   OnEvolutionReady   A stage advance opens the cell editor (after its stage cutscene).
+    //   OnEvolutionReady   A stage advance shows its new points in an open cell editor.
     //   OpenEditor         Pauses and opens the cell editor, as organism the creature editor
-    //                      (E, HUD button, stage advance), after the editor transition.
+    //                      (E, HUD button), after the editor transition.
     //   OpenEditorNow      The editor of the stage, without transition.
     //   OnEditorClosed     Resumes the game.
     //   OnPlayerDivided    Plop around the cluster, banner at 64 cells.
@@ -276,22 +276,13 @@ public partial class Main : Node2D
     //   OnPlayerLostCells  Red plops at the cluster edge and banner, the cluster lives on.
     //
 
-    /// <summary>A stage advance opens the editor by itself, an open one shows the new points.</summary>
+    /// <summary>A stage advance never opens the editor by itself (E / HUD button do), an open one shows the new points.</summary>
     private void OnEvolutionReady()
     {
         if (Editor.IsOpen)
         {
             Editor.Refresh();
-            return;
         }
-
-        // The stage cutscene runs first, the editor follows when it is done (PLAY SHORT CUTSCENES)
-        if (_cutscenes.IsStagePlaying)
-        {
-            _isEditorQueued = true;
-            return;
-        }
-        OpenEditor();
     }
 
     /// <summary>
@@ -406,7 +397,7 @@ public partial class Main : Node2D
     //
     //   IsAnimationSkipped        Plays both instantly, e.g. in the smoke test and for the F10 cheats.
     //   PlayStageCutscene         Pauses, hides the HUD and shows the stage, or only the banner.
-    //   OnStageCutsceneFinished   Resumes, then the banner and a queued editor.
+    //   OnStageCutsceneFinished   Resumes, then the banner.
     //
     //   The cutscenes themselves are staged by Flow/CutsceneDirector.cs. Only one short
     //   cutscene runs at a time. A stage advance during one gets its banner only.
@@ -415,9 +406,7 @@ public partial class Main : Node2D
     /// <summary>(Optional) Skips the stage cutscenes and the editor transition. Defaults to false.</summary>
     public bool IsAnimationSkipped { get; set; }
 
-    private bool _isEditorQueued;
-
-    /// <summary>Celebrates a stage advance, the banner and a queued editor follow when it is done.</summary>
+    /// <summary>Celebrates a stage advance, the banner follows when it is done.</summary>
     /// <param name="stage">(Required) The stage just reached.</param>
     /// <param name="titleKey">(Required) Banner title key in locale/translations.csv.</param>
     /// <param name="textKey">(Required) Banner text key.</param>
@@ -439,11 +428,6 @@ public partial class Main : Node2D
         Hud.Visible      = true;
         GetTree().Paused = false;
         Hud.ShowBanner(titleKey, textKey);
-        if (_isEditorQueued)
-        {
-            _isEditorQueued = false;
-            OpenEditor();
-        }
     }
 
     // ===========================================================================

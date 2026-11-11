@@ -115,7 +115,8 @@ public partial class SmokeTest : Node
         // Points wait instead of opening the editor, E / the button opens it
         if (MANUAL_EDITOR_FRAME == _frame)
         {
-            bool isClosedBefore = !_main.Editor.IsOpen && player.EvolutionPoints > 0;
+            // Neither a level up nor the stage advance before opened it
+            bool isClosedBefore = !_main.Editor.IsOpen && 0 == _editorSessions && player.EvolutionPoints > 0;
             _isManualEditorOk   = isClosedBefore && _main.OpenEditor() && _main.Editor.IsOpen;
         }
 
@@ -213,7 +214,7 @@ public partial class SmokeTest : Node
         }
     }
 
-    /// <summary>The part just placed carries the gizmo and its tile is deselected: shift and turn are free and stored, the shift clamped.</summary>
+    /// <summary>The part just placed carries the gizmo and its tile is deselected: shift, turn and size are free and stored, shift and size clamped.</summary>
     private static bool ProbeCellGizmo(CellEditor editor)
     {
         int index  = editor.Draft.Parts.Count - 1;
@@ -222,9 +223,10 @@ public partial class SmokeTest : Node
         bool isPosed  = editor.MovePickedPart(new Vector3(0f, 0.1f, 0f)) && editor.TurnPickedPart(Vector3.Up, 0.5f)
             && editor.Draft.Parts[index].Offset.Y > 0.05f && Mathf.Abs(editor.Draft.Parts[index].Rotation.Y) > 0.25f
             && editor.MovePickedPart(Vector3.Right * 9f) && editor.Draft.Parts[index].Offset.Length() <= CellDesign.MAX_PART_OFFSET + 0.001f;
+        bool isSized  = editor.SetPartSize(5f) && Mathf.IsEqualApprox(editor.Draft.Parts[index].Size, CellDesign.MAX_PART_SIZE);
         editor.PickPart(-1);
-        bool isCleared = !editor.MovePickedPart(Vector3.Up);
-        return isPicked && isPosed && isCleared && points == editor.Points;
+        bool isCleared = !editor.MovePickedPart(Vector3.Up) && !editor.SetPartSize(1f);
+        return isPicked && isPosed && isSized && isCleared && points == editor.Points;
     }
 
     private static IEnumerable<Vector2> CandidatePoints(Placement placement)
@@ -1039,7 +1041,20 @@ public partial class SmokeTest : Node
         bool   isArmed = hunter.CanBiteToward(0f) && !hunter.CanBiteToward(Mathf.Pi)
             && hunter.ContactDamageToward(Mathf.Pi * 0.5f) > 0f && hunter.ContactDamageToward(Mathf.Pi) > 0f;
         hunter.Free();
-        return isFaster && isArmed;
+
+        // A shell damps hits at the back, a beak gets more out of plants than a bare mouth
+        Player grazer  = OrganismProbe(CreatureType.Fish, CreaturePartKind.Beak, CreaturePartKind.Shell);
+        Player bare    = OrganismProbe(CreatureType.Fish);
+        float  before  = grazer.Biomass;
+        float  beforeBare = bare.Biomass;
+        grazer.AddBiomass(10f, BiomassSource.Plant);
+        bare.AddBiomass(10f, BiomassSource.Plant);
+        bool isGrazer = grazer.DamageFactorFrom(Mathf.Pi) < 1f && Mathf.IsEqualApprox(grazer.DamageFactorFrom(0f), 1f)
+            && Mathf.IsEqualApprox(bare.DamageFactorFrom(Mathf.Pi), 1f)
+            && grazer.Biomass - before > bare.Biomass - beforeBare;
+        grazer.Free();
+        bare.Free();
+        return isFaster && isArmed && isGrazer;
     }
 
     private static Player OrganismProbe(CreatureType type, params CreaturePartKind[] kinds)

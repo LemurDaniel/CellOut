@@ -39,7 +39,8 @@
     "halfLife": 90,
     "lightWeight": 0.5,
     "eatingWeight": 0.6,
-    "neutralMass": 5
+    "neutralMass": 5,
+    "plantFoodValue": 2.0
   },
 
   "cell": {
@@ -56,7 +57,7 @@
       "Toxin":       { "cost": 6, "minDiet": 0.5 }
     },
     "effects": {
-      "chloroplastLight": 0.4,
+      "chloroplastLight": 0.8,
       "filterMouthMagnet": 0.4,
       "filterMouthDigestPlant": 1.25,
       "armorPlateHealth": 1.1,
@@ -98,7 +99,12 @@
       "PectoralFin":   { "cost": 1, "weight": 0.4 },
 
       "Jaw":           { "cost": 2, "weight": 0.9 },
+      "FilterMouth":   { "cost": 2, "weight": 0.7 },
+      "Beak":          { "cost": 2, "weight": 0.5 },
+
       "Spines":        { "cost": 2, "weight": 0.7 },
+      "Shell":         { "cost": 3, "weight": 3.0 },
+      "PoisonGland":   { "cost": 3, "weight": 0.3 },
 
       "PitEye":        { "cost": 1, "weight": 0.1 },
       "Eye":           { "cost": 2, "weight": 0.3 },
@@ -155,6 +161,12 @@
       "pectoralFinAcceleration": 1.3,
 
       "jawDigestMeat": 1.2,
+      "filterMouthMagnet": 1.0,
+      "filterMouthDigestPlant": 1.25,
+      "beakDigestPlant": 1.5,
+      "shellHealth": 1.35,
+      "shellSwim": 0.9,
+      "poisonGlandDamage": 1.5,
       "pitEyeMagnet": 0.3,
       "eyeMagnet": 0.5,
       "stalkEyeMagnet": 0.8,

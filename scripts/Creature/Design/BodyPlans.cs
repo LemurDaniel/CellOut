@@ -80,8 +80,8 @@ public static class BodyPlans
 
     /*
       NPC creatures per critter kind, the girths jitter a little:
-      - Bacterium:  small slim fish, flees, striped
-      - Amoeba:     round puffer with spines, spotted
+      - Bacterium:  small slim fish with a filter mouth, flees, striped
+      - Amoeba:     round puffer with spines and a beak, spotted
       - Hunter:     shark (fish, dark saddle) or orca (marine mammal, white patches), with jaw
     */
     /// <summary>A body plan for an NPC creature of the organism stage.</summary>
@@ -96,6 +96,7 @@ public static class BodyPlans
                 design = CreatureDesign.FromGirths(CreatureType.Fish, 0.4f, 0.7f, 0.8f, 0.6f);
                 design.TryPlace(CreaturePartKind.CaudalFin, 0f, 0);
                 design.TryPlace(CreaturePartKind.Eye, 0.82f, 0);
+                design.TryPlace(CreaturePartKind.FilterMouth, 1f, 0);
                 design.SetPattern(CreaturePattern.Stripes, null);
                 break;
             case CritterKind.Amoeba:
@@ -104,6 +105,7 @@ public static class BodyPlans
                 design.TryPlace(CreaturePartKind.Spines, 0.5f, 0);
                 design.TryPlace(CreaturePartKind.PectoralFin, 0.6f, 0);
                 design.TryPlace(CreaturePartKind.Eye, 0.85f, 0);
+                design.TryPlace(CreaturePartKind.Beak, 1f, 0);
                 design.SetPattern(CreaturePattern.Spots, null);
                 break;
             case CritterKind.Hunter:

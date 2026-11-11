@@ -67,7 +67,7 @@ public partial class Food : Node2D
     {
         Size   = size;
         Kind   = kind;
-        Value  = BaseValue(kind) * Mathf.Pow(size / 3.5f, 1.5f) * 0.5f;
+        Value  = BaseValue(kind) * ValueScale(size);
         _drift = Vector2.FromAngle(Rand.Angle()) * size * Rand.Range(0.1f, 0.4f);     // slow, the food patches of the Spawner keep their shape
         _spin  = Rand.Range(-1.5f, 1.5f);
     }
@@ -91,6 +91,26 @@ public partial class Food : Node2D
             (_, FoodKind.Amino)                => new Color(0.45f, 0.75f, 1f),
             _                                  => new Color(1f, 0.55f, 0.75f),
         };
+    }
+
+    private const float VALUE_SIZE = 3.5f;          // size of a piece worth half its base value
+    private const float SMALL_EXPONENT = 1.5f;      // below VALUE_SIZE: keeps the tiny pieces of the protocell worth eating
+    private const float AREA_EXPONENT = 2f;         // above: the value grows with the area, like the reward for an eaten cell
+
+    /*
+      Food is spawned relative to the body size (Spawner), and the body size grows with the
+      square root of the biomass. A value by area therefore keeps a piece at about the same
+      share of the biomass through all stages (about 0.7%), like ContactResolver.KillReward.
+      With the old exponent of 1.5 everywhere that share shrank with every stage and plant
+      eaters starved late in the game.
+    */
+    /// <summary>Value of a piece of base value 1 for its size.</summary>
+    /// <param name="size">(Required) Size on the plane.</param>
+    /// <example><code>Food.ValueScale(7f)   // 2, twice the size is four times the value</code></example>
+    public static float ValueScale(float size)
+    {
+        float relative = size / VALUE_SIZE;
+        return Mathf.Pow(relative, relative < 1f ? SMALL_EXPONENT : AREA_EXPONENT) * 0.5f;
     }
 
     private static float BaseValue(FoodKind kind)

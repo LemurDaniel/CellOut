@@ -1,6 +1,6 @@
 // NOTE:
 //   Traits of an organism computed from its body plan: weight, carrying capacity of the
-//   legs, speed in the water and on land, turning, health, senses, weapons, lift of the
+//   legs, speed in the water and on land, turning, health, senses, diet, weapons, lift of the
 //   wings and the evolution point bonus of a brain. The one formula behind
 //   Player.ApplyCreature and the stats column of the CreatureEditor, so the preview
 //   always shows what the player gets. Multipliers are relative to the base values of
@@ -29,7 +29,8 @@ public sealed class CreatureStats
     //
     //   Water        Swim speed, turning and health multipliers.
     //   Senses       Food range and the brain bonus.
-    //   Weapons      Bite and spike directions, meat digestion.
+    //   Diet         Biomass multipliers of the mouth for plants and meat.
+    //   Weapons      Bite, spike and shell directions, the poison.
     //   Weight       Body and part weight, what the legs carry and the wings lift.
     //
 
@@ -54,12 +55,24 @@ public sealed class CreatureStats
     public int EpPerLevelBonus { get; private set; }
 
     // ---------------------------------------------------------------------------
+    // Diet
+    //   Biomass multipliers of the mouth for plants and meat.
+    // ---------------------------------------------------------------------------
+
+    /// <summary>Multiplier on biomass from plants and plankton (filter mouth, beak).</summary>
+    public float DigestPlant { get; private set; } = 1f;
+
+    /// <summary>Multiplier on biomass from meat (jaw).</summary>
+    public float DigestMeat { get; private set; } = 1f;
+
+    // ---------------------------------------------------------------------------
     // Weapons
-    //   Bite and spike directions, meat digestion.
+    //   Bite, spike and shell directions, the poison.
     // ---------------------------------------------------------------------------
 
     private readonly List<float> _jawAngles = new();
     private readonly List<float> _spikeAngles = new();
+    private readonly List<float> _plateAngles = new();
 
     /// <summary>Directions (radians, 0 = forward) a jaw bites towards.</summary>
     public IReadOnlyList<float> JawAngles => _jawAngles;
@@ -67,7 +80,11 @@ public sealed class CreatureStats
     /// <summary>Directions (radians, 0 = forward) spikes or claws hurt towards.</summary>
     public IReadOnlyList<float> SpikeAngles => _spikeAngles;
 
-    public float DigestMeat { get; private set; } = 1f;
+    /// <summary>Directions (radians, 0 = forward) a shell covers: hits from there are damped (CellStats.DamageFactor).</summary>
+    public IReadOnlyList<float> PlateAngles => _plateAngles;
+
+    /// <summary>Multiplier on spike and jaw damage (poison gland).</summary>
+    public float Toxin { get; private set; } = 1f;
 
     // ---------------------------------------------------------------------------
     // Weight
@@ -105,6 +122,7 @@ public sealed class CreatureStats
 
     private const int BASE_VERTEBRAE = 5;           // body length the vertebra bonuses count from
     private const float CLAW_ANGLE = 0.5f;           // claws scratch this far off the nose, radians
+    private static readonly float[] BACK_AND_FLANKS = { Mathf.Pi * 0.5f, -Mathf.Pi * 0.5f, Mathf.Pi };   // spines and shell
 
     /*
       Traits multiplied together, every number from data/balance.json (creature.body,
@@ -178,15 +196,31 @@ public sealed class CreatureStats
                 case CreaturePartKind.PectoralFin:
                     stats.Acceleration *= Scaled(effects.PectoralFinAcceleration);
                     break;
-                // Weapons: the jaw bites forward, spines hurt at both flanks and the back
+                // Mouths: the jaw bites forward, the filter mouth sieves plankton from far around,
+                // the beak grinds plants
                 case CreaturePartKind.Jaw:
                     stats._jawAngles.Add(0f);
                     stats.DigestMeat *= effects.JawDigestMeat;
                     break;
+                case CreaturePartKind.FilterMouth:
+                    stats.MagnetBonus += effects.FilterMouthMagnet;
+                    stats.DigestPlant *= effects.FilterMouthDigestPlant;
+                    break;
+                case CreaturePartKind.Beak:
+                    stats.DigestPlant *= effects.BeakDigestPlant;
+                    break;
+                // Defense: spines hurt at both flanks and the back, the shell damps hits from there,
+                // the gland poisons what spines, claws and jaw hit
                 case CreaturePartKind.Spines:
-                    stats._spikeAngles.Add(Mathf.Pi * 0.5f);
-                    stats._spikeAngles.Add(-Mathf.Pi * 0.5f);
-                    stats._spikeAngles.Add(Mathf.Pi);
+                    stats._spikeAngles.AddRange(BACK_AND_FLANKS);
+                    break;
+                case CreaturePartKind.Shell:
+                    stats._plateAngles.AddRange(BACK_AND_FLANKS);
+                    stats.Health    *= effects.ShellHealth;
+                    stats.SwimSpeed *= effects.ShellSwim;
+                    break;
+                case CreaturePartKind.PoisonGland:
+                    stats.Toxin *= effects.PoisonGlandDamage;
                     break;
                 // Eyes: food is pulled in from farther away
                 case CreaturePartKind.PitEye:

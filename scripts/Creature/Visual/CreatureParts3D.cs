@@ -1,6 +1,7 @@
 // NOTE:
-//   The parts of a 3D organism: fins, eyes, jaw, spines, blowhole, sculpted limbs with
-//   feet and hands, a brain, the nostrils of a lung and wings, each on a pivot along the
+//   The parts of a 3D organism: fins, eyes, mouths (jaw, filter mouth, beak), spines, shell,
+//   poison gland, blowhole, sculpted limbs with feet and hands, a brain, the nostrils of a
+//   lung and wings, each on a pivot along the
 //   spine that rides the swim wave. Legs, hands, wings, brain, stalk eyes and fins are
 //   models from tools/blender (Visual/CreatureModels.cs), the rest are primitive meshes.
 //   A node component of CreatureVisual3D: a child at the origin of the visual, built once
@@ -34,6 +35,8 @@ public partial class CreatureParts3D : Node3D
     //
     //   Build        Builds and poses every part of a design.
     //   BuildPart    One placed part on a pivot that rides the swim wave.
+    //   BuildMouth   A filter mouth with baleen or a beak at the nose.
+    //   BuildShell   Overlapping armor bands over the back.
     //   BuildWings   A pair of membrane or feather wings on the back.
     //   BuildEye     One eye on the flank, pupil forward and outwards.
     //   AddPivot     A pivot at a spine X, moved by the swim wave.
@@ -51,7 +54,8 @@ public partial class CreatureParts3D : Node3D
     private static readonly IReadOnlyDictionary<CreatureCategory, float> BASE_PART_SIZES = new Dictionary<CreatureCategory, float>
     {
         [CreatureCategory.Fins]    = 1.6f,
-        [CreatureCategory.Weapons] = 1.9f,
+        [CreatureCategory.Mouths]  = 1.9f,
+        [CreatureCategory.Defense] = 1.9f,
         [CreatureCategory.Eyes]    = 2f,
         [CreatureCategory.Limbs]   = 1f,             // sculpted, the joints already set the length
         [CreatureCategory.Feet]    = 1f,
@@ -59,6 +63,13 @@ public partial class CreatureParts3D : Node3D
         [CreatureCategory.Brain]   = 1.4f,
         [CreatureCategory.Lungs]   = 1.3f,
         [CreatureCategory.Wings]   = 1.8f,
+    };
+
+    /// <summary>Kinds that leave the size of their tab: the shell hugs the body, so it is built in body scale.</summary>
+    private static readonly IReadOnlyDictionary<CreaturePartKind, float> BASE_KIND_SIZES = new Dictionary<CreaturePartKind, float>
+    {
+        [CreaturePartKind.Shell]       = 1f,
+        [CreaturePartKind.PoisonGland] = 1.4f,
     };
 
     private sealed record Attached(Node3D Pivot, float X, float Y);   // Y: height of the bent spine there
@@ -90,7 +101,8 @@ public partial class CreatureParts3D : Node3D
             // Posed by side, size, shift and turn; an eye of a dropped half blinks no more
             CreaturePart  part    = design.Parts[index];
             List<Node3D>  pivots  = _attached.Skip(firstPivot).Select(attached => attached.Pivot).ToList();
-            List<Node3D>  dropped = _poser.Pose(index, part, pivots, BASE_PART_SIZES[part.Info.Category]);
+            float         size    = BASE_KIND_SIZES.TryGetValue(part.Kind, out float kindSize) ? kindSize : BASE_PART_SIZES[part.Info.Category];
+            List<Node3D>  dropped = _poser.Pose(index, part, pivots, size);
             foreach (Node3D piece in dropped)
             {
                 _eyes.RemoveAll(eye => eye == piece || piece.IsAncestorOf(eye));
@@ -279,8 +291,93 @@ public partial class CreatureParts3D : Node3D
                 }
                 break;
 
+            // Nose: a wide gape with a comb of baleen, or a horny beak over the nose tip
+            case CreaturePartKind.FilterMouth:
+            case CreaturePartKind.Beak:
+                BuildMouth(design, part.Kind);
+                break;
+
+            // Back: armor bands from flank to flank
+            case CreaturePartKind.Shell:
+                BuildShell(design, x, color);
+                break;
+
+            // Poison gland: glowing pustules high on both flanks, wherever it was placed inside
+            case CreaturePartKind.PoisonGland:
+                Node3D glands = AddPivot(x);
+                foreach (float side in new[] { -1f, 1f })
+                {
+                    for (int i = -1; i <= 1; i++)
+                    {
+                        CellVisual3D.AddMesh(glands, CellVisual3D.SphereMesh(), CellVisual3D.Material(POISON_COLOR, 0.6f, 0.15f),
+                            new Vector3(i * 0.075f, top * (0.62f - Mathf.Abs(i) * 0.12f), side * flank * 0.8f), Vector3.One * (0.05f - Mathf.Abs(i) * 0.012f));
+                    }
+                }
+                break;
+
             default:
                 throw new System.ArgumentOutOfRangeException(nameof(part), $"part must be a known CreaturePartKind, got '{part.Kind}'.");
+        }
+    }
+
+    private const int BALEEN_COUNT = 9;
+    private const float BEAK_OVERHANG = 0.18f;       // the beak reaches this far past the nose tip
+    private const float CONE_HEIGHT = 0.6f;          // CellVisual3D.ConeMesh: height and bottom radius
+    private const float CONE_RADIUS = 0.13f;
+    private const int SHELL_BANDS = 2;               // bands to each side of the middle one
+    private static readonly Color BALEEN_COLOR = new(0.93f, 0.9f, 0.78f);
+    private static readonly Color BEAK_COLOR = new(0.96f, 0.68f, 0.22f);
+    private static readonly Color POISON_COLOR = new(0.62f, 0.25f, 0.78f);
+
+    /// <summary>The plant mouths at the nose: a wide gape with hanging baleen (filter mouth) or two horny cones (beak).</summary>
+    private void BuildMouth(CreatureDesign design, CreaturePartKind kind)
+    {
+        float  noseX      = design.NoseTipX;
+        float  mouthX     = noseX - Mathf.Max(0.1f, (noseX - design.SpineEndX) * 0.45f);
+        float  mouthTop   = design.TopAt(mouthX);
+        float  mouthFlank = design.FlankAt(mouthX);
+        Node3D mouth      = AddPivot(mouthX);
+
+        if (CreaturePartKind.FilterMouth == kind)
+        {
+            // A gape wider than the jaw, the baleen hang from the upper lip like a comb
+            float lipY = -mouthTop * 0.22f;
+            CellVisual3D.AddMesh(mouth, CellVisual3D.SphereMesh(), CellVisual3D.Material(new Color(0.2f, 0.07f, 0.1f)),
+                new Vector3(0.02f, lipY, 0f), new Vector3(0.13f, 0.035f, mouthFlank * 0.8f));
+            for (int i = 0; i < BALEEN_COUNT; i++)
+            {
+                float along  = i / (BALEEN_COUNT - 1f) * 2f - 1f;                 // -1 left .. 1 right
+                float bristle = 0.14f - Mathf.Abs(along) * 0.05f;
+                CellVisual3D.AddMesh(mouth, CellVisual3D.RodMesh(), CellVisual3D.Material(BALEEN_COLOR, 0.05f, 0.5f),
+                    new Vector3(0.15f - Mathf.Abs(along) * 0.1f, lipY - bristle * 0.5f - 0.02f, along * mouthFlank * 0.76f), new Vector3(0.016f, bristle, 0.016f));
+            }
+            return;
+        }
+
+        // Beak: both cones start at the mouth and meet past the nose tip, the upper one hooks over the lower
+        float length    = noseX - mouthX + BEAK_OVERHANG;
+        float width     = mouthFlank * 0.5f / CONE_RADIUS;                     // across the nose
+        float height    = mouthTop * 0.3f / CONE_RADIUS;                       // each half is flat
+        foreach (float half in new[] { 1f, -1f })
+        {
+            float          size = half > 0f ? 1f : 0.8f;
+            MeshInstance3D horn = CellVisual3D.AddMesh(mouth, CellVisual3D.ConeMesh(), CellVisual3D.Material(half > 0f ? BEAK_COLOR : BEAK_COLOR.Darkened(0.15f), 0f, 0.3f),
+                new Vector3(length * size * 0.5f, half * mouthTop * 0.16f - mouthTop * 0.15f, 0f),
+                new Vector3(height, length * size / CONE_HEIGHT, width));
+            horn.Rotation = new Vector3(0f, 0f, -Mathf.Pi * 0.5f - half * 0.14f);   // tip forward (local X is then up), the halves lean together
+        }
+    }
+
+    /// <summary>Armor bands over the back, each a dome from flank to flank that pokes out of the body, the middle ones highest.</summary>
+    private void BuildShell(CreatureDesign design, float x, Color color)
+    {
+        for (int i = -SHELL_BANDS; i <= SHELL_BANDS; i++)
+        {
+            float bandX = x + i * 0.11f;
+            float rise  = 1.18f - Mathf.Abs(i) * 0.05f;
+            Color tone  = 0 == i % 2 ? color.Darkened(0.4f) : color.Darkened(0.28f);
+            CellVisual3D.AddMesh(AddPivot(bandX), CellVisual3D.SphereMesh(), CellVisual3D.Material(tone, 0f, 0.3f),
+                new Vector3(0f, design.TopAt(bandX) * 0.2f, 0f), new Vector3(0.2f, design.TopAt(bandX) * rise * 0.82f, design.FlankAt(bandX) * rise * 0.95f));
         }
     }
 

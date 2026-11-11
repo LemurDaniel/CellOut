@@ -37,7 +37,6 @@ public partial class Spawner : Node
 
     [Signal] public delegate void SplashRequestedEventHandler(Vector2 position, float radius, Color color);
 
-    private const int MAX_FOOD = 80;               // a new patch only comes while it still fits under this
     private const int MAX_CRITTERS = 24;
     public const int START_CRITTERS = 8;
 
@@ -78,15 +77,15 @@ public partial class Spawner : Node
     private int _pendingCritters;
     private float _populateTime;
 
-    /// <summary>START_PATCHES food patches outside the view at once, START_CRITTERS cells pop up over POPULATE_SECONDS.</summary>
+    /// <summary>The first food patches (PatchRule.StartPatches) outside the view at once, START_CRITTERS cells pop up over POPULATE_SECONDS.</summary>
     /// <example><code>spawner.StartPopulating();</code></example>
     public void StartPopulating()
     {
-        for (int i = 0; i < START_PATCHES; i++)
+        for (int i = 0; i < Patches.StartPatches; i++)
         {
             SpawnPatch();
         }
-        _patchCooldown   = PATCH_INTERVAL;
+        _patchCooldown   = Patches.Interval;
         _pendingCritters = START_CRITTERS;
         _populateTime    = 0f;
     }
@@ -102,10 +101,10 @@ public partial class Spawner : Node
 
         // A whole new patch once the eaten or left behind ones made room for it
         _patchCooldown -= dt;
-        if (_patchCooldown <= 0f && FoodLayer.GetChildCount() + PATCH_MAX_FOOD <= MAX_FOOD)
+        if (_patchCooldown <= 0f && FoodLayer.GetChildCount() + Patches.MaxPieces <= Patches.MaxFood)
         {
             SpawnPatch();
-            _patchCooldown = PATCH_INTERVAL;
+            _patchCooldown = Patches.Interval;
         }
         if (CritterLayer.GetChildCount() < MAX_CRITTERS && Rand.Chance(0.05f))
         {
@@ -156,6 +155,7 @@ public partial class Spawner : Node
             food.GroundHeight = Coast.GroundHeight(position) * size;
         }
         food.Setup(size * Rand.Range(0.15f, 0.28f), (FoodKind)Rand.Index(3));
+        food.Value *= Balance.Current.Diet.PlantFoodValue;
         food.LookScale = FoodHabitat.Land == food.Habitat ? LAND_FOOD_LOOK : FoodHabitat.Sea == food.Habitat ? SEA_FOOD_LOOK : 1f;
         food.Position = position;
         FoodLayer.AddChild(food);
@@ -260,14 +260,29 @@ public partial class Spawner : Node
     // ===============================   PATCHES   ===============================
     // ===========================================================================
     //
+    //   PatchRule     How many patches a habitat gets and how rich they are.
     //   SpawnPatch    A whole food patch at once at a spot outside the view.
     //   PatchCenter   A point so far out that the whole patch disc lies outside the view.
     //
 
-    private const int START_PATCHES = 3;
-    private const float PATCH_INTERVAL = 2.5f;     // seconds between two new patches at most
-    private const int PATCH_MIN_FOOD = 10;
-    private const int PATCH_MAX_FOOD = 18;
+    /// <summary>How much food a habitat holds.</summary>
+    /// <param name="MaxFood">A new patch only comes while it still fits under this many pieces.</param>
+    /// <param name="StartPatches">Patches placed at once by StartPopulating.</param>
+    /// <param name="Interval">Seconds between two new patches at most.</param>
+    /// <param name="MinPieces">Smallest patch.</param>
+    /// <param name="MaxPieces">Biggest patch.</param>
+    private readonly record struct PatchRule(int MaxFood, int StartPatches, float Interval, int MinPieces, int MaxPieces);
+
+    /*
+      The soup of the cell stages is richer than the sea: a herbivore cell lives on the
+      patches alone and shares them with the grazing cells, a creature finds bigger pieces
+      (SEA_FOOD_LOOK) and reaches them faster.
+    */
+    private static readonly PatchRule SOUP_PATCHES = new(MaxFood: 130, StartPatches: 5, Interval: 1.8f, MinPieces: 14, MaxPieces: 24);
+    private static readonly PatchRule SEA_PATCHES  = new(MaxFood: 80, StartPatches: 3, Interval: 2.5f, MinPieces: 10, MaxPieces: 18);
+
+    private PatchRule Patches => Player.IsOrganism ? SEA_PATCHES : SOUP_PATCHES;
+
     private const float PATCH_MIN_RADIUS = 2.5f;   // in player sizes
     private const float PATCH_MAX_RADIUS = 4.5f;
     private const float PATCH_NEAR = 0.15f;        // view radii between the view edge and the patch disc
@@ -280,7 +295,7 @@ public partial class Spawner : Node
     {
         float   radius = Player.BodySize() * Rand.Range(PATCH_MIN_RADIUS, PATCH_MAX_RADIUS);
         Vector2 center = PatchCenter(radius);
-        int     count  = PATCH_MIN_FOOD + Rand.Index(PATCH_MAX_FOOD - PATCH_MIN_FOOD + 1);
+        int     count  = Patches.MinPieces + Rand.Index(Patches.MaxPieces - Patches.MinPieces + 1);
 
         // The plain roll packs the middle, the square root would spread the pieces evenly
         for (int i = 0; i < count; i++)

@@ -86,7 +86,7 @@ public partial class Player : CellBody
     // ---------------------------------------------------------------------------
 
     [Signal] public delegate void StatsChangedEventHandler();
-    [Signal] public delegate void EvolutionReadyEventHandler();      // stage advance: the editor opens by itself
+    [Signal] public delegate void EvolutionReadyEventHandler();      // stage advance: an open editor shows the new points
     [Signal] public delegate void StageChangedEventHandler(int stage);
     [Signal] public delegate void DividedEventHandler(int cellCount);
     [Signal] public delegate void EvolveRequestedEventHandler();     // Main plays the cutscene and opens the creature editor
@@ -170,7 +170,8 @@ public partial class Player : CellBody
         Hp           = Mathf.Min(MaxHp, Hp + MaxHp * Tune.RegenPerSecond * dt);
         if (_photosynthesis > 0f)
         {
-            AddBiomass(_photosynthesis * Radius / REFERENCE_SIZE * dt, BiomassSource.Light);
+            // By body size, not cell radius: a division shrinks the cells and must not cut the light
+            AddBiomass(_photosynthesis * BodySize() / REFERENCE_SIZE * dt, BiomassSource.Light);
         }
         _diet.Decay(dt);
         Diet = _diet.Value(Design.Lean(), Design.Parts.Count > 0);
@@ -476,7 +477,7 @@ public partial class Player : CellBody
     // ===========================================================================
     //
     //   AddBiomass     Grows, counts the diet, advances stages and pays EP per level (the
-    //                  player opens the editor when it wants, only a stage opens it).
+    //                  player opens the editor when it wants, nothing opens it by itself).
     //   TakeDamage     Hurts and pushes back, zero health is game over (Die),
     //                  a cluster loses a quarter of its cells instead (LoseCells).
     //   Digest         Steady damage inside a bigger cell: no push back, no grace period.
@@ -743,19 +744,22 @@ public partial class Player : CellBody
         Diet  = _diet.Value(Design.Lean(), Design.Parts.Count > 0);
     }
 
-    /// <summary>Sets speed, turning, senses and weapons from the creature (CreatureStats).</summary>
+    /// <summary>Sets speed, turning, senses, diet, weapons and shell from the creature (CreatureStats).</summary>
     /// <returns>The health multiplier of the creature.</returns>
     private float ApplyCreature()
     {
         CreatureStats stats = CreatureStats.From(Creature);
         _speedMultiplier = stats.SwimSpeed;
         _acceleration   *= stats.Acceleration;
+        _digestPlant    *= stats.DigestPlant;
         _digestMeat     *= stats.DigestMeat;
+        _toxin          *= stats.Toxin;
         _landSpeed       = stats.LandSpeed;
         _epPerLevel      = Tune.EpPerLevel + stats.EpPerLevelBonus;
         MagnetRange     += stats.MagnetBonus;
         _jawAngles.AddRange(stats.JawAngles);
         _spikeAngles.AddRange(stats.SpikeAngles);
+        _plateAngles.AddRange(stats.PlateAngles);
         return stats.Health;
     }
 

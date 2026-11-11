@@ -93,6 +93,7 @@ public class CellTests
     //   JawBitesTowardsItsSide       Inside the jaw arc only.
     //   PlateHalvesDamageFromItsSide 0.5 towards the plate, 1 from behind.
     //   ArcWrapsAroundTheBack        A part at 3 rad covers -3 rad.
+    //   PartSizeIsClampedAndLooksOnly  1 at first, clamped to 0.5..2, the speed stays.
     //
 
     [Fact]
@@ -153,6 +154,24 @@ public class CellTests
     {
         Assert.True(CellStats.IsWithin(localAngle: -3f, partAngle: 3f, arc: 0.7f));
         Assert.False(CellStats.IsWithin(localAngle: 0f, partAngle: 3f, arc: 0.7f));
+    }
+
+    [Fact]
+    public void PartSizeIsClampedAndLooksOnly()
+    {
+        var design = new CellDesign();
+        Assert.True(design.TryPlace(PartKind.Flagellum, Vector2.Left, paidCost: 0));
+        float speed = CellStats.From(design).Speed;
+        Assert.Equal(1f, design.Parts[0].Size);
+
+        design.SetPartSize(0, 1.3f);
+        Assert.Equal(1.3f, design.Parts[0].Size, PRECISION);
+        design.SetPartSize(0, 5f);
+        Assert.Equal(CellDesign.MAX_PART_SIZE, design.Parts[0].Size);
+        design.SetPartSize(0, 0f);
+        Assert.Equal(CellDesign.MIN_PART_SIZE, design.Parts[0].Size);
+
+        Assert.Equal(speed, CellStats.From(design).Speed);
     }
 
     // ===========================================================================

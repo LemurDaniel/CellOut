@@ -28,21 +28,23 @@ namespace CellOut;
 // =============================   PLACED PART   =============================
 // ===========================================================================
 //
-//   PlacedPart   Kind, unit position, the points paid (refunded on removal) and the
-//                pose set with the gizmo of the editor.
+//   PlacedPart   Kind, unit position, the points paid (refunded on removal), the
+//                pose set with the gizmo of the editor and the size set with its slider.
 //
 
 /// <summary>One placed part. Angle 0 is forward, the angle grows clockwise on screen.</summary>
 /// <param name="Offset">Shift of the model in 3D unit space of the cell (gizmo arrows). Looks only.</param>
 /// <param name="Rotation">Euler turn in radians around the center of the model (gizmo rings). Looks only.</param>
 /// <param name="Lift">Height of a rim part on the membrane, the sine of its latitude: 0 equator, 1 top, -1 bottom. Inner parts keep 0.</param>
+/// <param name="Size">Visual size, 1 = normal, CellDesign.MIN_PART_SIZE..MAX_PART_SIZE (size slider). Looks only, the stats ignore it.</param>
 public readonly record struct PlacedPart(
     PartKind Kind,
     Vector2 Position,
     int PaidCost,
     Vector3 Offset = default,
     Vector3 Rotation = default,
-    float Lift = 0f)
+    float Lift = 0f,
+    float Size = 1f)
 {
     public float Angle => Position.Angle();
     public PartInfo Info => PartCatalog.Get(Kind);
@@ -65,7 +67,8 @@ public sealed class CellDesign
     //   RemoveNear   Removes the part closest to a click and returns it for the refund.
     //   RemovePart   Removes one part by index and returns it for the refund.
     //   SetPartPose  Shift and turn of one part (gizmo), looks only.
-    //   Lean         Cost weighted diet lean of all parts, 0 without parts.
+    //   SetPartSize  Size of one part (size slider), looks only.
+    //   Lean        Cost weighted diet lean of all parts, 0 without parts.
     //   Count        Number of parts of one kind.
     //   CopyFrom     Replaces every part with the parts of another design.
     //   ForCritter   A random design for an NPC cell, parts by kind, more with the stage.
@@ -259,6 +262,23 @@ public sealed class CellDesign
             throw new System.ArgumentOutOfRangeException(nameof(index), $"index must be between 0 and {_parts.Count - 1}, got '{index}'.");
         }
         _parts[index] = _parts[index] with { Offset = offset.LimitLength(MAX_PART_OFFSET), Rotation = rotation };
+        Version++;
+    }
+
+    public const float MIN_PART_SIZE = 0.5f;
+    public const float MAX_PART_SIZE = 2f;
+
+    /// <summary>Sets the visual size of one placed part (size slider of the editor).</summary>
+    /// <param name="index">(Required) Index in Parts.</param>
+    /// <param name="size">(Required) 1 = normal, clamped to MIN_PART_SIZE..MAX_PART_SIZE.</param>
+    /// <example><code>design.SetPartSize(0, 1.3f);</code></example>
+    public void SetPartSize(int index, float size)
+    {
+        if (index < 0 || index >= _parts.Count)
+        {
+            throw new System.ArgumentOutOfRangeException(nameof(index), $"index must be between 0 and {_parts.Count - 1}, got '{index}'.");
+        }
+        _parts[index] = _parts[index] with { Size = Mathf.Clamp(size, MIN_PART_SIZE, MAX_PART_SIZE) };
         Version++;
     }
 

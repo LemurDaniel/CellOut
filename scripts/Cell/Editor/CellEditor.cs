@@ -1,6 +1,6 @@
 // NOTE:
-//   Cell editor, opened by Main on every level up and stage advance while the game is
-//   paused. The panel slides in from the left (background: shaders/editor_panel.gdshader,
+//   Cell editor, opened by Main on E or the HUD button (never by itself) while the game
+//   is paused. The panel slides in from the left (background: shaders/editor_panel.gdshader,
 //   a wobbling membrane edge), the paused game on the right is greyed out
 //   (shaders/greyout.gdshader). The palette shows one live 3D icon tile per part
 //   (PartIcon), tinted per diet, locked ones dimmed. Dragging a tile hangs the bare
@@ -10,7 +10,8 @@
 //   the cell right there (free form, no mirroring), the swatches above the cell recolor it. Left drag
 //   elsewhere rotates, the wheel zooms, right click removes the part under the cursor
 //   (else the closest one) and refunds it. A placed or clicked part gets a gizmo
-//   (PartGizmo): arrows shift it, rings turn it, looks only. "Done" commits the draft
+//   (PartGizmo): arrows shift it, rings turn it, looks only. The size slider in the
+//   footer and the wheel over the picked part scale it. "Done" commits the draft
 //   and slides the panel out.
 //
 //   This class is the coordinator: it keeps the public API, creates the components,
@@ -55,7 +56,8 @@ public partial class CellEditor : CanvasLayer
     //   PickPart        Picks a placed part for the gizmo, -1 for none.
     //   MovePickedPart  Shifts the picked part (gizmo arrows), free of charge, looks only.
     //   TurnPickedPart  Turns the picked part (gizmo rings), free of charge, looks only.
-    //   GhostKind       The part whose ghost shows, null when none.
+    //   SetPartSize     Size of the picked part (slider, wheel), free of charge, looks only.
+    //   GhostKind      The part whose ghost shows, null when none.
     //   PreviewPart     The part at its snapped spot while dragging, hidden when it does not fit there.
     //   RaiseHeight     Raises or flattens the membrane at one height handle, neighbors follow softly.
     //   PickColor       Recolors the draft, null goes back to the stage color.
@@ -100,6 +102,7 @@ public partial class CellEditor : CanvasLayer
     {
         _session.Select(kind);
         UpdateInfo();
+        UpdateSize();
         _palette.UpdateTiles();
     }
 
@@ -153,6 +156,7 @@ public partial class CellEditor : CanvasLayer
     public void PickPart(int index)
     {
         _session.PickPart(index);
+        UpdateSize();
     }
 
     /// <summary>Shifts the picked part, clamped to CellDesign.MAX_PART_OFFSET.</summary>
@@ -172,6 +176,20 @@ public partial class CellEditor : CanvasLayer
     public bool TurnPickedPart(Vector3 axis, float angle)
     {
         return _poser.Turn(axis, angle);
+    }
+
+    /// <summary>Sets the size of the picked part, free of charge.</summary>
+    /// <param name="size">(Required) 1 = normal, CellDesign.MIN_PART_SIZE..MAX_PART_SIZE.</param>
+    /// <returns>False when no part is picked.</returns>
+    /// <example><code>editor.PickPart(0); editor.SetPartSize(1.3f);</code></example>
+    public bool SetPartSize(float size)
+    {
+        if (!_session.SetPartSize(size))
+        {
+            return false;
+        }
+        UpdateSize();
+        return true;
     }
 
     /// <summary>Shows the ghost of a part where it would snap, used while dragging, hovering and by the smoke test.</summary>
@@ -215,7 +233,8 @@ public partial class CellEditor : CanvasLayer
     // =============================   ROUTE INPUT   =============================
     // ===========================================================================
     //
-    //   OnPreviewInput   The wheel zooms, right click removes, then the gizmo (PartPoser) and
+    //   OnPreviewInput   The wheel sizes the picked part under it, else zooms, right click
+    //                    removes, then the gizmo (PartPoser) and
     //                    the height handles (MembraneSculptor) get the event. What is left:
     //                    a left drag rotates (on the edge: stretches), a left click places
     //                    the selected part or picks a placed one, hovering with a selected
@@ -227,14 +246,21 @@ public partial class CellEditor : CanvasLayer
 
     private const float DRAG_THRESHOLD = 5f;             // pixels before a click becomes a rotation
     private const float PLACE_DRAG_THRESHOLD = 14f;      // with a part in hand a shaky click still places
+    private const float SIZE_STEP = 0.1f;                // part size per wheel notch
 
     private void OnPreviewInput(InputEvent @event)
     {
         switch (@event)
         {
-            // Wheel: zoom
+            // Wheel over the picked part (empty hands): size, anywhere else: zoom
             case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.WheelUp or MouseButton.WheelDown } wheel:
-                _preview.Zoom(MouseButton.WheelUp == wheel.ButtonIndex);
+                bool isUp = MouseButton.WheelUp == wheel.ButtonIndex;
+                if (null == Selected && PickedPart >= 0 && PickedPart == _preview.PartAtPixel(wheel.Position))
+                {
+                    SetPartSize(Draft.Parts[PickedPart].Size + (isUp ? SIZE_STEP : -SIZE_STEP));
+                    return;
+                }
+                _preview.Zoom(isUp);
                 return;
 
             // Right click: remove the part under the cursor, else the closest one
@@ -347,7 +373,8 @@ public partial class CellEditor : CanvasLayer
     //
     //   Refresh        Updates title, points, diet preview, info card and tiles.
     //   UpdateInfo     Name and description of the dragged, hovered or selected part, empty otherwise.
-    //   ShowColor      Paints preview, ghost and the selected swatch in the draft color.
+    //   UpdateSize     Size slider of the picked part, hidden without one or with a part in hand.
+    //   ShowColor     Paints preview, ghost and the selected swatch in the draft color.
     //   _Process       Turns the dish, updates the ghost, the gizmo and the height handles, in this order.
     //   _Notification  Re-translates after a locale change, cleans up after a drag.
     //
@@ -363,6 +390,7 @@ public partial class CellEditor : CanvasLayer
         _panel.Refresh(Points, player.Diet, player.PreviewDiet(Draft));
         _palette.UpdateHeaders();
         UpdateInfo();
+        UpdateSize();
         _palette.UpdateTiles();
     }
 
@@ -370,6 +398,13 @@ public partial class CellEditor : CanvasLayer
     {
         PartInfo info = _palette.Focused ?? (null == Selected ? null : PartCatalog.Get(Selected.Value));
         _panel.ShowInfo(info, null == info || _session.IsUnlocked(info));
+    }
+
+    private void UpdateSize()
+    {
+        // Like the gizmo: a palette part in hand hides the slider
+        bool isPicked = null == Selected && PickedPart >= 0 && PickedPart < Draft.Parts.Count;
+        _panel.ShowSize(isPicked ? Draft.Parts[PickedPart].Size : null);
     }
 
     private void ShowColor()
@@ -444,9 +479,10 @@ public partial class CellEditor : CanvasLayer
 
         _panel = new CellEditorPanel();
         _panel.Setup(_palette, _preview);
-        _panel.DonePressed   += Finish;
-        _panel.SlidOut       += _preview.ClearCell;
-        _panel.AccentChanged += _preview.ApplyAccent;
+        _panel.DonePressed     += Finish;
+        _panel.PartSizeChanged += size => SetPartSize(size);
+        _panel.SlidOut         += _preview.ClearCell;
+        _panel.AccentChanged   += _preview.ApplyAccent;
         AddChild(_panel);
 
         // Components in the 3D world of the preview: ghost and hover dot, gizmo, height handles

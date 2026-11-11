@@ -176,6 +176,7 @@ public sealed record DietBalance
     public required float LightWeight { get; init; }             // photosynthesis counts this share as plant
     public required float EatingWeight { get; init; }            // share of the eating lean once parts exist
     public required float NeutralMass { get; init; }             // damps the value while little was eaten
+    public required float PlantFoodValue { get; init; }          // multiplier on the value of every piece of a food patch
 }
 
 // ===========================================================================
@@ -308,8 +309,18 @@ public sealed record CreatureEffectsBalance
     public required float DorsalFinAcceleration { get; init; }
     public required float PectoralFinAcceleration { get; init; }
 
-    // Weapons and senses, magnet values are added pull range in body sizes
+    // Mouths, magnet values are added pull range in body sizes
     public required float JawDigestMeat { get; init; }
+    public required float FilterMouthMagnet { get; init; }
+    public required float FilterMouthDigestPlant { get; init; }
+    public required float BeakDigestPlant { get; init; }
+
+    // Defense
+    public required float ShellHealth { get; init; }
+    public required float ShellSwim { get; init; }               // a shell is bulky in the water
+    public required float PoisonGlandDamage { get; init; }       // multiplier on spike and jaw damage
+
+    // Senses
     public required float PitEyeMagnet { get; init; }
     public required float EyeMagnet { get; init; }
     public required float StalkEyeMagnet { get; init; }

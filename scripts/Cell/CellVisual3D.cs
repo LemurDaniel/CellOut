@@ -485,8 +485,8 @@ public partial class CellVisual3D : Node3D
     private readonly List<(int Part, Node3D Pose, Vector3 Anchor)> _poses = new();
 
     /// <summary>
-    /// Turns the pose node of a placed part around the center of its pieces and shifts it
-    /// (PlacedPart.Offset, Rotation). The pieces keep their own animation (spinners, cilia)
+    /// Turns and scales the pose node of a placed part around the center of its pieces and
+    /// shifts it (PlacedPart.Offset, Rotation, Size). The pieces keep their own animation (spinners, cilia)
     /// below the pose node, so the pose survives every frame.
     /// </summary>
     private void PosePlaced(int index, Node3D pose, PlacedPart placed)
@@ -499,7 +499,7 @@ public partial class CellVisual3D : Node3D
             count++;
         }
         anchor = count > 0 ? anchor / count : Vector3.Zero;
-        Basis turn = Basis.FromEuler(placed.Rotation);
+        Basis turn = Basis.FromEuler(placed.Rotation) * Basis.FromScale(Vector3.One * placed.Size);
         pose.Transform = new Transform3D(turn, anchor + placed.Offset - turn * anchor);
         _poses.Add((index, pose, anchor));
     }

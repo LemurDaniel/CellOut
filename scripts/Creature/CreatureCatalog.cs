@@ -3,7 +3,7 @@
 //   organism: its category tab, cost, weight, where it sits on the body and which body
 //   type may use it (fish or marine mammal, chosen first in the CreatureEditor). Legs
 //   carry weight on land (Carry), wings lift it (Lift, flying itself comes later), see
-//   CreatureStats. Cost, weight, carry, stride and lift come from data/balance.json
+//   CreatureStats. The head holds one mouth (jaw, filter mouth or beak), which sets the diet. Cost, weight, carry, stride and lift come from data/balance.json
 //   (Core/Balance.cs). Texts live in locale/translations.csv as CREATURE_<KIND>_NAME /
 //   CREATURE_<KIND>_DESC, the tabs as CREATURE_CATEGORY_<CATEGORY>.
 //
@@ -34,7 +34,7 @@ namespace CellOut;
 
 public enum CreatureType { Fish, MarineMammal }
 
-public enum CreatureCategory { Fins, Weapons, Eyes, Limbs, Feet, Hands, Brain, Lungs, Wings }
+public enum CreatureCategory { Fins, Mouths, Defense, Eyes, Limbs, Feet, Hands, Brain, Lungs, Wings }
 
 /*
   Mounts share their spots: two parts on the same mount keep a gap along the spine.
@@ -47,8 +47,10 @@ public enum CreaturePartKind
 {
     // Fins
     CaudalFin, Fluke, DorsalFin, PectoralFin,
-    // Weapons
-    Jaw, Spines,
+    // Mouths: one per head, the mouth sets the diet
+    Jaw, FilterMouth, Beak,
+    // Defense
+    Spines, Shell, PoisonGland,
     // Eyes
     PitEye, Eye, StalkEye,
     // Limbs: sculpted, 1 to 4 joints
@@ -147,9 +149,14 @@ public static class CreatureCatalog
         Part(CreaturePartKind.Fluke,         CreatureCategory.Fins,    CreatureMount.Tail,  CreatureType.MarineMammal),
         Part(CreaturePartKind.DorsalFin,     CreatureCategory.Fins,    CreatureMount.Top,   null),
         Part(CreaturePartKind.PectoralFin,   CreatureCategory.Fins,    CreatureMount.Limb,  null),
-        // Weapons
-        Part(CreaturePartKind.Jaw,           CreatureCategory.Weapons, CreatureMount.Head,  null),
-        Part(CreaturePartKind.Spines,        CreatureCategory.Weapons, CreatureMount.Top,   CreatureType.Fish),
+        // Mouths: the head holds one, so the mouth is the choice between meat, plankton and plants
+        Part(CreaturePartKind.Jaw,           CreatureCategory.Mouths,  CreatureMount.Head,  null),
+        Part(CreaturePartKind.FilterMouth,   CreatureCategory.Mouths,  CreatureMount.Head,  null),
+        Part(CreaturePartKind.Beak,          CreatureCategory.Mouths,  CreatureMount.Head,  null),
+        // Defense: spines hurt, the shell takes hits, the gland poisons whatever the spines or the jaw hit
+        Part(CreaturePartKind.Spines,        CreatureCategory.Defense, CreatureMount.Top,   CreatureType.Fish),
+        Part(CreaturePartKind.Shell,         CreatureCategory.Defense, CreatureMount.Top,   null),
+        Part(CreaturePartKind.PoisonGland,   CreatureCategory.Defense, CreatureMount.Inner, null),
         // Eyes
         Part(CreaturePartKind.PitEye,        CreatureCategory.Eyes,    CreatureMount.Flank, null),
         Part(CreaturePartKind.Eye,           CreatureCategory.Eyes,    CreatureMount.Flank, null),

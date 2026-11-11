@@ -29,7 +29,8 @@ public sealed class CellEditSession
     //   Begin        Copies the player's design into a fresh draft, nothing spent or selected.
     //   Select       Picks a part from the palette, null for empty hands.
     //   PickPart     Picks a placed part for the gizmo, -1 for none.
-    //   IsUnlocked   Whether stage and diet of the player offer a part.
+    //   SetPartSize  Size of the picked part, free of charge, looks only.
+    //   IsUnlocked  Whether stage and diet of the player offer a part.
     //   IsAvailable  Unlocked and affordable with the points left.
     //
 
@@ -73,6 +74,19 @@ public sealed class CellEditSession
     public void PickPart(int index)
     {
         PickedPart = index >= 0 && index < Draft.Parts.Count ? index : -1;
+    }
+
+    /// <summary>Sets the size of the picked part.</summary>
+    /// <param name="size">(Required) 1 = normal, CellDesign.MIN_PART_SIZE..MAX_PART_SIZE.</param>
+    /// <returns>False when no part is picked.</returns>
+    public bool SetPartSize(float size)
+    {
+        if (PickedPart < 0)
+        {
+            return false;
+        }
+        Draft.SetPartSize(PickedPart, size);
+        return true;
     }
 
     /// <summary>Whether stage and diet of the player offer the part.</summary>

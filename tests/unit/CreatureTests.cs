@@ -87,6 +87,10 @@ public class CreatureTests
     //   BrainPaysEvolutionPoints    Big brain +2 EP per level and x1.15 steering.
     //   WingsLiftTheirShare         Two pairs of feather wings lift 20, the ratio decides flight.
     //   ClawsScratchAtTheirFlank    A single claw only hurts on its own side.
+    //   HeadHoldsOneMouth           A beak blocks the jaw and the filter mouth.
+    //   PlantMouthsDigestPlants     Filter mouth x1.25 plants and +1 range, beak x1.5, meat untouched.
+    //   ShellCoversBackAndFlanks    x1.35 health, x0.9 swim speed, 3 kg, plates at both flanks and the back.
+    //   GlandPoisonsTheSpines       x1.5 on the damage of spines and jaw.
     //
 
     [Fact]
@@ -201,5 +205,70 @@ public class CreatureTests
 
         Assert.Equal(new[] { 0.5f }, clawed.SpikeAngles);
         Assert.Equal(0.075f, clawed.MagnetBonus, PRECISION);
+    }
+
+    [Fact]
+    public void HeadHoldsOneMouth()
+    {
+        CreatureDesign design = CreatureDesign.Blob();
+
+        Assert.True(design.TryPlace(CreaturePartKind.Beak, 1f, paidCost: 0));
+        Assert.False(design.TryPlace(CreaturePartKind.Jaw, 1f, paidCost: 0));
+        Assert.False(design.TryPlace(CreaturePartKind.FilterMouth, 1f, paidCost: 0));
+    }
+
+    [Fact]
+    public void PlantMouthsDigestPlants()
+    {
+        CreatureDesign sieve = CreatureDesign.Blob();
+        CreatureDesign beak  = CreatureDesign.Blob();
+        Place(sieve, CreaturePartKind.FilterMouth);
+        Place(beak, CreaturePartKind.Beak);
+
+        CreatureStats sieved = CreatureStats.From(sieve);
+        CreatureStats beaked = CreatureStats.From(beak);
+
+        Assert.Equal(1.25f, sieved.DigestPlant, PRECISION);
+        Assert.Equal(1f, sieved.MagnetBonus, PRECISION);
+        Assert.Equal(1.5f, beaked.DigestPlant, PRECISION);
+        Assert.Equal(0f, beaked.MagnetBonus, PRECISION);
+        Assert.Equal(1f, sieved.DigestMeat, PRECISION);
+        Assert.Empty(beaked.JawAngles);
+    }
+
+    [Fact]
+    public void ShellCoversBackAndFlanks()
+    {
+        CreatureDesign design = CreatureDesign.Blob();
+        CreatureStats  bare   = CreatureStats.From(design);
+        Place(design, CreaturePartKind.Shell);
+
+        CreatureStats armored = CreatureStats.From(design);
+
+        Assert.Equal(bare.Health * 1.35f, armored.Health, PRECISION);
+        Assert.Equal(bare.SwimSpeed * 0.9f, armored.SwimSpeed, PRECISION);
+        Assert.Equal(bare.Weight + 3f, armored.Weight, PRECISION);
+        Assert.Equal(new[] { Mathf.Pi * 0.5f, -Mathf.Pi * 0.5f, Mathf.Pi }, armored.PlateAngles);
+        Assert.Equal(0.5f, CellStats.DamageFactor(armored.PlateAngles, Mathf.Pi));
+        Assert.Equal(1f, CellStats.DamageFactor(armored.PlateAngles, 0f));
+        Assert.Empty(bare.PlateAngles);
+    }
+
+    [Fact]
+    public void GlandPoisonsTheSpines()
+    {
+        CreatureDesign design = CreatureDesign.Blob();
+        Place(design, CreaturePartKind.Spines);
+        CreatureStats spiny = CreatureStats.From(design);
+        Place(design, CreaturePartKind.PoisonGland);
+
+        CreatureStats toxic = CreatureStats.From(design);
+
+        float plain    = CellStats.ContactDamage(spiny.SpikeAngles, spiny.JawAngles, spiny.Toxin, Mathf.Pi);
+        float poisoned = CellStats.ContactDamage(toxic.SpikeAngles, toxic.JawAngles, toxic.Toxin, Mathf.Pi);
+        Assert.Equal(1f, spiny.Toxin, PRECISION);
+        Assert.Equal(1.5f, toxic.Toxin, PRECISION);
+        Assert.True(plain > 0f);
+        Assert.Equal(plain * 1.5f, poisoned, PRECISION);
     }
 }

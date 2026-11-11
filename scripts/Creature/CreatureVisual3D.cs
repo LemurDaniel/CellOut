@@ -7,7 +7,8 @@
 //   Built in unit space (+X forward, contact radius 1) and scaled to Body.Radius. The
 //   body swims with a wave that grows towards the tail, side to side for fish, up and
 //   down for marine mammals; the parts ride the same wave (Bend). On land (Body.IsOnLand)
-//   the wave calms down, legs lift the body and walk, without legs it crawls on its belly.
+//   the wave stops: legs lift the body and walk, without legs it crawls on its belly with
+//   a rest of the wave.
 //   Wings flap slowly, hands grab, stalk eyes sway all the time.
 //   Coordinator of the classes in Visual/: it follows the body, owns the clay materials
 //   and rebuilds on change; the parts are built, animated and picked by its component
@@ -58,7 +59,8 @@ public partial class CreatureVisual3D : Node3D
     private const float SPOUT_PERIOD = 5f;           // a marine mammal breathes every few seconds
     private const float SPOUT_SECONDS = 0.9f;
     private const float LAND_LIFT = 0.32f;           // legs lift the body this far above its swim height on land: stilts, the legs grow with it
-    private const float LAND_WAVE = 0.25f;           // share of the swim wave left on land
+    private const float CRAWL_WAVE = 0.25f;          // share of the swim wave left on land without legs: the wiggle is its crawl
+    private const float WAVE_EASE = 4f;              // per second, the wave fades in and out at the shore
 
     private static readonly Shader CLAY_SHADER = GD.Load<Shader>("res://shaders/clay.gdshader");
     private static readonly Shader TRANSLUCENT_SHADER = GD.Load<Shader>("res://shaders/clay_translucent.gdshader");
@@ -122,6 +124,7 @@ public partial class CreatureVisual3D : Node3D
 
     private float _lift;
     private float _sink;                             // eases to Plane3D.SeaDrop in the water, 0 on land
+    private float _wave = 1f;                        // share of the swim wave: 1 in the water, 0 walking on land
     private ShaderMaterial _clay;
     private int _signature;
     private float _time;
@@ -190,7 +193,10 @@ public partial class CreatureVisual3D : Node3D
         // ---------------------------------------------------------------------------
 
         _phase += dt * (IDLE_FREQUENCY + SWIM_FREQUENCY * speedShare);
-        float amplitude  = (IDLE_AMP + SWIM_AMP * speedShare) * SwimScale * (isOnLand ? LAND_WAVE : 1f);
+        // On legs the body walks stiff, no swim wave at all; the phase keeps running so it fades back in smoothly
+        float waveGoal   = !isOnLand ? 1f : design.LegPairs > 0 ? 0f : CRAWL_WAVE;
+        _wave = Mathf.Lerp(_wave, waveGoal, Mathf.Clamp(dt * WAVE_EASE, 0f, 1f));
+        float amplitude  = (IDLE_AMP + SWIM_AMP * speedShare) * SwimScale * _wave;
         bool  isVertical = CreatureType.MarineMammal == design.Type;
         SetClay("swim_phase", _phase);
         SetClay("swim_amp", amplitude);

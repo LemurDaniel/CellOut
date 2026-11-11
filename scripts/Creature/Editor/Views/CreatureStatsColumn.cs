@@ -1,7 +1,7 @@
 // NOTE:
 //   Stats column of the creature editor: the traits of the draft (CreatureStats) as
-//   values and bars: weight, what the legs carry, speed in the water and on land, and
-//   whether the wings could lift it. A view without clicks: Refresh shows the draft,
+//   values and bars: weight, what the legs carry, speed in the water and on land, what
+//   the mouth gets out of plants and meat, and whether the wings could lift it. A view without clicks: Refresh shows the draft,
 //   Follow does so only when the draft changed (handle drags skip the full refresh).
 //
 //   var stats = new CreatureStatsColumn();
@@ -42,6 +42,8 @@ public partial class CreatureStatsColumn : PanelContainer
     private StatRow _agilityRow;
     private StatRow _healthRow;
     private StatRow _rangeRow;
+    private StatRow _plantRow;
+    private StatRow _meatRow;
     private StatRow _epRow;
     private StatRow _flightRow;
 
@@ -73,6 +75,8 @@ public partial class CreatureStatsColumn : PanelContainer
         _agilityRow = NewStatRow(rows, "CREATURE_STAT_TURN");
         _healthRow  = NewStatRow(rows, "CREATURE_STAT_HEALTH");
         _rangeRow   = NewStatRow(rows, "CREATURE_STAT_RANGE");
+        _plantRow   = NewStatRow(rows, "CREATURE_STAT_PLANT");
+        _meatRow    = NewStatRow(rows, "CREATURE_STAT_MEAT");
         _epRow      = NewStatRow(rows, "CREATURE_STAT_EP");
     }
 
@@ -125,6 +129,7 @@ public partial class CreatureStatsColumn : PanelContainer
     private const float MAX_AGILITY_BAR = 3f;
     private const float MAX_HEALTH_BAR = 2.5f;
     private const float MAX_RANGE_BAR = 2.5f;
+    private const float MAX_DIGEST_BAR = 2f;
     private const int MAX_EP_BAR = 4;
     private static readonly Color GOOD_COLOR = new(0.45f, 0.92f, 0.6f);
     private static readonly Color WARN_COLOR = new(1f, 0.68f, 0.3f);
@@ -168,6 +173,8 @@ public partial class CreatureStatsColumn : PanelContainer
         SetStat(_agilityRow, Percent(stats.Acceleration), stats.Acceleration / MAX_AGILITY_BAR, accent);
         SetStat(_healthRow, Percent(stats.Health), stats.Health / MAX_HEALTH_BAR, accent);
         SetStat(_rangeRow, Percent(range), range / MAX_RANGE_BAR, accent);
+        SetStat(_plantRow, Percent(stats.DigestPlant), stats.DigestPlant / MAX_DIGEST_BAR, accent);
+        SetStat(_meatRow, Percent(stats.DigestMeat), stats.DigestMeat / MAX_DIGEST_BAR, accent);
         SetStat(_epRow, ep.ToString(), (float)ep / MAX_EP_BAR, accent);
 
         // Flight: not possible yet, the bar shows how close the wings come
