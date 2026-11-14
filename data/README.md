@@ -21,7 +21,7 @@ Tunable numbers of the game. The code holds the formulas, this folder holds the 
 | `tribe.pack` | `Tribe/Pack/PackKeeper.cs`, `Tribe/Pack/Kin.cs` | Wild conspecifics, the call, the nest, pups and when the pack may become a tribe. |
 | `tribe.fruit` | `Game/World/Spawner.cs` | How often fruit drops from the trees and how much lies around. |
 | `tribe.village` | `Tribe/Village/TribeCommander.cs`, `Tribe/Pack/Kin.cs` | Hut distance, villager time, gathering, chopping, kin health and damage, gifts. |
-| `tribe.huts` | `Tribe/Village/HutDesign.cs` | Food, wood and effect of every wall, roof and add-on of a hut. |
+| `tribe.buildings` | `Tribe/Building/BuildingDesign.cs` | Food, wood, health and the one effect of every building function (dwelling, storehouse, market, totem, watchtower). Blocks are looks only and cost nothing. |
 | `tribe.rivals` | `Tribe/Rivals/RivalKeeper.cs`, `Tribe/Rivals/RivalTribe.cs` | Neighbor tribes: where they live, trades, raids, relations. |
 | `prelude` | `Prelude/Mutation.cs` | Evolution points and multipliers of the RNA world mutations. |
 

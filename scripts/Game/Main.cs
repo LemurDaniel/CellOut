@@ -53,7 +53,7 @@ public partial class Main : Node2D
     private PackKeeper _pack;
     private TribeCommander _tribe;
     private RivalKeeper _rivals;
-    private HutEditor _hutEditor;
+    private BuildingEditor _buildingEditor;
     private CutsceneDirector _cutscenes;
     private StartFlow _startFlow;
     private Node2D _fxLayer;
@@ -146,15 +146,16 @@ public partial class Main : Node2D
         AddChild(_rivals);
         _tribe.AttachRivals(_rivals);
 
-        _hutEditor = new HutEditor();
-        _hutEditor.Applied += design => _tribe.Design.CopyFrom(design);
-        AddChild(_hutEditor);
+        _buildingEditor = new BuildingEditor();
+        _buildingEditor.Applied += session => _tribe.TakeDesigns(session.Result);
+        _buildingEditor.Closed  += OnEditorClosed;
+        AddChild(_buildingEditor);
 
         var tribePanel = new TribePanel();
         tribePanel.Watch(_pack, _tribe, _rivals);
         tribePanel.ActionPressed   += () => _pack.Act();
-        tribePanel.BuildHutPressed += () => _tribe.TryBuildHut();
-        tribePanel.DesignPressed   += OpenHutEditor;
+        tribePanel.BuildPressed    += kind => _tribe.TryBuild(kind);
+        tribePanel.DesignPressed   += () => OpenBuildingEditor();
         tribePanel.GiftPressed     += rival => _rivals.Gift(rival);
         AddChild(tribePanel);
 
@@ -231,8 +232,8 @@ public partial class Main : Node2D
     // =======================   ROUTE INPUT AND FRAMES   ========================
     // ===========================================================================
     //
-    //   _UnhandledInput   E opens the editor, B the hut designer, the tribe takes the mouse, the pack Space and F, the rest goes to the camera.
-    //   OpenHutEditor     The hut designer of the tribe, over the running strategy view.
+    //   _UnhandledInput   E opens the editor, B the village builder, the tribe takes the mouse, the pack Space and F, the rest goes to the camera.
+    //   OpenBuildingEditor   Pauses and opens the village builder of the tribe.
     //   ZoomFactor        Wheel zoom of the camera.
     //   ThirdPerson       0 top view .. 1 third person.
     //   ZoomBy            Changes the zoom factor by steps, clamped.
@@ -248,9 +249,8 @@ public partial class Main : Node2D
             GetViewport().SetInputAsHandled();
             return;
         }
-        if (@event is InputEventKey { Pressed: true, Echo: false, Keycode: Key.B } && Player.IsTribal && !_hutEditor.IsOpen)
+        if (@event is InputEventKey { Pressed: true, Echo: false, Keycode: Key.B } && OpenBuildingEditor())
         {
-            OpenHutEditor();
             GetViewport().SetInputAsHandled();
             return;
         }
@@ -260,13 +260,19 @@ public partial class Main : Node2D
         }
     }
 
-    /// <summary>Opens the hut designer with the current blueprint of the tribe, the game runs on behind it.</summary>
-    private void OpenHutEditor()
+    /// <summary>Pauses and opens the village builder with the blueprints of the tribe.</summary>
+    /// <returns>True when it opens: from the tribe on, outside menu, cutscenes and other editors.</returns>
+    /// <example><code>main.OpenBuildingEditor();   // what B and the panel button do</code></example>
+    public bool OpenBuildingEditor()
     {
-        if (_tribe.IsActive)
+        bool isBusy = IsInMenu || IsEvolving || _cutscenes.IsShortPlaying || Editor.IsOpen || CreatureEditor.IsOpen || _buildingEditor.IsOpen;
+        if (isBusy || !_tribe.IsActive)
         {
-            _hutEditor.Open(_tribe.Design, _tribe.Economy);
+            return false;
         }
+        GetTree().Paused = true;
+        _buildingEditor.Open(_tribe.DesignOf);
+        return true;
     }
 
     /// <summary>Wheel zoom on top of the automatic distance, 1 = default, bigger = farther away.</summary>
@@ -349,7 +355,7 @@ public partial class Main : Node2D
     /// <example><code>main.OpenEditor();   // what E and the HUD button do</code></example>
     public bool OpenEditor()
     {
-        bool isBusy = IsInMenu || IsEvolving || _cutscenes.IsShortPlaying || Editor.IsOpen || CreatureEditor.IsOpen;
+        bool isBusy = IsInMenu || IsEvolving || _cutscenes.IsShortPlaying || Editor.IsOpen || CreatureEditor.IsOpen || _buildingEditor.IsOpen;
         if (isBusy || Player.Stage < Player.SINGLE_STAGE)
         {
             return false;
@@ -602,7 +608,7 @@ public partial class Main : Node2D
     //   Pack         The pack of the land animal: kin, nest, offer (Tribe/Pack/PackKeeper.cs).
     //   Tribe        The tribe: selection, stock, huts (Tribe/Village/TribeCommander.cs).
     //   Rivals       The neighbor tribes (Tribe/Rivals/RivalKeeper.cs).
-    //   HutEditor    The hut designer (Tribe/Village/HutEditor.cs).
+    //   BuildingEditor   The village builder (Tribe/Building/Editor/BuildingEditor.cs).
     //   CheatTo      F10 menu: jumps forward to a stage, the coast or more points.
     //
     //   The coast itself is kept by World/CoastKeeper.cs.
@@ -618,7 +624,7 @@ public partial class Main : Node2D
 
     public RivalKeeper Rivals => _rivals;
 
-    public HutEditor HutEditor => _hutEditor;
+    public BuildingEditor BuildingEditor => _buildingEditor;
 
     /// <summary>An archipelago ahead of the player (its facing), the landing island first.</summary>
     /// <param name="isNear">(Required) Right in front (cheat) instead of just outside the view.</param>

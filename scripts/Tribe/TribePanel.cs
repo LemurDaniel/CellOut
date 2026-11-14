@@ -2,22 +2,24 @@
 //   The HUD of pack and tribe: the pack size top center, the hint of what is missing or
 //   the F hint, the offered action as a button bottom center (call, build the nest, found
 //   the tribe, like the divide and organism buttons of the Hud) and from the tribe on the
-//   stock line (villagers, food, wood, huts, picked), the build and the design button, and
-//   the rival tribes on the left with their relation and a gift button each. Every text is
+//   stock line (villagers, food, wood, buildings, picked), on the right one build button
+//   per building function and the design button, and the rival tribes on the left with
+//   their relation and a gift button each. Every text is
 //   a key in locale/translations.csv. Created by Main, which wires the buttons. Reads the
 //   state of pack, tribe and rivals every frame, so it needs no signals from them.
 //
 //   var panel = new TribePanel();
 //   panel.Watch(pack, tribe, rivals);
 //   panel.ActionPressed   += () => pack.Act();
-//   panel.BuildHutPressed += () => tribe.TryBuildHut();
-//   panel.DesignPressed   += () => hutEditor.Open(tribe.Design, tribe.Economy);
+//   panel.BuildPressed    += kind => tribe.TryBuild(kind);
+//   panel.DesignPressed   += OpenBuildingEditor;
 //   panel.GiftPressed     += rival => rivals.Gift(rival);
 //   AddChild(panel);
 
 //
 //   Chapters:
 //     PANEL    Widgets, texts and the refresh per frame.
+//     BUILD    One build button per building function and the design button.
 //     RIVALS   One row per rival tribe: name, relation, gift.
 //
 
@@ -33,23 +35,19 @@ public partial class TribePanel : CanvasLayer
     // ===========================================================================
     //
     //   ActionPressed     The offered action was pressed, Main lets the pack act.
-    //   BuildHutPressed   The build button was pressed, Main lets the tribe build.
-    //   DesignPressed     The design button was pressed, Main opens the hut editor.
+    //   DesignPressed     The design button was pressed, Main opens the village builder.
     //   GiftPressed       A gift button was pressed, Main lets the rivals take it.
     //   Watch             The pack, the tribe and the rivals whose state the panel shows.
-    //   _Ready            Status line top center, action, build and design buttons bottom center, rivals left.
+    //   _Ready            Status line top center, the action button bottom center, build column right, rivals left.
     //   _Process          Texts and visibility from the state of pack, tribe and rivals.
     //   _Notification     Re-translates after a locale change.
     //
 
     [Signal] public delegate void ActionPressedEventHandler();
-    [Signal] public delegate void BuildHutPressedEventHandler();
     [Signal] public delegate void DesignPressedEventHandler();
     [Signal] public delegate void GiftPressedEventHandler(RivalTribe rival);
 
     private static readonly Color ACTION_ACCENT = new(0.95f, 0.8f, 0.4f);
-    private static readonly Color BUILD_ACCENT = new(0.8f, 0.6f, 0.4f);
-    private static readonly Color DESIGN_ACCENT = new(0.6f, 0.7f, 0.9f);
 
     private PackKeeper _pack;
     private TribeCommander _tribe;
@@ -57,13 +55,11 @@ public partial class TribePanel : CanvasLayer
     private Label _status;
     private Label _hint;
     private Button _action;
-    private Button _build;
-    private Button _design;
     private PackOffer _shownOffer = PackOffer.None;
 
     /// <summary>The pack, the tribe and the rivals whose state the panel shows, call before AddChild.</summary>
     /// <param name="pack">(Required) The pack: offer, members, nest.</param>
-    /// <param name="tribe">(Required) The tribe: stock, blueprint and huts.</param>
+    /// <param name="tribe">(Required) The tribe: stock, blueprints and buildings.</param>
     /// <param name="rivals">(Required) The rival tribes and their relations.</param>
     public void Watch(PackKeeper pack, TribeCommander tribe, RivalKeeper rivals)
     {
@@ -89,7 +85,7 @@ public partial class TribePanel : CanvasLayer
             top.AddChild(label);
         }
 
-        // Action, build and design button bottom center, the row of the Hud buttons is empty at these stages
+        // Action button bottom center, the row of the Hud buttons is empty at these stages
         var bottom = new MarginContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
         bottom.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
         bottom.AddThemeConstantOverride("margin_bottom", 40);
@@ -105,12 +101,7 @@ public partial class TribePanel : CanvasLayer
         _action = NewActionButton(ACTION_ACCENT, 280);
         _action.Pressed += () => EmitSignal(SignalName.ActionPressed);
         row.AddChild(_action);
-        _build = NewActionButton(BUILD_ACCENT, 280);
-        _build.Pressed += () => EmitSignal(SignalName.BuildHutPressed);
-        row.AddChild(_build);
-        _design = NewActionButton(DESIGN_ACCENT, 220);
-        _design.Pressed += () => EmitSignal(SignalName.DesignPressed);
-        row.AddChild(_design);
+        BuildBuildColumn();
         BuildRivalRows();
     }
 
@@ -118,8 +109,8 @@ public partial class TribePanel : CanvasLayer
       > Before the land animal: everything hidden
       > Land animal and pack: pack size, the hint of what is missing (else the F hint from the
         pack on), the offered action
-      > Tribe: stock line (villagers, food, wood, huts, picked), build (grey without stock) and
-        design button, one row per rival tribe
+      > Tribe: stock line (villagers, food, wood, buildings, picked), a build button per
+        function (grey without stock) and the design button, one row per rival tribe
     */
     public override void _Process(double delta)
     {
@@ -167,11 +158,7 @@ public partial class TribePanel : CanvasLayer
         }
         _action.Visible = PackOffer.None != offer;
 
-        _build.Visible   = isTribe;
-        _build.Disabled  = !isTribe || !_tribe.Economy.CanAfford(_tribe.Design);
-        _build.Text      = string.Format(Tr("TRIBE_BUILD_HUT"), _tribe.Design.FoodCost, _tribe.Design.WoodCost);
-        _design.Visible  = isTribe;
-        _design.Text     = Tr("TRIBE_DESIGN_HUT");
+        RefreshBuildColumn(isTribe);
         RefreshRivalRows(isTribe);
     }
 
@@ -210,6 +197,76 @@ public partial class TribePanel : CanvasLayer
         label.AddThemeColorOverride("font_outline_color", EditorStyle.OUTLINE);
         label.AddThemeConstantOverride("outline_size", Mathf.Max(4, fontSize / 5));
         return label;
+    }
+
+    // ===========================================================================
+    // ================================   BUILD   ================================
+    // ===========================================================================
+    //
+    //   BuildPressed         A build button was pressed, Main lets the tribe build that function (a C# event: an enum is no Variant).
+    //   BuildBuildColumn     A column on the right: the design button, then one build button per function.
+    //   RefreshBuildColumn   Name and cost per button, grey without stock.
+    //
+
+    public event System.Action<BuildingKind> BuildPressed;
+
+    private static readonly Color BUILD_ACCENT = new(0.8f, 0.6f, 0.4f);
+    private static readonly Color DESIGN_ACCENT = new(0.6f, 0.7f, 0.9f);
+
+    private readonly Dictionary<BuildingKind, Button> _buildButtons = new();
+    private VBoxContainer _buildColumn;
+    private Button _design;
+
+    private void BuildBuildColumn()
+    {
+        _buildColumn = new VBoxContainer { Visible = false };
+        _buildColumn.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.CenterRight);
+        _buildColumn.GrowVertical   = Control.GrowDirection.Both;
+        _buildColumn.GrowHorizontal = Control.GrowDirection.Begin;
+        _buildColumn.Position      -= new Vector2(20, 0);
+        _buildColumn.AddThemeConstantOverride("separation", 8);
+        AddChild(_buildColumn);
+
+        _design = NewColumnButton(DESIGN_ACCENT);
+        _design.Pressed += () => EmitSignal(SignalName.DesignPressed);
+        _buildColumn.AddChild(_design);
+        foreach (BuildingKind kind in System.Enum.GetValues<BuildingKind>())
+        {
+            Button       button = NewColumnButton(BUILD_ACCENT);
+            BuildingKind built  = kind;
+            button.Pressed += () => BuildPressed?.Invoke(built);
+            _buildColumn.AddChild(button);
+            _buildButtons[kind] = button;
+        }
+    }
+
+    private void RefreshBuildColumn(bool isTribe)
+    {
+        _buildColumn.Visible = isTribe;
+        if (!isTribe)
+        {
+            return;
+        }
+        _design.Text = Tr("TRIBE_DESIGN");
+        foreach ((BuildingKind kind, Button button) in _buildButtons)
+        {
+            BuildingDesign design = _tribe.DesignOf(kind);
+            button.Text     = string.Format(Tr("TRIBE_BUILD"), Tr($"BUILDING_{kind}".ToUpperInvariant()), design.FoodCost, design.WoodCost);
+            button.Disabled = !_tribe.Economy.CanAfford(design);
+        }
+    }
+
+    private static Button NewColumnButton(Color accent)
+    {
+        var button = new Button
+        {
+            CustomMinimumSize = new Vector2(300, 40),
+            FocusMode         = Control.FocusModeEnum.None,
+            AutoTranslateMode = AutoTranslateModeEnum.Disabled,
+        };
+        button.AddThemeFontSizeOverride("font_size", 16);
+        EditorStyle.ApplyButton(button, accent);
+        return button;
     }
 
     // ===========================================================================

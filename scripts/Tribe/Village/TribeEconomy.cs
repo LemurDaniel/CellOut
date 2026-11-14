@@ -2,7 +2,7 @@
 //   The stock of the tribe as plain rules: food the villagers gathered, wood they
 //   chopped, what a hut of a given design costs and how many stand. Pure logic without
 //   the engine, so the TribeCommander uses it and tests/unit checks it. Every number
-//   comes from data/balance.json (tribe.huts through HutDesign).
+//   comes from data/balance.json (tribe.buildings through BuildingDesign).
 //
 //   var economy = new TribeEconomy();
 //   economy.AddFood(3);
@@ -29,14 +29,14 @@ public sealed class TribeEconomy
     //   AddFood     Villagers gathered fruit.
     //   AddWood     Villagers chopped wood.
     //   Spend       Pays food and wood, false when the stock is short (gifts, huts).
-    //   BuildHut    Pays for a hut of a design and counts it, false when the stock is short.
+    //   BuildHut    Pays for a building of a design and counts it, false when the stock is short.
     //
 
     public int Food { get; private set; }
     public int Wood { get; private set; }
     public int Huts { get; private set; }
 
-    public bool CanAfford(HutDesign design)
+    public bool CanAfford(BuildingDesign design)
     {
         return Food >= design.FoodCost && Wood >= design.WoodCost;
     }
@@ -86,7 +86,7 @@ public sealed class TribeEconomy
     /// <param name="design">(Required) The blueprint, its FoodCost and WoodCost are paid.</param>
     /// <returns>True when the hut is paid and counted.</returns>
     /// <example><code>if (economy.BuildHut(design)) PlaceHut(design);</code></example>
-    public bool BuildHut(HutDesign design)
+    public bool BuildHut(BuildingDesign design)
     {
         if (!Spend(design.FoodCost, design.WoodCost))
         {

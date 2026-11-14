@@ -52,7 +52,6 @@ public partial class RivalTribe : Node2D
     public bool IsFriendly => Relation >= Tune.FriendlyAt;
     public bool IsHostile => Relation <= Tune.HostileAt;
 
-    private readonly HutDesign _design = new();
     private CreatureDesign _bodyPlan;
     private Color _tint;
     private float _size;
@@ -63,18 +62,16 @@ public partial class RivalTribe : Node2D
     /// <param name="fire">(Required) Plane point of its fire, on land.</param>
     /// <param name="entry">(Required) Where its traders and raiders enter the player's island.</param>
     /// <param name="bodyPlan">(Required) Body plan of its kin (the player's), copied per kin.</param>
-    /// <param name="design">(Required) Blueprint of its huts.</param>
     /// <param name="tint">(Required) Color of its kin.</param>
     /// <param name="relation">(Required) Starting relation, -1..1.</param>
     /// <param name="size">(Required) Player.BodySize(), its kin are grown.</param>
-    public void Setup(int faction, string nameKey, Vector2 fire, Vector2 entry, CreatureDesign bodyPlan, HutDesign design, Color tint, float relation, float size)
+    public void Setup(int faction, string nameKey, Vector2 fire, Vector2 entry, CreatureDesign bodyPlan, Color tint, float relation, float size)
     {
         Faction   = faction;
         NameKey   = nameKey;
         Fire      = fire;
         Entry     = entry;
         _bodyPlan = bodyPlan;
-        _design.CopyFrom(design);
         _tint     = tint;
         Relation  = Mathf.Clamp(relation, -1f, 1f);
         _size     = size;
@@ -97,6 +94,8 @@ public partial class RivalTribe : Node2D
     //
 
     public Nest Nest { get; private set; }
+
+    private static readonly BuildingKind[] SIGNATURE_KINDS = { BuildingKind.Totem, BuildingKind.Watchtower, BuildingKind.Market };
 
     private readonly List<Hut> _huts = new();
 
@@ -128,7 +127,9 @@ public partial class RivalTribe : Node2D
             }
             spot = _coast.PushOutOfTrees(spot, unit * Hut.SCALE);
             var hut = new Hut { Position = spot, Size = unit * Hut.SCALE, GroundHeight = _coast.GroundHeight(spot) * _size };
-            hut.Setup(_design, Faction);
+            // Dwellings first, the last building is what the tribe is known for; every one from a random template
+            BuildingKind kind = i < Tune.Huts - 1 ? BuildingKind.Dwelling : SIGNATURE_KINDS[Faction % SIGNATURE_KINDS.Length];
+            hut.Setup(BuildingTemplates.Build(kind, Rand.Index(BuildingTemplates.Count(kind))), Faction);
             hut.Destroyed += () => _huts.Remove(hut);
             _huts.Add(hut);
             AddChild(hut);

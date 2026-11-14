@@ -4,9 +4,9 @@
 //   camera. Left click or a drag box selects, right click orders the selection: onto a
 //   tree it chops wood, onto an enemy it attacks, else it walks there. Idle villagers
 //   gather the fruit nearby, gathered fruit and chopped wood fill the stock
-//   (TribeEconomy), the stock pays for huts of the current blueprint (Design, edited in
-//   the HutEditor) next to the fire, and every hut raises villagers. Selection rings are
-//   its children in world space. It does not process on its own: Main calls Update after
+//   (TribeEconomy), the stock pays for buildings next to the fire: one blueprint per
+//   function (DesignOf, edited in the BuildingEditor), dwellings raise villagers, the
+//   others help the village while they stand. Selection rings are its children in world space. It does not process on its own: Main calls Update after
 //   the pack and routes the mouse to HandleInput.
 //
 //   var tribe = new TribeCommander();
@@ -15,13 +15,13 @@
 //   AddChild(tribe);
 //   tribe.Update(dt);                       // in _PhysicsProcess
 //   if (tribe.HandleInput(@event)) GetViewport().SetInputAsHandled();
-//   tribe.TryBuildHut();                    // HUD button
+//   tribe.TryBuild(BuildingKind.Dwelling);  // HUD button
 
 //
 //   Chapters:
-//     SETTINGS   The session, the pack, the camera, the rivals, the stock and the blueprint.
+//     SETTINGS   The session, the pack, the camera, the rivals, the stock and the blueprints.
 //     SELECT     Click and drag box select units, right click orders them.
-//     VILLAGE    Gathering, chopping, huts and the villagers they raise, per physics frame.
+//     VILLAGE    Gathering, chopping, buildings and the villagers they raise, per physics frame.
 //
 
 using System.Collections.Generic;
@@ -37,11 +37,12 @@ public partial class TribeCommander : Node3D
     //
     //   Changed         Stock or huts changed, the panel refreshes.
     //   Economy         Food, wood and huts of the tribe (TribeEconomy).
-    //   Design          The blueprint every new hut is built from (HutEditor).
+    //   DesignOf        The blueprint new buildings of a function are built from (BuildingEditor).
+    //   TakeDesigns     Takes over the blueprints of a finished sitting in the editor.
     //   IsActive        From the tribe stage on, with a fire to build around.
-    //   Defense         Defense of the village: the add-ons of every standing hut.
-    //   TradeBonus      Share more every trader brings: the markets of the standing huts.
-    //   RelationBonus   Extra relation per trade: the totems of the standing huts.
+    //   Defense         Defense of the village: the standing watchtowers.
+    //   TradeBonus      Share more every trader brings: the standing markets.
+    //   RelationBonus   Extra relation per trade: the standing totems.
     //   Setup           The session, the pack and the camera, before AddChild.
     //   AttachRivals    The rival tribes, so a right click on an enemy orders an attack.
     //   OnKinAte        A villager ate land food: gathered for the stock, more with a storehouse.
@@ -54,7 +55,30 @@ public partial class TribeCommander : Node3D
 
     public TribeEconomy Economy { get; } = new();
 
-    public HutDesign Design { get; } = new();
+    private readonly Dictionary<BuildingKind, BuildingDesign> _designs = new();
+
+    /// <summary>The blueprint of a function, the first template until the player designs one.</summary>
+    public BuildingDesign DesignOf(BuildingKind kind)
+    {
+        if (!_designs.TryGetValue(kind, out BuildingDesign design))
+        {
+            design         = BuildingTemplates.Default(kind);
+            _designs[kind] = design;
+        }
+        return design;
+    }
+
+    /// <summary>Takes over a blueprint per function, standing buildings keep their look.</summary>
+    /// <param name="designOf">(Required) The new blueprint of a function, copied.</param>
+    /// <example><code>editor.Applied += session => tribe.TakeDesigns(session.Result);</code></example>
+    public void TakeDesigns(System.Func<BuildingKind, BuildingDesign> designOf)
+    {
+        foreach (BuildingKind kind in System.Enum.GetValues<BuildingKind>())
+        {
+            DesignOf(kind).CopyFrom(designOf(kind));
+        }
+        EmitSignal(SignalName.Changed);
+    }
 
     private WorldSession _session;
     private PackKeeper _pack;
@@ -394,11 +418,11 @@ public partial class TribeCommander : Node3D
     // ===============================   VILLAGE   ===============================
     // ===========================================================================
     //
-    //   Huts          Every standing hut of the player's tribe.
+    //   Huts          Every standing building of the player's tribe.
     //   Update        Idle villagers gather, choppers chop, huts raise villagers and stay on the
     //                 ground, the fire shows the stock, rings follow.
     //   Gather        An idle villager walks to the nearest fruit within GatherRange.
-    //   TryBuildHut   Pays a hut of the blueprint and places it next to the fire on land.
+    //   TryBuild      Pays a building of a function and places it next to the fire on land.
     //
 
     private readonly List<Hut> _huts = new();
@@ -426,9 +450,10 @@ public partial class TribeCommander : Node3D
             }
         }
 
-        // The fire burns as high as the stock pays for the blueprint: a glimmer means gather, a roaring fire means build
-        float foodShare = (float)Economy.Food / Mathf.Max(Design.FoodCost, 1);
-        float woodShare = (float)Economy.Wood / Mathf.Max(Design.WoodCost, 1);
+        // The fire burns as high as the stock pays for a dwelling: a glimmer means gather, a roaring fire means build
+        BuildingDesign dwelling = DesignOf(BuildingKind.Dwelling);
+        float foodShare = (float)Economy.Food / Mathf.Max(dwelling.FoodCost, 1);
+        float woodShare = (float)Economy.Wood / Mathf.Max(dwelling.WoodCost, 1);
         _pack.Nest.Glow = Mathf.Clamp(Mathf.Min(foodShare, woodShare), 0.2f, 1f);
 
         _huts.RemoveAll(hut => !IsInstanceValid(hut) || hut.IsQueuedForDeletion());
@@ -478,12 +503,14 @@ public partial class TribeCommander : Node3D
     private const int HUTS_PER_RING = 6;             // huts around the fire before the next ring starts
     private static readonly float HUT_ANGLE = Mathf.Tau / HUTS_PER_RING;
 
-    /// <summary>Pays a hut of the blueprint from the stock and places it HutDistance from the fire, on land and clear of trunks.</summary>
-    /// <returns>True when a hut was built.</returns>
-    /// <example><code>if (!tribe.TryBuildHut()) ...   // not enough food or wood</code></example>
-    public bool TryBuildHut()
+    /// <summary>Pays a building from the stock and places it HutDistance from the fire, on land and clear of trunks.</summary>
+    /// <param name="kind">(Required) The function, built from its blueprint (DesignOf).</param>
+    /// <returns>True when it was built.</returns>
+    /// <example><code>if (!tribe.TryBuild(BuildingKind.Market)) ...   // not enough food or wood</code></example>
+    public bool TryBuild(BuildingKind kind)
     {
-        if (!IsActive || !Economy.CanAfford(Design))
+        BuildingDesign design = DesignOf(kind);
+        if (!IsActive || !Economy.CanAfford(design))
         {
             return false;
         }
@@ -500,14 +527,14 @@ public partial class TribeCommander : Node3D
                 continue;
             }
             spot = Coast.PushOutOfTrees(spot, unit * Hut.SCALE);
-            Economy.BuildHut(Design);
+            Economy.BuildHut(design);
             var hut = new Hut { Position = spot, Size = unit * Hut.SCALE, GroundHeight = Coast.GroundHeight(spot) * Player.BodySize() };
-            hut.Setup(Design, faction: 0);
+            hut.Setup(design, faction: 0);
             hut.Destroyed += () => EmitSignal(SignalName.Changed);
             _huts.Add(hut);
             AddChild(hut);
             EmitSignal(SignalName.Changed);
-            Log.Verbose("TribeCommander", $"Hut {Economy.Huts} built, {Economy.Food} food and {Economy.Wood} wood left.");
+            Log.Verbose("TribeCommander", $"{kind} built (building {Economy.Huts}), {Economy.Food} food and {Economy.Wood} wood left.");
             return true;
         }
         return false;

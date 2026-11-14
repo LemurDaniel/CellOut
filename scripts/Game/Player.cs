@@ -21,7 +21,7 @@
 
 //
 //   Chapters:
-//     STATE              Stages, evolution points, signals and the traits from the design.
+//     STATE              Stages, evolution points, signals, health and the traits from the design (PlayerTraits).
 //     MOVE               Input, movement, regeneration, photosynthesis and diet fading.
 //     DIVISION           When the cells may divide and the division itself.
 //     ORGANISM           Evolving the full cluster into a creature and committing its body plan.
@@ -46,7 +46,7 @@ public partial class Player : CellBody
     //   Stages      Translation keys and indices of the stages, the numbers of the player.
     //   Evolution   Evolution points and the diet.
     //   Signals     Stats, evolution, stage changes and deaths for Main and the HUD.
-    //   Traits      Health, speed and the values the design sets.
+    //   Traits      Health and the values the design sets (PlayerTraits).
     //
 
     // ---------------------------------------------------------------------------
@@ -79,9 +79,7 @@ public partial class Player : CellBody
     //   Evolution points and the diet.
     // ---------------------------------------------------------------------------
 
-
     public int EvolutionPoints { get; private set; }
-    private int _epPerLevel = Tune.EpPerLevel;       // a brain adds to it (CreatureStats)
     public float Diet { get; private set; }          // -1 herbivore .. 1 carnivore
     private readonly DietTracker _diet = new();
 
@@ -100,27 +98,20 @@ public partial class Player : CellBody
 
     // ---------------------------------------------------------------------------
     // Traits
-    //   Health, speed and the values the design sets.
+    //   Health and the values the design sets (PlayerTraits).
     // ---------------------------------------------------------------------------
-
 
     public float MaxHp { get; private set; } = Tune.ProtocellHp;
     public float Hp { get; private set; } = Tune.ProtocellHp;
     public float Invulnerable { get; set; }
-    public float MagnetRange { get; private set; } = Tune.MagnetRange;
-    private float _speedMultiplier = 1f;
-    private float _acceleration = Tune.Acceleration;
-    private float _digestAll = 1f;
-    private float _digestPlant = 1f;
-    private float _digestMeat = 1f;
-    private float _photosynthesis;
-    private float _toxin = 1f;
-    private readonly List<float> _spikeAngles = new();
-    private readonly List<float> _jawAngles = new();
-    private readonly List<float> _plateAngles = new();
+
+    /// <summary>Every trait from the parts of the cell or the body plan of the creature, renewed by ApplyDesign (GROWTH).</summary>
+    private PlayerTraits _traits = PlayerTraits.Base();
+
+    public float MagnetRange => _traits.MagnetRange;
 
     /// <summary>Traits only a cell has (regeneration, slime, pili, pigment, stings, suckers), neutral for an organism.</summary>
-    public CellStats CellTraits { get; private set; } = new();
+    public CellStats CellTraits => _traits.Cell;
 
     // ===========================================================================
     // ================================   MOVE   =================================
@@ -156,16 +147,16 @@ public partial class Player : CellBody
         // Keys and the held mouse button, or the order of the tribe (SOCIETY)
         Vector2 input = (IsCommanded ? OrderDirection() : SteeringInput()).LimitLength(1f);
 
-        Velocity  = Velocity.Lerp(input * CurrentSpeed(), Mathf.Clamp(_acceleration * dt, 0f, 1f));
+        Velocity  = Velocity.Lerp(input * CurrentSpeed(), Mathf.Clamp(_traits.Acceleration * dt, 0f, 1f));
         Position += Velocity * dt;
 
         // Regeneration, photosynthesis and fading meals
         Invulnerable = Mathf.Max(0f, Invulnerable - dt);
         Hp           = Mathf.Min(MaxHp, Hp + MaxHp * Tune.RegenPerSecond * CellTraits.Regen * dt);
-        if (_photosynthesis > 0f)
+        if (_traits.Photosynthesis > 0f)
         {
             // By body size, not cell radius: a division shrinks the cells and must not cut the light
-            AddBiomass(_photosynthesis * BodySize() / REFERENCE_SIZE * dt, BiomassSource.Light);
+            AddBiomass(_traits.Photosynthesis * BodySize() / REFERENCE_SIZE * dt, BiomassSource.Light);
         }
         _diet.Decay(dt);
         Diet = _diet.Value(Design.Lean(), Design.Parts.Count > 0);
@@ -266,7 +257,6 @@ public partial class Player : CellBody
     //   Bonus points (organismBonusEp) come on top of the saved ones for the first creature editor.
     //
 
-
     public bool IsOrganism => Stage >= ORGANISM_STAGE;
 
     public float EvolveAt => Growth.DivisionAt(System.Numerics.BitOperations.Log2(MAX_CELLS));
@@ -362,8 +352,6 @@ public partial class Player : CellBody
     //
     //   Main sets CellBody.IsOnLand every physics frame from the Coast.
     //
-
-    private float _landSpeed = Balance.Current.Creature.Land.CrawlSpeed;    // from CreatureStats, see ApplyCreature
 
     public bool IsLandAnimal => Stage >= LAND_STAGE;
 
@@ -497,7 +485,7 @@ public partial class Player : CellBody
     /// <summary>Swim speed in the water, on land the walking (or crawling) speed of LAND.</summary>
     public float CurrentSpeed()
     {
-        return SwimSpeed(BodySize()) * (IsOnLand ? _landSpeed : _speedMultiplier) * StunFactor;
+        return SwimSpeed(BodySize()) * (IsOnLand ? _traits.LandSpeed : _traits.Speed) * StunFactor;
     }
 
     public float GoalProgress()
@@ -520,13 +508,13 @@ public partial class Player : CellBody
     /// <param name="worldAngle">(Required) Direction from the player to the other cell.</param>
     public float ContactDamageToward(float worldAngle)
     {
-        return CellStats.ContactDamage(_spikeAngles, _jawAngles, _toxin, worldAngle - Facing);
+        return _traits.ContactDamage(worldAngle - Facing);
     }
 
     /// <summary>Whether a jaw points towards the given world direction.</summary>
     public bool CanBiteToward(float worldAngle)
     {
-        return CellStats.CanBite(_jawAngles, worldAngle - Facing);
+        return _traits.CanBite(worldAngle - Facing);
     }
 
     /// <summary>
@@ -543,12 +531,12 @@ public partial class Player : CellBody
     /// <summary>Share of the damage taken from the given world direction, plates halve it, slime lowers it everywhere.</summary>
     public float DamageFactorFrom(float worldAngle)
     {
-        return CellStats.DamageFactor(_plateAngles, worldAngle - Facing) * CellTraits.DamageTaken;
+        return _traits.DamageFactor(worldAngle - Facing);
     }
 
     public bool HasThorns()
     {
-        return _spikeAngles.Count > 0 || _jawAngles.Count > 0;
+        return _traits.HasThorns;
     }
 
     // ===========================================================================
@@ -573,8 +561,8 @@ public partial class Player : CellBody
     {
         float gained = source switch
         {
-            BiomassSource.Plant => amount * _digestAll * _digestPlant,
-            BiomassSource.Meat  => amount * _digestAll * _digestMeat,
+            BiomassSource.Plant => amount * _traits.DigestAll * _traits.DigestPlant,
+            BiomassSource.Meat  => amount * _traits.DigestAll * _traits.DigestMeat,
             _                   => amount,
         };
         Biomass += gained;
@@ -591,7 +579,7 @@ public partial class Player : CellBody
         while (Biomass >= NextLevelAt)
         {
             Level++;
-            EvolutionPoints += _epPerLevel;
+            EvolutionPoints += _traits.EpPerLevel;
             _levelStart      = NextLevelAt;
             NextLevelAt      = Growth.NextLevelAt(NextLevelAt);
             Log.Verbose("Player", $"Biomass {Biomass:F0} reached level {Level} -> {EvolutionPoints} EP, next at {NextLevelAt:F0}.");
@@ -698,9 +686,8 @@ public partial class Player : CellBody
     //
     //   ApplyMutations Traits, EP and protocell hue from the mutations of the RNA prelude.
     //   AdvanceStage   Nucleus at stage 1, multicellular at stage 2 (from Divide), EP bonus on both.
-    //   ApplyDesign    Recomputes every trait from the placed parts (or the creature) and the divisions,
+    //   ApplyDesign    Renews every trait from the placed parts (or the creature) and the divisions,
     //                  takes the custom color of the design.
-    //   ApplyCreature  Speed, turning, senses and weapons of an organism from its body plan.
     //   UpdateRadius   Cell radius: the cluster size follows the biomass, the cells share it.
     //
 
@@ -764,84 +751,17 @@ public partial class Player : CellBody
         EmitSignal(SignalName.EvolutionReady);
     }
 
-    /// <summary>Recomputes every trait from the base values and the placed parts.</summary>
+    /// <summary>Renews every trait: an organism takes them from its body plan, a cell from its parts and the mutations of the prelude.</summary>
     private void ApplyDesign()
     {
-        float hpRatio      = MaxHp > 0f ? Hp / MaxHp : 1f;
-        float hpMultiplier = 1f;
-        _speedMultiplier = 1f;
-        _landSpeed       = Balance.Current.Creature.Land.CrawlSpeed;
-        _acceleration    = Tune.Acceleration;
-        _digestAll       = 1f;
-        _digestPlant     = 1f;
-        _digestMeat      = 1f;
-        _photosynthesis  = 0f;
-        _toxin           = 1f;
-        MagnetRange      = Tune.MagnetRange;
-        _epPerLevel      = Tune.EpPerLevel;
-        _spikeAngles.Clear();
-        _jawAngles.Clear();
-        _plateAngles.Clear();
-        CellTraits = new CellStats();
+        float hpRatio = MaxHp > 0f ? Hp / MaxHp : 1f;
+        _traits = IsOrganism ? PlayerTraits.OfCreature(Creature) : PlayerTraits.OfCell(Design, _mutations);
 
-        // An organism takes every trait from its body plan, the cell parts are history
-        if (IsOrganism)
-        {
-            hpMultiplier = ApplyCreature();
-        }
-        else
-        {
-            // A cell takes its traits from the placed parts, the same formula as the NPC cells
-            CellStats cell = CellStats.From(Design);
-            hpMultiplier     *= cell.Health;
-            _speedMultiplier *= cell.Speed;
-            _acceleration    *= cell.Acceleration;
-            _digestAll       *= cell.DigestAll;
-            _digestPlant     *= cell.DigestPlant;
-            _digestMeat      *= cell.DigestMeat;
-            _photosynthesis  += cell.Photosynthesis;
-            _toxin           *= cell.Toxin;
-            MagnetRange      += cell.MagnetBonus;
-            _spikeAngles.AddRange(cell.SpikeAngles);
-            _jawAngles.AddRange(cell.JawAngles);
-            _plateAngles.AddRange(cell.PlateAngles);
-            CellTraits = cell;
-
-            // The mutations of the RNA prelude ride along through the cell phase
-            foreach (MutationKind kind in _mutations)
-            {
-                Mutation mutation = Mutation.Get(kind);
-                hpMultiplier     *= mutation.Health;
-                _speedMultiplier *= mutation.Speed;
-                _digestAll       *= mutation.Digest;
-                MagnetRange      *= mutation.Magnet;
-            }
-        }
-
-        hpMultiplier *= 1f + Tune.HpPerDivision * Divisions;
+        float hpMultiplier = _traits.Health * (1f + Tune.HpPerDivision * Divisions);
         BodyColor = IsOrganism ? Creature.Color ?? ORGANISM_COLOR : Design.Color ?? _stageColor;
         MaxHp = (0 == Stage ? Tune.ProtocellHp : Tune.CellHp) * hpMultiplier;
         Hp    = hpRatio * MaxHp;
         Diet  = _diet.Value(Design.Lean(), Design.Parts.Count > 0);
-    }
-
-    /// <summary>Sets speed, turning, senses, diet, weapons and shell from the creature (CreatureStats).</summary>
-    /// <returns>The health multiplier of the creature.</returns>
-    private float ApplyCreature()
-    {
-        CreatureStats stats = CreatureStats.From(Creature);
-        _speedMultiplier = stats.SwimSpeed;
-        _acceleration   *= stats.Acceleration;
-        _digestPlant    *= stats.DigestPlant;
-        _digestMeat     *= stats.DigestMeat;
-        _toxin          *= stats.Toxin;
-        _landSpeed       = stats.LandSpeed;
-        _epPerLevel      = Tune.EpPerLevel + stats.EpPerLevelBonus;
-        MagnetRange     += stats.MagnetBonus;
-        _jawAngles.AddRange(stats.JawAngles);
-        _spikeAngles.AddRange(stats.SpikeAngles);
-        _plateAngles.AddRange(stats.PlateAngles);
-        return stats.Health;
     }
 
     /// <summary>

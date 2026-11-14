@@ -1,9 +1,9 @@
 // NOTE:
-//   A hut of a tribe on the plane, built from a blueprint (HutDesign): its look is
-//   HutVisual3D, its hit points come from the wall, the villagers it raises from the
-//   roof (Raise, every VillagerSeconds, smoke rises meanwhile). Raiders hurt it (Hurt),
-//   at zero health it collapses (Destroyed). The TribeCommander or the RivalTribe keeps
-//   GroundHeight up to date (the ground scales with the player).
+//   A building of a tribe on the plane, built from a blueprint (BuildingDesign): its
+//   look is BuildingVisual3D, its hit points and the villagers it raises come from its
+//   function (Raise, every VillagerSeconds, smoke rises meanwhile). Raiders hurt it
+//   (Hurt), at zero health it collapses (Destroyed). The TribeCommander or the RivalTribe
+//   keeps GroundHeight up to date (the ground scales with the player).
 //
 //   var hut = new Hut { Position = spot, Size = coast.Unit * Hut.SCALE, GroundHeight = ground };
 //   hut.Setup(design, faction: 0);
@@ -26,12 +26,13 @@ public partial class Hut : Node2D
     // =================================   HUT   =================================
     // ===========================================================================
     //
-    //   SCALE           Units of the coast per unit of the hut model: a hut is a few bodies across.
+    //   SCALE           Units of the coast per unit of the building model: a building is a few bodies across.
+    //   RADIUS          Model units from the center that count as "at the building": half a room block.
     //   Size            (Required) World units per model unit (coast unit times SCALE).
     //   GroundHeight    (Required) Ground below in world units, kept up to date by its keeper.
     //   Design          The blueprint it was built from.
     //   Faction         0 the player's, else the rival tribe it belongs to.
-    //   Hp / MaxHp      Hit points, the wall of the design.
+    //   Hp / MaxHp      Hit points, from the function of the design.
     //   VillagersLeft   Villagers this hut still raises.
     //   Progress        0..1 of the next villager, 0 once the hut raised them all.
     //   Destroyed       Zero health: the hut is gone, its keeper forgets it.
@@ -45,12 +46,13 @@ public partial class Hut : Node2D
     private static VillageBalance Tune => Balance.Current.Tribe.Village;
 
     public const float SCALE = 2.4f;
+    public const float RADIUS = 1f;
 
     [Signal] public delegate void DestroyedEventHandler();
 
     public float Size { get; set; } = 14f;
     public float GroundHeight { get; set; }
-    public HutDesign Design { get; } = new();
+    public BuildingDesign Design { get; } = new(BuildingKind.Dwelling);
     public int Faction { get; private set; }
     public float Hp { get; private set; }
     public float MaxHp { get; private set; }
@@ -71,7 +73,7 @@ public partial class Hut : Node2D
     /// <summary>Takes the blueprint and the owner, call before AddChild.</summary>
     /// <param name="design">(Required) The blueprint, copied.</param>
     /// <param name="faction">(Required) 0 for the player's tribe, else the rival tribe.</param>
-    public void Setup(HutDesign design, int faction)
+    public void Setup(BuildingDesign design, int faction)
     {
         Design.CopyFrom(design);
         Faction       = faction;
@@ -84,7 +86,7 @@ public partial class Hut : Node2D
     {
         _visual = new Node3D { Basis = new Basis(Vector3.Up, Rand.Angle()) };
         AddChild(_visual);
-        var look = new HutVisual3D();
+        var look = new BuildingVisual3D();
         look.Build(Design);
         _visual.AddChild(look);
 
@@ -97,7 +99,7 @@ public partial class Hut : Node2D
             _puffs.Add(puff);
         }
         Place();
-        Log.Verbose("Hut", $"Built at {Position}: {Design.Wall} wall, {Design.Roof} roof, {Design.Addons.Count} add-on(s), faction {Faction}.");
+        Log.Verbose("Hut", $"Built at {Position}: {Design.Kind} of {Design.Blocks.Count} block(s), faction {Faction}.");
     }
 
     /// <summary>Counts down to the next villager.</summary>
@@ -146,7 +148,7 @@ public partial class Hut : Node2D
 
         // Each puff climbs on its own phase and fades out at the top, bigger the riper the villager
         float progress = Progress;
-        float roofTop  = HutVisual3D.WALL_HEIGHT + HutVisual3D.ROOF_HEIGHT;
+        float roofTop  = Design.Height * BuildingVisual3D.CELL;
         for (int i = 0; i < _puffs.Count; i++)
         {
             float phase = Mathf.PosMod(_time * PUFF_SPEED + (float)i / PUFFS, 1f);

@@ -508,8 +508,8 @@ public partial class SmokeTest : Node
     //   Fliegen                 A blob with one feather pair is too heavy, a slim body with two pairs could fly.
     //   Hirn                    A big brain adds 2 EP per level (4 instead of 2).
     //   Rudel                   Nest, three followers and two pups after the cheat (enough for the tribe offer), a deadly hit is survived in a member's body.
-    //   Stamm                   Fire lit, villagers commanded, the stock pays a hut of the blueprint, the designer changes
-    //                           the blueprint, a chopper yields wood, rivals settle, a gift and a forced raid, the camera rises.
+    //   Stamm                   Fire lit, villagers commanded, the stock pays a dwelling, the village builder pauses and changes
+    //                           the watchtower blueprint, a chopper yields wood, rivals settle, a gift and a forced raid, the camera rises.
     //   Teil-Modelle            Every Blender part model (creature and cell) loads with meshes and its looping animation.
     //   Grafikstufen            The tier cycles Low, Medium, High, owners hear the change, depth blur only above Low.
     //   Wasserfarben            The water follows the stage: primordial, pond, sea; the lens and the depth fog are set.
@@ -721,23 +721,31 @@ public partial class SmokeTest : Node
         bool isOrdered = 1 == tribe.Selected.Count && tribe.Selected[0] == player && target == player.OrderTarget
             && player.OrderDirection().IsEqualApprox(Vector2.Right);
 
-        // A full stock pays a hut of the blueprint, an empty one does not
-        bool isPoor = !tribe.TryBuildHut();
-        tribe.Economy.AddFood(tribe.Design.FoodCost);
-        tribe.Economy.AddWood(tribe.Design.WoodCost);
-        bool isBuilt = tribe.TryBuildHut() && 1 == tribe.Huts.Count && 0 == tribe.Economy.Food && 0 == tribe.Economy.Wood && 1 == tribe.Economy.Huts
-            && Mathf.IsEqualApprox(tribe.Huts[0].MaxHp, Balance.Current.Tribe.Huts.Walls[WallKind.Clay].Health);
+        // A full stock pays a dwelling of the blueprint, an empty one does not
+        BuildingDesign dwelling = tribe.DesignOf(BuildingKind.Dwelling);
+        bool isPoor = !tribe.TryBuild(BuildingKind.Dwelling);
+        tribe.Economy.AddFood(dwelling.FoodCost);
+        tribe.Economy.AddWood(dwelling.WoodCost);
+        bool isBuilt = tribe.TryBuild(BuildingKind.Dwelling) && 1 == tribe.Huts.Count && 0 == tribe.Economy.Food && 0 == tribe.Economy.Wood && 1 == tribe.Economy.Huts
+            && Mathf.IsEqualApprox(tribe.Huts[0].MaxHp, Balance.Current.Tribe.Buildings[BuildingKind.Dwelling].Health);
 
-        // The designer: stone wall and a palisade change cost, health and defense of the next hut
-        HutEditor editor = _main.HutEditor;
-        editor.Open(tribe.Design, tribe.Economy);
-        editor.Draft.Wall = WallKind.Stone;
-        editor.Draft.Toggle(HutAddon.Palisade);
-        editor.Apply();
-        HutsBalance huts = Balance.Current.Tribe.Huts;
-        bool isDesigned = !editor.IsOpen && WallKind.Stone == tribe.Design.Wall && tribe.Design.Has(HutAddon.Palisade)
-            && tribe.Design.WoodCost == huts.Walls[WallKind.Stone].Wood + huts.Roofs[RoofKind.Grass].Wood + huts.Addons[HutAddon.Palisade].Wood
-            && Mathf.IsEqualApprox(tribe.Design.Defense, huts.Addons[HutAddon.Palisade].Defense);
+        // The village builder pauses the game; a watchtower from its second template plus a dropped torch becomes the
+        // blueprint of the tribe, the next watchtower defends the village and the game runs on
+        BuildingEditor editor = _main.BuildingEditor;
+        bool isOpened = _main.OpenBuildingEditor() && editor.IsOpen && GetTree().Paused;
+        editor.Session.ShowKind(BuildingKind.Watchtower);
+        editor.Session.ApplyTemplate(1);
+        int templateBlocks = editor.Session.Draft.Blocks.Count;
+        editor.Session.Select(BlockKind.Torch);
+        bool isDropped = editor.Session.PlaceAt(0, 0);
+        editor.Finish();
+        BuildingDesign tower = tribe.DesignOf(BuildingKind.Watchtower);
+        tribe.Economy.AddFood(tower.FoodCost);
+        tribe.Economy.AddWood(tower.WoodCost);
+        bool isDesigned = isOpened && isDropped && !editor.IsOpen && !GetTree().Paused
+            && templateBlocks + 1 == tower.Blocks.Count && BlockKind.Torch == tower.Blocks[^1].Kind
+            && tribe.TryBuild(BuildingKind.Watchtower) && 2 == tribe.Huts.Count
+            && Mathf.IsEqualApprox(tribe.Defense, Balance.Current.Tribe.Buildings[BuildingKind.Watchtower].Defense);
 
         // Wood: a villager ordered onto a trunk chops a load every ChopSeconds once it stands there
         Kin chopper = null;

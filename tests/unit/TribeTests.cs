@@ -1,14 +1,17 @@
 // NOTE:
-//   Unit tests for Tribe/Village/TribeEconomy.cs and HutDesign.cs: the stock of the
-//   tribe, the costs and effects of a hut blueprint, paying for huts. The expected
-//   values belong to tests/unit/balance.fixture.json (tribe.huts).
+//   Unit tests for the tribe: the stock (Tribe/Village/TribeEconomy.cs), the blueprint of
+//   a building with its blocks and the effects of its function, the templates
+//   (Tribe/Building/) and a sitting in the village builder
+//   (Tribe/Building/Editor/BuildingEditorSession.cs). The expected values belong to
+//   tests/unit/balance.fixture.json (tribe.buildings).
 //
 //   dotnet test tests/unit/CellOut.Tests.csproj --filter TribeTests
 
 //
 //   Chapters:
-//     KEEP THE STOCK     Gathering, chopping and the refusal of an empty stock.
-//     DESIGN THE HUT     Costs and effects summed from wall, roof and add-ons.
+//     KEEP THE STOCK        Gathering, chopping and the refusal of an empty stock.
+//     DESIGN THE BUILDING   Effects of the function, dropping, stacking and removing blocks, templates.
+//     SIT IN THE BUILDER    Picking, centering, dropping and the result of a sitting.
 //
 
 using Xunit;
@@ -18,12 +21,12 @@ namespace CellOut.Tests;
 public class TribeTests
 {
     // ===========================================================================
-    // ============================   KEEP THE STOCK   ===========================
+    // ===========================   KEEP THE STOCK   ============================
     // ===========================================================================
     //
-    //   StockStartsEmpty            No food, no wood, no huts, the default hut cannot be built.
-    //   GatheringPaysForHuts        Clay and grass cost 6 food and 3 wood, the stock drops by it.
-    //   OverspendIsRefused          Short of wood the hut is refused and nothing changes.
+    //   StockStartsEmpty            No food, no wood, no buildings, a dwelling cannot be built.
+    //   GatheringPaysForHuts        A dwelling costs 6 food and 3 wood, the stock drops by it.
+    //   OverspendIsRefused          Short of wood the building is refused and nothing changes.
     //   NegativeGatheringIsAnError  Food and wood gathered are never negative.
     //
 
@@ -35,14 +38,14 @@ public class TribeTests
         Assert.Equal(0, economy.Food);
         Assert.Equal(0, economy.Wood);
         Assert.Equal(0, economy.Huts);
-        Assert.False(economy.CanAfford(new HutDesign()));
+        Assert.False(economy.CanAfford(new BuildingDesign(BuildingKind.Dwelling)));
     }
 
     [Fact]
     public void GatheringPaysForHuts()
     {
         var economy = new TribeEconomy();
-        var design  = new HutDesign();
+        var design  = new BuildingDesign(BuildingKind.Dwelling);
         economy.AddFood(10);
         economy.AddWood(4);
 
@@ -61,7 +64,7 @@ public class TribeTests
         economy.AddFood(20);
         economy.AddWood(2);
 
-        Assert.False(economy.BuildHut(new HutDesign()));
+        Assert.False(economy.BuildHut(new BuildingDesign(BuildingKind.Dwelling)));
         Assert.Equal(20, economy.Food);
         Assert.Equal(2, economy.Wood);
         Assert.Equal(0, economy.Huts);
@@ -80,72 +83,220 @@ public class TribeTests
     }
 
     // ===========================================================================
-    // ============================   DESIGN THE HUT   ===========================
+    // =========================   DESIGN THE BUILDING   =========================
     // ===========================================================================
     //
-    //   DefaultHutIsClayAndGrass     6 food, 3 wood, 30 health, 1 villager, no bonus.
-    //   StoneAndShinglesCostMore     Stone and shingles: 10 food, 10 wood, 60 health, 3 villagers.
-    //   AddonsStackTheirEffects      Palisade and watchtower defend 30, market trades +0.5, storehouse +1 food per fruit.
-    //   ToggleSwitchesAnAddon        On, off, copied.
+    //   FunctionSetsCostAndEffect   Each function has its own cost and one effect, blocks change neither.
+    //   BlocksStackWhereTheyDrop    A roof dropped on a room lands on top of it, cells answer with their block.
+    //   BlocksStayOnTheGrid         Outside the grid and above its top nothing is placed, a turn swaps the footprint.
+    //   RemovingLetsBlocksFall      Without the room the roof lies on the ground.
+    //   TemplatesFitEveryFunction   Every template builds, the default dwelling is room, roof and door.
     //
 
     [Fact]
-    public void DefaultHutIsClayAndGrass()
+    public void FunctionSetsCostAndEffect()
     {
-        var design = new HutDesign();
+        var dwelling = new BuildingDesign(BuildingKind.Dwelling);
+        Assert.Equal(6, dwelling.FoodCost);
+        Assert.Equal(3, dwelling.WoodCost);
+        Assert.Equal(30f, dwelling.Health);
+        Assert.Equal(2, dwelling.Villagers);
+        Assert.Equal(0f, dwelling.Defense);
 
-        Assert.Equal(WallKind.Clay, design.Wall);
-        Assert.Equal(RoofKind.Grass, design.Roof);
-        Assert.Equal(6, design.FoodCost);
-        Assert.Equal(3, design.WoodCost);
-        Assert.Equal(30f, design.Health);
-        Assert.Equal(1, design.Villagers);
-        Assert.Equal(0f, design.Defense);
-        Assert.Equal(0, design.FoodPerFruit);
+        Assert.True(dwelling.TryPlace(BlockKind.SquareRoom, 2, 2));
+        Assert.True(dwelling.TryPlace(BlockKind.Crate, 0, 0));
+        Assert.Equal(6, dwelling.FoodCost);
+        Assert.Equal(3, dwelling.WoodCost);
+
+        Assert.Equal(1, new BuildingDesign(BuildingKind.Storehouse).FoodPerFruit);
+        Assert.Equal(0.5f, new BuildingDesign(BuildingKind.Market).TradeBonus);
+        Assert.Equal(0.1f, new BuildingDesign(BuildingKind.Totem).RelationBonus, 4);
+        Assert.Equal(20f, new BuildingDesign(BuildingKind.Watchtower).Defense);
+        Assert.Equal(8, new BuildingDesign(BuildingKind.Watchtower).WoodCost);
+        Assert.Equal(0, new BuildingDesign(BuildingKind.Watchtower).Villagers);
     }
 
     [Fact]
-    public void StoneAndShinglesCostMore()
+    public void BlocksStackWhereTheyDrop()
     {
-        var design = new HutDesign { Wall = WallKind.Stone, Roof = RoofKind.Shingle };
+        var design = new BuildingDesign(BuildingKind.Dwelling);
 
-        Assert.Equal(10, design.FoodCost);
-        Assert.Equal(10, design.WoodCost);
-        Assert.Equal(60f, design.Health);
-        Assert.Equal(3, design.Villagers);
+        Assert.True(design.TryPlace(BlockKind.RoundRoom, 2, 2));
+        Assert.True(design.TryPlace(BlockKind.ConeRoof, 2, 2, paint: 7));
+        Assert.True(design.TryPlace(BlockKind.Crate, 0, 0));
+
+        Assert.Equal(0, design.Blocks[0].Y);
+        Assert.Equal(2, design.Blocks[1].Y);
+        Assert.Equal(7, design.Blocks[1].Paint);
+        Assert.Equal(0, design.Blocks[2].Y);
+        Assert.Equal(4, design.Height);
+        Assert.Equal(0, design.BlockAt(3, 1, 3));
+        Assert.Equal(1, design.BlockAt(5, 3, 5));
+        Assert.Equal(2, design.BlockAt(0, 0, 0));
+        Assert.Equal(-1, design.BlockAt(7, 0, 7));
+        Assert.Equal(-1, design.BlockAt(3, 4, 3));
     }
 
     [Fact]
-    public void AddonsStackTheirEffects()
+    public void BlocksStayOnTheGrid()
     {
-        var design = new HutDesign();
-        design.Toggle(HutAddon.Palisade);
-        design.Toggle(HutAddon.Watchtower);
-        design.Toggle(HutAddon.Market);
-        design.Toggle(HutAddon.Storehouse);
+        var design = new BuildingDesign(BuildingKind.Watchtower);
 
-        Assert.Equal(30f, design.Defense);
-        Assert.Equal(0.5f, design.TradeBonus);
-        Assert.Equal(1, design.FoodPerFruit);
-        Assert.Equal(6 + 2 + 3 + 4 + 3, design.FoodCost);
-        Assert.Equal(3 + 8 + 6 + 3 + 4, design.WoodCost);
+        Assert.False(design.TryPlace(BlockKind.RoundRoom, 5, 5));
+        Assert.False(design.TryPlace(BlockKind.Crate, -1, 0));
+        Assert.Null(design.RestHeight(BlockKind.Crate, 0, 8));
+
+        // The palisade is four cells along X, a quarter turn lays it along Z
+        Assert.True(design.TryPlace(BlockKind.Palisade, 4, 7));
+        Assert.False(design.TryPlace(BlockKind.Palisade, 5, 7));
+        Assert.True(design.TryPlace(BlockKind.Palisade, 7, 0, turns: 1));
+        Assert.False(design.TryPlace(BlockKind.Palisade, 7, 5, turns: 1));
+
+        // Six towers of two cells fill the twelve cells of height, the seventh sticks out
+        for (int i = 0; i < 6; i++)
+        {
+            Assert.True(design.TryPlace(BlockKind.RoundTower, 3, 3));
+        }
+        Assert.Equal(BuildingDesign.GRID_HEIGHT, design.Height);
+        Assert.False(design.TryPlace(BlockKind.RoundTower, 3, 3));
+        Assert.Equal(0, design.RestHeight(BlockKind.Horns, 0, 0).Value);
     }
 
     [Fact]
-    public void ToggleSwitchesAnAddon()
+    public void RemovingLetsBlocksFall()
     {
-        var design = new HutDesign();
+        var design = new BuildingDesign(BuildingKind.Dwelling);
+        design.TryPlace(BlockKind.RoundRoom, 2, 2);
+        design.TryPlace(BlockKind.ConeRoof, 2, 2);
+        design.TryPlace(BlockKind.Horns, 3, 3);
 
-        Assert.True(design.Toggle(HutAddon.Totem));
-        Assert.True(design.Has(HutAddon.Totem));
-        Assert.Equal(0.1f, design.RelationBonus, 4);
-        Assert.False(design.Toggle(HutAddon.Totem));
-        Assert.False(design.Has(HutAddon.Totem));
+        Assert.Equal(4, design.Blocks[2].Y);
+        Assert.False(design.RemoveAt(3));
+        Assert.True(design.RemoveAt(0));
+        Assert.Equal(2, design.Blocks.Count);
+        Assert.Equal(BlockKind.ConeRoof, design.Blocks[0].Kind);
+        Assert.Equal(0, design.Blocks[0].Y);
+        Assert.Equal(2, design.Blocks[1].Y);
 
-        design.Toggle(HutAddon.Palisade);
-        var copy = new HutDesign();
+        var copy = new BuildingDesign(BuildingKind.Market);
         copy.CopyFrom(design);
-        Assert.True(copy.Has(HutAddon.Palisade));
-        Assert.Equal(design.WoodCost, copy.WoodCost);
+        Assert.Equal(BuildingKind.Dwelling, copy.Kind);
+        Assert.Equal(design.Blocks, copy.Blocks);
+    }
+
+    [Fact]
+    public void TemplatesFitEveryFunction()
+    {
+        foreach (BuildingKind kind in System.Enum.GetValues<BuildingKind>())
+        {
+            Assert.True(BuildingTemplates.Count(kind) >= 2);
+            for (int i = 0; i < BuildingTemplates.Count(kind); i++)
+            {
+                BuildingDesign design = BuildingTemplates.Build(kind, i);
+                Assert.Equal(kind, design.Kind);
+                Assert.True(design.Blocks.Count >= 3, $"{BuildingTemplates.NameKey(kind, i)} has {design.Blocks.Count} block(s).");
+                Assert.InRange(design.Height, 2, BuildingDesign.GRID_HEIGHT);
+            }
+        }
+
+        BuildingDesign hut = BuildingTemplates.Default(BuildingKind.Dwelling);
+        Assert.Equal("TEMPLATE_ROUND_HUT", BuildingTemplates.NameKey(BuildingKind.Dwelling, 0));
+        Assert.Equal(new[] { BlockKind.RoundRoom, BlockKind.ConeRoof, BlockKind.Door }, System.Linq.Enumerable.Select(hut.Blocks, block => block.Kind));
+        Assert.Equal(4, hut.Height);
+
+        // The wooden tower: three stilts, platform, lookout and roof
+        Assert.Equal(11, BuildingTemplates.Build(BuildingKind.Watchtower, 0).Height);
+        Assert.Throws<System.ArgumentOutOfRangeException>(() => BuildingTemplates.Build(BuildingKind.Totem, 9));
+    }
+
+    // ===========================================================================
+    // =========================   SIT IN THE BUILDER   ==========================
+    // ===========================================================================
+    //
+    //   SittingCopiesTheDesigns       Drafts are copies, the tribe's designs stay untouched until the result is taken.
+    //   PickedBlockCentersOnTheCell   A four cell block centers on the pointed cell and stays inside the grid.
+    //   TurnAndPaintGoWithTheBlock    R turns the next block, the paint is stored, a wrong paint falls back.
+    //   EmptyDraftFallsBackToTemplate A cleared draft results in the first template of its function.
+    //
+
+    [Fact]
+    public void SittingCopiesTheDesigns()
+    {
+        var mine = new BuildingDesign(BuildingKind.Market);
+        mine.TryPlace(BlockKind.Stall, 3, 3);
+        var session = new BuildingEditorSession();
+        int changes = 0;
+        session.Changed += () => changes++;
+
+        session.Begin(kind => BuildingKind.Market == kind ? mine : BuildingTemplates.Default(kind));
+        session.ShowKind(BuildingKind.Market);
+        session.Select(BlockKind.Awning);
+
+        Assert.True(session.PlaceAt(3, 3));
+        Assert.Equal(3, changes);
+        Assert.Equal(2, session.Draft.Blocks.Count);
+        Assert.Equal(1, session.Draft.Blocks[1].Y);
+        Assert.Single(mine.Blocks);
+        Assert.Equal(2, session.Result(BuildingKind.Market).Blocks.Count);
+
+        Assert.True(session.Remove(0));
+        Assert.Equal(0, session.Draft.Blocks[0].Y);
+        Assert.False(session.Remove(4));
+    }
+
+    [Fact]
+    public void PickedBlockCentersOnTheCell()
+    {
+        var session = new BuildingEditorSession();
+
+        Assert.Null(session.AnchorFor(4, 4));
+        Assert.False(session.PlaceAt(4, 4));
+
+        session.Select(BlockKind.RoundRoom);
+        Assert.Equal((3, 3), session.AnchorFor(4, 4));
+        Assert.Equal((0, 4), session.AnchorFor(0, 7));
+
+        session.Select(BlockKind.Crate);
+        Assert.Equal((7, 0), session.AnchorFor(7, 0));
+
+        session.Select(BlockKind.Crate);
+        Assert.Null(session.Selected);
+    }
+
+    [Fact]
+    public void TurnAndPaintGoWithTheBlock()
+    {
+        var session = new BuildingEditorSession();
+        session.Clear();
+        session.Select(BlockKind.Palisade);
+        session.Rotate();
+        session.PickPaint(2);
+
+        Assert.Equal(1, session.Turns);
+        Assert.Equal((7, 3), session.AnchorFor(7, 4));
+        Assert.True(session.PlaceAt(7, 4));
+        Assert.Equal(new PlacedBlock(BlockKind.Palisade, 7, 0, 3, 1, 2), session.Draft.Blocks[0]);
+
+        session.PickPaint(99);
+        Assert.Equal(BlockCatalog.DEFAULT_PAINT, session.Paint);
+        for (int i = 0; i < 3; i++)
+        {
+            session.Rotate();
+        }
+        Assert.Equal(0, session.Turns);
+    }
+
+    [Fact]
+    public void EmptyDraftFallsBackToTemplate()
+    {
+        var session = new BuildingEditorSession();
+        session.ShowKind(BuildingKind.Totem);
+        session.ApplyTemplate(1);
+        Assert.Equal(8, session.Draft.Blocks.Count);
+
+        session.Clear();
+
+        Assert.Empty(session.Draft.Blocks);
+        Assert.Equal(BuildingTemplates.Default(BuildingKind.Totem).Blocks, session.Result(BuildingKind.Totem).Blocks);
     }
 }

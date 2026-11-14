@@ -95,9 +95,8 @@ public sealed record Balance
         RequireEveryKind(balance.Cell.Parts, "cell.parts");
         RequireEveryKind(balance.Creature.Parts, "creature.parts");
         RequireEveryKind(balance.Prelude.Mutations, "prelude.mutations");
-        RequireEveryKind(balance.Tribe.Huts.Walls, "tribe.huts.walls");
-        RequireEveryKind(balance.Tribe.Huts.Roofs, "tribe.huts.roofs");
-        RequireEveryKind(balance.Tribe.Huts.Addons, "tribe.huts.addons");
+        RequireEveryKind(balance.Tribe.Buildings, "tribe.buildings");
+
         return balance;
     }
 
@@ -371,11 +370,11 @@ public sealed record CreatureEffectsBalance
 // ================================   TRIBE   ================================
 // ===========================================================================
 //
-//   TribeBalance     Pack, fruit, village, huts and rivals of the social stages (Tribe/).
+//   TribeBalance     Pack, fruit, village, buildings and rivals of the social stages (Tribe/).
 //   PackBalance      Conspecifics, calling, the nest and the pups (Tribe/Pack/PackKeeper.cs, Kin.cs).
 //   FruitBalance     Fruit dropping from the trees of the islands (Game/World/Spawner.cs).
 //   VillageBalance   Villagers, gathering, chopping and fighting of the tribe (Tribe/Village/TribeCommander.cs).
-//   HutsBalance      Costs and effects of walls, roofs and add-ons (Tribe/Village/HutDesign.cs).
+//   BuildingBalance  Costs and effects of one building function (Tribe/Building/BuildingDesign.cs).
 //   RivalsBalance    Neighbor tribes, their trades, raids and relations (Tribe/Rivals/RivalKeeper.cs).
 //
 
@@ -384,7 +383,7 @@ public sealed record TribeBalance
     public required PackBalance Pack { get; init; }
     public required FruitBalance Fruit { get; init; }
     public required VillageBalance Village { get; init; }
-    public required HutsBalance Huts { get; init; }
+    public required IReadOnlyDictionary<BuildingKind, BuildingBalance> Buildings { get; init; }
     public required RivalsBalance Rivals { get; init; }
 }
 
@@ -424,35 +423,16 @@ public sealed record VillageBalance
     public required int GiftFood { get; init; }                  // food a gift to a rival tribe costs
 }
 
-public sealed record HutsBalance
-{
-    public required IReadOnlyDictionary<WallKind, HutWallBalance> Walls { get; init; }
-    public required IReadOnlyDictionary<RoofKind, HutRoofBalance> Roofs { get; init; }
-    public required IReadOnlyDictionary<HutAddon, HutAddonBalance> Addons { get; init; }
-}
-
-public sealed record HutWallBalance
+public sealed record BuildingBalance
 {
     public required int Food { get; init; }
     public required int Wood { get; init; }
-    public required float Health { get; init; }                  // hit points of the hut against raids
-}
-
-public sealed record HutRoofBalance
-{
-    public required int Food { get; init; }
-    public required int Wood { get; init; }
-    public required int Villagers { get; init; }                 // villagers the hut raises in all
-}
-
-public sealed record HutAddonBalance
-{
-    public required int Food { get; init; }
-    public required int Wood { get; init; }
-    public float Defense { get; init; }                          // raid damage is divided by 1 + defense / DefenseScale (rivals)
-    public float TradeBonus { get; init; }                       // share more a trader brings
-    public float RelationBonus { get; init; }                    // extra relation per trade
-    public int FoodPerFruit { get; init; }                       // extra food per gathered fruit while it stands
+    public required float Health { get; init; }                  // hit points of the building against raids
+    public int Villagers { get; init; }                          // villagers it raises in all (dwelling)
+    public float Defense { get; init; }                          // raid damage is divided by 1 + defense / DefenseScale (watchtower)
+    public float TradeBonus { get; init; }                       // share more a trader brings (market)
+    public float RelationBonus { get; init; }                    // extra relation per trade (totem)
+    public int FoodPerFruit { get; init; }                       // extra food per gathered fruit while it stands (storehouse)
 }
 
 public sealed record RivalsBalance

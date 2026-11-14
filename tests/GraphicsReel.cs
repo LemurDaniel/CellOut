@@ -39,8 +39,8 @@ public partial class GraphicsReel : Node
     private const int LAND_FRAME = 400;
     private const int PACK_FRAME = 520;
     private const int TRIBE_FRAME = 620;
-    private const int BUILD_FRAME = 630;            // tribe: stock by cheat, a blueprint with every add-on, two huts
-    private const int DESIGN_FRAME = 700;           // tribe: the hut designer opens over the village
+    private const int BUILD_FRAME = 630;            // tribe: stock by cheat, one building of every function
+    private const int DESIGN_FRAME = 700;           // tribe: the village builder opens, full screen
     private const int QUIT_FRAME = 740;
     private const int RUSH_HOLD = 100;              // rushing: every stage poses this many frames (stills: frames 112, 198, 212)
 
@@ -138,19 +138,16 @@ public partial class GraphicsReel : Node
             case BUILD_FRAME:
                 _main.CheatTo(CheatTarget.Resources);
                 _main.CheatTo(CheatTarget.Resources);
-                _main.Tribe.Design.Wall = WallKind.Stone;
-                _main.Tribe.Design.Roof = RoofKind.Reed;
-                foreach (HutAddon addon in new[] { HutAddon.Palisade, HutAddon.Totem, HutAddon.Market, HutAddon.Watchtower })
+                _main.CheatTo(CheatTarget.Resources);
+                foreach (BuildingKind kind in System.Enum.GetValues<BuildingKind>())
                 {
-                    _main.Tribe.Design.Toggle(addon);
+                    _main.Tribe.TryBuild(kind);
                 }
-                _main.Tribe.TryBuildHut();
-                _main.Tribe.Design.Wall = WallKind.Wattle;
-                _main.Tribe.Design.Roof = RoofKind.Shingle;
-                _main.Tribe.TryBuildHut();
                 break;
             case DESIGN_FRAME:
-                _main.HutEditor.Open(_main.Tribe.Design, _main.Tribe.Economy);
+                _main.OpenBuildingEditor();
+                _main.BuildingEditor.Session.ShowKind(BuildingKind.Watchtower);
+                _main.BuildingEditor.Session.Select(BlockKind.Totem);
                 break;
             case QUIT_FRAME:
                 GetTree().Quit();

@@ -246,24 +246,12 @@
       "engageRange": 6,
       "giftFood": 5
     },
-    "huts": {
-      "walls": {
-        "Clay":   { "food": 4, "wood": 2, "health": 30 },
-        "Wattle": { "food": 2, "wood": 5, "health": 20 },
-        "Stone":  { "food": 6, "wood": 4, "health": 60 }
-      },
-      "roofs": {
-        "Grass":   { "food": 2, "wood": 1, "villagers": 1 },
-        "Reed":    { "food": 3, "wood": 3, "villagers": 2 },
-        "Shingle": { "food": 4, "wood": 6, "villagers": 3 }
-      },
-      "addons": {
-        "Storehouse": { "food": 3, "wood": 4, "foodPerFruit": 1 },
-        "Market":     { "food": 4, "wood": 3, "tradeBonus": 0.5 },
-        "Totem":      { "food": 2, "wood": 5, "relationBonus": 0.1 },
-        "Palisade":   { "food": 2, "wood": 8, "defense": 20 },
-        "Watchtower": { "food": 3, "wood": 6, "defense": 10 }
-      }
+    "buildings": {
+      "Dwelling":   { "food": 6, "wood": 3, "health": 30, "villagers": 2 },
+      "Storehouse": { "food": 4, "wood": 6, "health": 30, "foodPerFruit": 1 },
+      "Market":     { "food": 6, "wood": 6, "health": 25, "tradeBonus": 0.5 },
+      "Totem":      { "food": 3, "wood": 6, "health": 20, "relationBonus": 0.1 },
+      "Watchtower": { "food": 4, "wood": 8, "health": 40, "defense": 20 }
     },
     "rivals": {
       "count": 3,

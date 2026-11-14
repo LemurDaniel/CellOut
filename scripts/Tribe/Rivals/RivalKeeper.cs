@@ -105,10 +105,9 @@ public partial class RivalKeeper : Node2D
             }
             // The first neighbor is friendly, the second hostile, the rest are somewhere in between
             float relation = i switch { 0 => 0.5f, 1 => -0.5f, _ => Rand.Range(-0.2f, 0.2f) };
-            var design = new HutDesign { Wall = (WallKind)Rand.Index(3), Roof = (RoofKind)Rand.Index(3) };
             var rival  = new RivalTribe();
             rival.AttachCoast(Coast);
-            rival.Setup(i + 1, $"RIVAL_NAME_{i + 1}", spot, EntryFor(spot, fire), Player.Creature, design, TintFor(i), relation, size);
+            rival.Setup(i + 1, $"RIVAL_NAME_{i + 1}", spot, EntryFor(spot, fire), Player.Creature, TintFor(i), relation, size);
             _rivals.Add(rival);
             AddChild(rival);
         }
@@ -384,7 +383,7 @@ public partial class RivalKeeper : Node2D
                 float softened = damage / Village.KinDamage * Tune.RaidDamage / (1f + _tribe.Defense / Tune.DefenseScale);
                 foreach (Hut hut in new List<Hut>(_tribe.Huts))
                 {
-                    if (hut.Position.DistanceTo(enemy.Position) <= hut.Size * HutVisual3D.HUT_RADIUS * HUT_REACH + enemy.Radius)
+                    if (hut.Position.DistanceTo(enemy.Position) <= hut.Size * Hut.RADIUS * HUT_REACH + enemy.Radius)
                     {
                         if (hut.Hurt(softened))
                         {
@@ -397,7 +396,7 @@ public partial class RivalKeeper : Node2D
                 if (null == enemy.OrderTarget && !enemy.IsLeaving && _tribe.Huts.Count > 0)
                 {
                     Hut next = _tribe.Huts[Rand.Index(_tribe.Huts.Count)];
-                    if (next.Position.DistanceTo(enemy.Position) > next.Size * HutVisual3D.HUT_RADIUS * HUT_REACH + enemy.Radius)
+                    if (next.Position.DistanceTo(enemy.Position) > next.Size * Hut.RADIUS * HUT_REACH + enemy.Radius)
                     {
                         enemy.OrderMove(next.Position);
                     }
