@@ -15,6 +15,7 @@
 //     PLAYER     Growth, levels, health, division, land and the diet bar.
 //     CELL       Cell parts, their effects, contact combat and the NPC cells.
 //     CREATURE   Creature parts, body traits, land speed and part effects.
+//     TRIBE      Pack, fruit of the islands and the village of the tribe.
 //     PRELUDE    Mutations of the RNA world.
 //
 
@@ -51,6 +52,7 @@ public sealed record Balance
     public required CellBalance Cell { get; init; }
     public required CritterBalance Critter { get; init; }
     public required CreatureBalance Creature { get; init; }
+    public required TribeBalance Tribe { get; init; }
     public required PreludeBalance Prelude { get; init; }
 
     private static Balance _current;
@@ -360,6 +362,54 @@ public sealed record CreatureEffectsBalance
     public required float BigBrainAcceleration { get; init; }
     public required float BlowholeHealth { get; init; }
     public required float BigLungHealth { get; init; }
+}
+
+// ===========================================================================
+// ================================   TRIBE   ================================
+// ===========================================================================
+//
+//   TribeBalance     Pack, fruit and village of the social stages (Tribe/).
+//   PackBalance      Conspecifics, calling, the nest and the pups (Tribe/Pack/PackKeeper.cs, Kin.cs).
+//   FruitBalance     Fruit dropping from the trees of the islands (Game/World/Spawner.cs).
+//   VillageBalance   Huts, villagers and gathering of the tribe (Tribe/Village/TribeCommander.cs, TribeEconomy.cs).
+//
+
+public sealed record TribeBalance
+{
+    public required PackBalance Pack { get; init; }
+    public required FruitBalance Fruit { get; init; }
+    public required VillageBalance Village { get; init; }
+}
+
+public sealed record PackBalance
+{
+    public required int KinOnIsland { get; init; }               // wild conspecifics around the land animal at most
+    public required float KinSpawnInterval { get; init; }        // seconds between two wild conspecifics
+    public required float CallRange { get; init; }               // body sizes a conspecific hears the call
+    public required float NestDepth { get; init; }               // Units inland at least for a nest (grass, not sand)
+    public required float NestRange { get; init; }               // body sizes around the nest that count as "at the nest"
+    public required int PupsAtNest { get; init; }                // pups born when the nest is built
+    public required float PupSize { get; init; }                 // share of the adult size at birth
+    public required float PupGrowSeconds { get; init; }          // seconds a pup needs to grow up
+    public required float FollowDistance { get; init; }          // body sizes a follower keeps behind the leader
+    public required float WanderRadius { get; init; }            // body sizes a kin roams around its home
+    public required int FoundTribeAt { get; init; }              // pack members (without the leader) needed for the tribe
+}
+
+public sealed record FruitBalance
+{
+    public required float Interval { get; init; }                // seconds between two fruit drops near the player
+    public required int MaxOnGround { get; init; }               // land food lying around at most
+}
+
+public sealed record VillageBalance
+{
+    public required int HutCost { get; init; }                   // food a hut costs
+    public required float HutDistance { get; init; }             // Units from the fire to a hut
+    public required float VillagerSeconds { get; init; }         // seconds a hut needs to raise a villager
+    public required int VillagersPerHut { get; init; }           // villagers one hut raises in all
+    public required float GatherRange { get; init; }             // body sizes an idle villager looks for fruit
+    public required int FoodPerFruit { get; init; }              // food stock one gathered fruit brings
 }
 
 // ===========================================================================

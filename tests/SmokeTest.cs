@@ -2,8 +2,10 @@
 //   Headless smoke test: starts the main scene, boosts biomass through all stages,
 //   places parts in every cell editor, kills and respawns the player, lets a hunter
 //   eat a bacterium, grows the full cluster and evolves it into an organism in the
-//   creature editor, walks it onto the island coast with the F10 cheats (third person), and checks the RNA prelude, swim speed, wheel zoom, the German/English texts and
-//   the editor rules (direction, thrust, diet, unlocks, refunds).
+//   creature editor, walks it onto the island coast with the F10 cheats (third person),
+//   founds the pack and the tribe (strategy view, a hut), and checks the RNA prelude, swim
+//   speed, wheel zoom, the German/English texts and the editor rules (direction, thrust,
+//   diet, unlocks, refunds).
 //   Exit code 0 = all checks passed, 1 = a check failed. A frame cap prevents endless runs.
 //   Run by tools/Test-CellOut.ps1 after `dotnet build`.
 //
@@ -30,7 +32,8 @@ public partial class SmokeTest : Node
     //
     //   1. Start      Instantiates the main scene and keeps running while it is paused.
     //   2. Script     Frame 2 connects, frames 20-400 boost, 450 kills, 460 feeds,
-    //                 470 grows to 64 cells, 560 evolves and shapes a creature, from 700 checks.
+    //                 470 grows to 64 cells, 560 evolves and shapes a creature, 580 walks onto
+    //                 land, 600 founds the pack, 640 the tribe, from 700 checks.
     //
 
     private const int MAX_FRAMES = 1500;
@@ -42,6 +45,8 @@ public partial class SmokeTest : Node
     private const int GROW_FRAME = 470;             // enough biomass for 64 cells and the organism
     private const int EVOLVE_FRAME = 560;
     private const int LAND_FRAME = 580;             // cheats: points, then legs, lung and the coast
+    private const int PACK_FRAME = 600;             // cheat: followers and the nest
+    private const int TRIBE_FRAME = 640;            // cheat: the tribe, then a hut from a full stock
     private const int CHECK_FRAME = 700;
     private const int CHECK_DEADLINE = 1400;
     private const float GROW_BIOMASS = 100_000f;
@@ -66,6 +71,11 @@ public partial class SmokeTest : Node
     private bool _isCreatureEditorOk;
     private bool _isChecked;
     private bool _isCheatPointsOk;
+    private bool _isPackOk;
+    private bool _isTribeOk;
+    private bool _isThirdPersonOk;       // probed before the tribe, the strategy view takes the chase camera over
+    private bool _isFoodHabitatsOk;      // probed at the shore before the pack cheat moves the player inland, where no patch finds the sea
+    private bool _hasFoodSpawned;
 
     // ---------------------------------------------------------------------------
     // Start
@@ -82,7 +92,8 @@ public partial class SmokeTest : Node
     // ---------------------------------------------------------------------------
     // Script
     //   Frame 2 connects, frames 20-400 boost, 450 kills, 460 feeds,
-    //   470 grows to 64 cells, 560 evolves and shapes a creature, from 700 checks.
+    //   470 grows to 64 cells, 560 evolves and shapes a creature, 580 walks onto
+    //   land, 600 founds the pack, 640 the tribe, from 700 checks.
     // ---------------------------------------------------------------------------
 
     public override void _Process(double delta)
@@ -187,6 +198,24 @@ public partial class SmokeTest : Node
             _isCheatPointsOk = pointsBefore + 10 == player.EvolutionPoints;
             _main.CheatTo(CheatTarget.LandAnimal);
         }
+        // At the shore between the land and the pack cheat: sea food around, every land piece on land (any frame counts)
+        if (_frame > LAND_FRAME && _frame < PACK_FRAME)
+        {
+            _isFoodHabitatsOk = _isFoodHabitatsOk || ProbeFoodHabitats(isPrinted: PACK_FRAME - 1 == _frame);
+        }
+        // Pack: the nest stands, pups are born and follow, the leader survives a deadly hit in a member's body
+        if (PACK_FRAME == _frame)
+        {
+            _isPackOk = ProbePack(player);
+        }
+        // Tribe: the fire burns, the camera rises, villagers are commanded, the stock builds a hut.
+        // Third person and the food habitats are probed right before, the tribe changes both.
+        if (TRIBE_FRAME == _frame)
+        {
+            _isThirdPersonOk = ProbeThirdPerson();
+            _isTribeOk       = ProbeTribe(player);
+        }
+        _hasFoodSpawned = _hasFoodSpawned || _main.FoodLayer.GetChildCount() > 0;
         // The creatures pop up in real time after the evolution, the check waits for them (at most CHECK_DEADLINE)
         bool hasCreatures = _main.CritterLayer.GetChildCount() > 0;
         if (!_isChecked && _frame >= CHECK_FRAME && (hasCreatures || _frame >= CHECK_DEADLINE))
@@ -478,6 +507,8 @@ public partial class SmokeTest : Node
     //   Gewicht                 Blob about 10 kg, parts add weight, a heavy body walks slower, more legs carry more.
     //   Fliegen                 A blob with one feather pair is too heavy, a slim body with two pairs could fly.
     //   Hirn                    A big brain adds 2 EP per level (4 instead of 2).
+    //   Rudel                   Nest, three followers and two pups after the cheat (enough for the tribe offer), a deadly hit is survived in a member's body.
+    //   Stamm                   Fire lit, villagers commanded, the stock pays a hut, the camera rises into the strategy view.
     //   Teil-Modelle            Every Blender part model (creature and cell) loads with meshes and its looping animation.
     //   Grafikstufen            The tier cycles Low, Medium, High, owners hear the change, depth blur only above Low.
     //   Wasserfarben            The water follows the stage: primordial, pond, sea; the lens and the depth fog are set.
@@ -540,7 +571,7 @@ public partial class SmokeTest : Node
             ("Game Over", ProbeSingleDeath()),
             ("Größere Beute", ProbeEatRatio()),
             ("Spiel nicht pausiert", !GetTree().Paused),
-            ("Futter gespawnt", _main.FoodLayer.GetChildCount() > 0),
+            ("Futter gespawnt", _hasFoodSpawned),
             ("Zellen gespawnt", _main.CritterLayer.GetChildCount() > 0),
             ("Zellen fressen Zellen", _isPreySpawned && !IsInstanceValid(_prey)),
             ("Zellen fressen Futter", _isPreySpawned && !IsInstanceValid(_grazedFood)),
@@ -585,14 +616,16 @@ public partial class SmokeTest : Node
             ("Küste", ProbeCoast()),
             ("Küste nach Evolve-Biomasse", player.EvolvedAt >= GROW_BIOMASS && _main.CoastAt > player.EvolvedAt),
             ("Landtier per Cheat", _isCheatPointsOk && player.IsLandAnimal && player.IsOnLand),
-            ("Third Person", ProbeThirdPerson()),
-            ("Futter Meer/Land", ProbeFoodHabitats()),
+            ("Third Person", _isThirdPersonOk),
+            ("Futter Meer/Land", _isFoodHabitatsOk),
             ("Bäume", ProbeTrees()),
             ("Luft an Land", ProbeAir()),
             ("Laufen an Land", ProbeWalking()),
             ("Gewicht", ProbeWeight()),
             ("Fliegen", ProbeFlight()),
             ("Hirn", ProbeBrain()),
+            ("Rudel", _isPackOk),
+            ("Stamm", _isTribeOk && _main.StrategyView > 0f),
             ("Teil-Modelle", ProbeModels()),
             ("Grafikstufen", ProbeGraphicsTiers()),
             ("Wasserfarben", ProbeWater()),
@@ -640,12 +673,59 @@ public partial class SmokeTest : Node
     //   ProbeWeight           Blob weight, part weight, load slows walking, a second pair speeds it up.
     //   ProbeFlight           Flight ratio of a blob with one feather pair and a slim body with two.
     //   ProbeBrain            EP of one level up with and without a big brain.
+    //   ProbePack             Cheat to the pack: stage 6, nest, members, pups, a takeover instead of game over.
+    //   ProbeTribe            Cheat to the tribe: stage 7, fire, commanded player, an order, a hut from a full stock.
     //   ProbeModels           Every entry of CreatureVisual3D.MODELS and CellVisual3D.CELL_MODELS: meshes and
     //                         the named animation, every editor part has a cell model.
     //   ProbeShapeAndColor    Stretched front 1.4, squashed back 0.8, clamp at 1.5, heights 1.6 / clamp 0.5, copied, color reaches the player.
     //   ProbeSingleDeath      A loose single cell dies: Died fires once, IsDead, biomass kept, no more damage.
     //   ProbeEatRatio         1.15 as single cell, 1.05 after two divisions, 0.85 at 64 cells.
     //
+
+    private bool ProbePack(Player player)
+    {
+        int stageBefore = player.Stage;
+        _main.CheatTo(CheatTarget.Pack);
+        PackKeeper pack   = _main.Pack;
+        int        pups   = Balance.Current.Tribe.Pack.PupsAtNest;
+        bool       isPack = Player.PACK_STAGE == player.Stage && Player.LAND_STAGE == stageBefore
+            && null != pack.Nest && 3 + pups == pack.Members && player.IsPackLeader && !player.IsTribal
+            && PackOffer.FoundTribe == pack.Offer;
+
+        // A deadly hit: the leader lives on in a grown member, the pack shrinks by one
+        bool hasDied = false;
+        void OnDied() => hasDied = true;
+        player.Died += OnDied;
+        player.Invulnerable = 0f;
+        player.TakeDamage(99999f, player.Position + Vector2.Right);
+        player.Died -= OnDied;
+        bool isTakenOver = hasDied && !player.IsDead && player.Hp > 0f && !GetTree().Paused && 2 + pups == pack.Members;
+        return isPack && isTakenOver;
+    }
+
+    private bool ProbeTribe(Player player)
+    {
+        _main.CheatTo(CheatTarget.Tribe);
+        PackKeeper      pack  = _main.Pack;
+        TribeCommander  tribe = _main.Tribe;
+        bool isTribe = Player.TRIBE_STAGE == player.Stage && player.IsTribal && player.IsCommanded
+            && null != pack.Nest && pack.Nest.IsLit && tribe.IsActive
+            && pack.Members >= Balance.Current.Tribe.Pack.FoundTribeAt
+            && tribe.Units().Count == pack.Members + 1;
+
+        // Select the player by a click on it and order it two sizes to the right: the order sticks until it arrives
+        tribe.SelectAt(player.GlobalPosition, isAdding: false);
+        Vector2 target = player.GlobalPosition + Vector2.Right * player.BodySize() * 2f;
+        tribe.Order(target);
+        bool isOrdered = 1 == tribe.Selected.Count && tribe.Selected[0] == player && target == player.OrderTarget
+            && player.OrderDirection().IsEqualApprox(Vector2.Right);
+
+        // A full stock pays a hut, an empty one does not
+        bool isPoor = !tribe.TryBuildHut();
+        tribe.Economy.AddFood(tribe.Economy.HutCost);
+        bool isBuilt = tribe.TryBuildHut() && 1 == tribe.Huts.Count && 0 == tribe.Economy.Food && 1 == tribe.Economy.Huts;
+        return isTribe && isOrdered && isPoor && isBuilt;
+    }
 
     private bool ProbeZoom()
     {
@@ -1236,12 +1316,16 @@ public partial class SmokeTest : Node
     }
 
     /// <summary>After the evolution no soup molecules are left: food is sea food, on the islands land food on the ground.</summary>
-    private bool ProbeFoodHabitats()
+    /// <param name="isPrinted">(Optional) Prints the counts, once per run. Defaults to false.</param>
+    private bool ProbeFoodHabitats(bool isPrinted = false)
     {
         List<Food> foods  = _main.FoodLayer.GetChildren().OfType<Food>().Where(food => !food.IsQueuedForDeletion()).ToList();
         bool       isOk   = foods.Count > 0 && foods.All(food => FoodHabitat.Soup != food.Habitat);
         bool       isLand = foods.Where(food => FoodHabitat.Land == food.Habitat).All(food => _main.Coast.IsOnLand(food.Position) || food.IsMeat);
-        GD.Print($"  food: {foods.Count(food => FoodHabitat.Sea == food.Habitat)} sea, {foods.Count(food => FoodHabitat.Land == food.Habitat)} land");
+        if (isPrinted)
+        {
+            GD.Print($"  food: {foods.Count(food => FoodHabitat.Sea == food.Habitat)} sea, {foods.Count(food => FoodHabitat.Land == food.Habitat)} land");
+        }
         return isOk && isLand;
     }
 

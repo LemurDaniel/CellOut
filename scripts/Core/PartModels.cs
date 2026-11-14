@@ -102,6 +102,14 @@ public static class PartModels
             "Pigment"     => CellVisual3D.Material(new Color(0.22f, 0.14f, 0.28f), 0f, 0.6f),
             "PigmentLight"=> CellVisual3D.Material(new Color(0.65f, 0.55f, 0.4f), 0f, 0.6f),
             "Nettle"      => CellVisual3D.Material(new Color(0.95f, 0.85f, 0.55f, 0.75f), 0.3f, 0.15f),
+            // Village props (tools/blender/models/village.py)
+            "Twig"        => CellVisual3D.Material(new Color(0.45f, 0.32f, 0.18f), 0f, 0.9f),
+            "Moss"        => CellVisual3D.Material(new Color(0.35f, 0.52f, 0.22f), 0f, 0.95f),
+            "Earth"       => CellVisual3D.Material(new Color(0.3f, 0.2f, 0.12f), 0f, 1f),
+            "Down"        => CellVisual3D.Material(new Color(0.95f, 0.93f, 0.88f), 0.05f, 0.9f),
+            "Stone"       => CellVisual3D.Material(new Color(0.5f, 0.5f, 0.52f), 0f, 0.85f),
+            "Log"         => CellVisual3D.Material(new Color(0.35f, 0.22f, 0.12f), 0f, 0.9f),
+            "Ember"       => CellVisual3D.Material(new Color(1f, 0.4f, 0.1f), 1.4f, 0.6f),
             _             => CellVisual3D.Material(bodyColor.Darkened(0.1f), 0f, 0.7f),
         };
     }

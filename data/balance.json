@@ -215,6 +215,34 @@
     }
   },
 
+  "tribe": {
+    "pack": {
+      "kinOnIsland": 5,
+      "kinSpawnInterval": 4,
+      "callRange": 3.5,
+      "nestDepth": 12,
+      "nestRange": 6,
+      "pupsAtNest": 2,
+      "pupSize": 0.45,
+      "pupGrowSeconds": 60,
+      "followDistance": 2.2,
+      "wanderRadius": 4,
+      "foundTribeAt": 4
+    },
+    "fruit": {
+      "interval": 2.5,
+      "maxOnGround": 24
+    },
+    "village": {
+      "hutCost": 8,
+      "hutDistance": 7,
+      "villagerSeconds": 20,
+      "villagersPerHut": 1,
+      "gatherRange": 12,
+      "foodPerFruit": 1
+    }
+  },
+
   "prelude": {
     "epPerMutation": 1,
     "maxMutationEp": 5,

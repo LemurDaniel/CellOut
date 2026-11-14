@@ -10,3 +10,4 @@ Sorted by era first, by domain second. Code that spans several eras lives in `Ga
 | `Prelude/` | The playable RNA world before the protocell and its mutations. |
 | `Cell/` | Protocell to multicellular: cell body, NPC cells, cell parts, diet, cell editor. |
 | `Creature/` | Organism to land animal: body plan, creature parts, coast, creature editor. |
+| `Tribe/` | Pack to tribe: conspecifics, nest, the strategy view with villagers, stock and huts. |

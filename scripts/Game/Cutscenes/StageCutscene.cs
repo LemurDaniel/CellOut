@@ -2,8 +2,9 @@
 //   Short, calm animation for a stage advance: the camera glides in and swings a little
 //   around the body, a soft light brightens over it and natural particles tell what
 //   happens. Single cell: nutrients drift in and sink into the middle, the nucleus forms.
-//   Multicellular: gas bubbles rise from the dividing cells. Land animal: pollen drifts
-//   past in the wind. The camera returns to exactly where it started. Runs while the game
+//   Multicellular: gas bubbles rise from the dividing cells. Land animal and pack: pollen
+//   and grass seeds drift past in the wind. Tribe: embers rise from the first fire. The
+//   camera returns to exactly where it started. Runs while the game
 //   is paused, Main shows the stage banner and frees the cutscene when Finished fires.
 //
 //   var cutscene = new StageCutscene { Camera = camera, Center = center, Size = player.BodySize(), Stage = Player.SINGLE_STAGE };
@@ -62,6 +63,7 @@ public partial class StageCutscene : Node3D
     private static readonly Color[] NUTRIENT_COLORS = { new(0.95f, 0.72f, 0.3f), new(0.62f, 0.4f, 0.75f), new(0.6f, 0.85f, 0.5f) };
     private static readonly Color BUBBLE_COLOR = new(0.85f, 0.95f, 1f, 0.45f);
     private static readonly Color POLLEN_COLOR = new(1f, 0.92f, 0.55f);
+    private static readonly Color EMBER_COLOR = new(1f, 0.55f, 0.2f);
 
     // ===========================================================================
     // ================================   BUILD   ================================
@@ -109,6 +111,8 @@ public partial class StageCutscene : Node3D
         {
             Player.MULTICELLULAR_STAGE => CellVisual3D.Material(BUBBLE_COLOR, 0f, 0.1f),
             Player.LAND_STAGE          => CellVisual3D.Material(POLLEN_COLOR, 0.15f, 0.8f),
+            Player.PACK_STAGE          => CellVisual3D.Material(POLLEN_COLOR, 0.15f, 0.8f),
+            Player.TRIBE_STAGE         => CellVisual3D.Material(EMBER_COLOR, 1.6f, 0.6f),
             _                          => CellVisual3D.Material(NUTRIENT_COLORS[index % NUTRIENT_COLORS.Length], 0.15f),
         };
     }
@@ -155,6 +159,8 @@ public partial class StageCutscene : Node3D
             {
                 Player.MULTICELLULAR_STAGE => Bubble(mote, life),
                 Player.LAND_STAGE          => Pollen(mote, life),
+                Player.PACK_STAGE          => Pollen(mote, life),
+                Player.TRIBE_STAGE         => Ember(mote, life),
                 _                          => Nutrient(mote, life),
             };
             mote.Mesh.Position = position * Size;
@@ -187,7 +193,8 @@ public partial class StageCutscene : Node3D
     //
     //   Nutrient   Single cell: drifts in on a slow spiral and shrinks into the middle.
     //   Bubble     Multicellular: rises from the cells, wobbles and pops at the top.
-    //   Pollen     Land animal: drifts past in the wind, bobbing.
+    //   Pollen     Land animal and pack: drifts past in the wind, bobbing.
+    //   Ember      Tribe: rises from the fire on a wobbly path and burns out.
     //
     //   Each takes the progress 0..1 of its particle and returns the position (in body
     //   sizes) and the size factor.
@@ -221,5 +228,14 @@ public partial class StageCutscene : Node3D
         float height = 0.4f + mote.Height * 1.2f + Mathf.Sin(life * 7f + mote.Angle) * 0.15f;
         float size   = Mathf.Sin(life * Mathf.Pi);
         return (new Vector3(across, height, side), size);
+    }
+
+    /// <summary>Rises from the fire in front of the body, wobbles in the heat and burns out at the top.</summary>
+    private static (Vector3 Position, float Size) Ember(Mote mote, float life)
+    {
+        float radius = 0.3f * mote.Radius + Mathf.Sin(life * 11f + mote.Angle) * 0.08f;
+        float height = 0.2f + life * (1.5f + mote.Height);
+        float size   = Mathf.Sin(Mathf.Min(life * 3f, 1f) * Mathf.Pi * 0.5f) * (1f - Ease.Smooth(Ease.Window(life, 0.6f, 1f)));
+        return (new Vector3(1.2f + Mathf.Cos(mote.Angle) * radius, height, Mathf.Sin(mote.Angle) * radius), size);
     }
 }

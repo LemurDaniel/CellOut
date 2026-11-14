@@ -313,6 +313,7 @@ public partial class Hud : CanvasLayer
         _banner    = NewLabel(64);
         GameFonts.UseDisplay(_banner);
         _bannerSub = NewLabel(20);
+        _bannerSub.AutowrapMode = TextServer.AutowrapMode.Word;    // long banner lines (tribe) wrap instead of leaving the screen
         foreach (Label label in new[] { _banner, _bannerSub })
         {
             label.HorizontalAlignment = HorizontalAlignment.Center;

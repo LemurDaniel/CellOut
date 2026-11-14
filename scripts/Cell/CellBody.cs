@@ -89,6 +89,28 @@ public partial class CellBody : Node2D
     public Vector2 EngulfPoint { get; set; }  // prey being swallowed, on the plane (Main, ENGULF)
     public float EngulfReach { get; set; }    // 0 smooth membrane .. 1 pseudopods fully around the prey
 
+    /// <summary>Plane point the tribe ordered this body to, null without an order (Tribe/Village/TribeCommander.cs).</summary>
+    public Vector2? OrderTarget { get; set; }
+
+    private const float ORDER_ARRIVE = 0.6f;   // share of the body size: this close to the target the order is done
+
+    /// <summary>Unit direction towards the order target, zero without one. Clears the order once the body arrived.</summary>
+    /// <example><code>Vector2 input = OrderDirection();   // in a physics frame</code></example>
+    public Vector2 OrderDirection()
+    {
+        if (OrderTarget is not Vector2 target)
+        {
+            return Vector2.Zero;
+        }
+        Vector2 toTarget = target - GlobalPosition;
+        if (toTarget.Length() < BodySize() * ORDER_ARRIVE)
+        {
+            OrderTarget = null;
+            return Vector2.Zero;
+        }
+        return toTarget.Normalized();
+    }
+
     // Inner life, LookVersion counts up when it changes so the visual rebuilds
     public float AnimSeed { get; private set; }
     public int LookVersion { get; private set; }

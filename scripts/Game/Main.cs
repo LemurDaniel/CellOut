@@ -1,9 +1,9 @@
 // NOTE:
 //   The game world: an endless primordial soup around the player. Main is the
 //   coordinator: it builds the world, creates the components of World/ (camera,
-//   contacts, spawning, coast) and Flow/ (start flow, cutscenes), wires their signals,
-//   routes input and frames to them and reacts to the events of the player: editors,
-//   stage changes, deaths, the evolution and the cheats. Logic runs in 2D on the plane,
+//   contacts, spawning, coast), Flow/ (start flow, cutscenes) and Tribe/ (pack, tribe,
+//   their panel), wires their signals, routes input and frames to them and reacts to the
+//   events of the player: editors, stage changes, deaths, the evolution and the cheats. Logic runs in 2D on the plane,
 //   rendering in 3D (see Core/Plane3D.cs). Attached to the root of scenes/main.tscn.
 
 //
@@ -14,7 +14,7 @@
 //     REACT TO EVENTS          The cell editor, stage changes and deaths.
 //     PLAY SHORT CUTSCENES     The stage cutscene and the transition into an editor.
 //     EVOLVE INTO ORGANISM     Cutscene from 64 cells to the clay blob, creature editor, the new sea.
-//     COAST AND CHEATS         The coast of the organism stage, the F10 stage jumps.
+//     COAST AND CHEATS         The coast of the organism stage, the pack, the tribe and the F10 stage jumps.
 //     HELPERS                  Kill reward, splash and layers.
 //
 
@@ -41,7 +41,7 @@ public partial class Main : Node2D
     //   1. Scene        The session and the camera with environment, sun and backdrop.
     //   2. Layers       Food, critters, the player and effects in draw order.
     //   3. HUD          Binds HUD, editors and the F10 cheat menu and connects the player signals.
-    //   4. Components   Contacts, spawning, coast, cutscenes and the start flow, wired by signals.
+    //   4. Components   Contacts, spawning, coast, pack, tribe, cutscenes and the start flow, wired by signals.
     //   5. Menu         The title menu over the empty soup, it fills after the start (MENU AND INTRO).
     //
 
@@ -50,6 +50,8 @@ public partial class Main : Node2D
     private ContactResolver _contacts;
     private Spawner _spawner;
     private CoastKeeper _coast;
+    private PackKeeper _pack;
+    private TribeCommander _tribe;
     private CutsceneDirector _cutscenes;
     private StartFlow _startFlow;
     private Node2D _fxLayer;
@@ -127,6 +129,22 @@ public partial class Main : Node2D
         _coast.CoastSpawned += () => Hud.ShowBanner("BANNER_COAST_TITLE", "BANNER_COAST_TEXT");
         AddChild(_coast);
 
+        _pack = new PackKeeper();
+        _pack.Setup(_session, _followCamera);
+        _pack.SplashRequested += SpawnSplash;
+        _pack.KinAte          += (position, size, color) => SpawnSplash(position, size * 2f, color);
+        AddChild(_pack);
+
+        _tribe = new TribeCommander();
+        _tribe.Setup(_session, _pack, _followCamera);
+        AddChild(_tribe);
+
+        var tribePanel = new TribePanel();
+        tribePanel.Watch(_pack, _tribe);
+        tribePanel.ActionPressed   += () => _pack.Act();
+        tribePanel.BuildHutPressed += () => _tribe.TryBuildHut();
+        AddChild(tribePanel);
+
         _cutscenes = new CutsceneDirector();
         _cutscenes.Setup(_session, _followCamera.Camera);
         _cutscenes.StageFinished  += OnStageCutsceneFinished;
@@ -200,12 +218,12 @@ public partial class Main : Node2D
     // =======================   ROUTE INPUT AND FRAMES   ========================
     // ===========================================================================
     //
-    //   _UnhandledInput   E opens the editor, everything else goes to the camera (zoom, orbit).
+    //   _UnhandledInput   E opens the editor, the tribe takes the mouse, the pack Space and F, the rest goes to the camera.
     //   ZoomFactor        Wheel zoom of the camera.
     //   ThirdPerson       0 top view .. 1 third person.
     //   ZoomBy            Changes the zoom factor by steps, clamped.
     //   _Process          Advances the camera once per frame.
-    //   _PhysicsProcess   Coast, contacts and refill, in this order.
+    //   _PhysicsProcess   Coast, pack, tribe, contacts and refill, in this order.
     //
 
     public override void _UnhandledInput(InputEvent @event)
@@ -216,7 +234,7 @@ public partial class Main : Node2D
             GetViewport().SetInputAsHandled();
             return;
         }
-        if (_followCamera.HandleInput(@event))
+        if (_tribe.HandleInput(@event) || _pack.HandleInput(@event) || _followCamera.HandleInput(@event))
         {
             GetViewport().SetInputAsHandled();
         }
@@ -227,6 +245,9 @@ public partial class Main : Node2D
 
     /// <summary>0 top view .. 1 third person, eased with SmoothStep when used.</summary>
     public float ThirdPerson => _followCamera.ThirdPerson;
+
+    /// <summary>0 chase camera .. 1 strategy view of the tribe.</summary>
+    public float StrategyView => _followCamera.Strategy;
 
     /// <summary>Zooms out (positive steps) or in (negative steps), clamped to MIN_ZOOM..MAX_ZOOM.</summary>
     /// <param name="steps">(Required) Number of wheel steps.</param>
@@ -244,9 +265,11 @@ public partial class Main : Node2D
     /*
       One physics frame, the order matters:
       1. Coast      Spawns and follows, tells the player where land is (World/CoastKeeper.cs).
-      2. Contacts   Food, engulfing, player vs. cells, cells vs. cells (World/ContactResolver.cs),
+      2. Pack       Wild kin, the pack, their steering and meals, the offer (Tribe/Pack/PackKeeper.cs).
+      3. Tribe      Gathering, huts and villagers from the tribe on (Tribe/Village/TribeCommander.cs).
+      4. Contacts   Food, engulfing, player vs. cells, cells vs. cells (World/ContactResolver.cs),
                     with the size and position of the player from before the coast moved it.
-      3. Refill     Fills the soup after the start, then keeps it topped up (World/Spawner.cs).
+      5. Refill     Fills the soup after the start, then keeps it topped up, fruit from the trees (World/Spawner.cs).
     */
     public override void _PhysicsProcess(double delta)
     {
@@ -255,6 +278,8 @@ public partial class Main : Node2D
         Vector2 playerPosition = Player.GlobalPosition;
         float   viewRadius     = _followCamera.ViewRadius();
         _coast.Update(isSpawnAllowed: !IsEvolving);
+        _pack.Update(dt);
+        _tribe.Update(dt);
         _contacts.Resolve(dt, playerSize, playerPosition, viewRadius);
         _spawner.Refill(dt);
     }
@@ -270,7 +295,8 @@ public partial class Main : Node2D
     //   OnEditorClosed     Resumes the game.
     //   OnPlayerDivided    Plop around the cluster, banner at 64 cells.
     //   OnStageChanged     Stage cutscene, then the banner of the stage.
-    //   OnPlayerDied       Game over: splash, the soup pauses, the game over screen shows.
+    //   OnPlayerDied       Game over: splash, the soup pauses, the game over screen shows. A pack
+    //                      leader lives on in a member instead (PackKeeper.TryTakeOver).
     //   Restart            Reloads the scene, straight into a new game or to the title menu.
     //   OnPlayerLostCells  Red plops at the cluster edge and banner, the cluster lives on.
     //
@@ -350,12 +376,26 @@ public partial class Main : Node2D
             case Player.LAND_STAGE:
                 PlayStageCutscene(stage, "BANNER_LAND_TITLE", "BANNER_LAND_TEXT");
                 break;
+            case Player.PACK_STAGE:
+                PlayStageCutscene(stage, "BANNER_PACK_TITLE", "BANNER_PACK_TEXT");
+                break;
+            case Player.TRIBE_STAGE:
+                PlayStageCutscene(stage, "BANNER_TRIBE_TITLE", "BANNER_TRIBE_TEXT");
+                break;
         }
     }
 
     private void OnPlayerDied()
     {
         SpawnSplash(Player.GlobalPosition, Player.BodySize() * 2f, new Color(1f, 0.4f, 0.4f));
+
+        // A pack leader lives on in the body of a member, the pack shrinks by one
+        if (_pack.TryTakeOver())
+        {
+            Hud.ShowBanner("BANNER_TAKEOVER_TITLE", "BANNER_TAKEOVER_TEXT");
+            Log.Verbose("Main", "The leader died, a pack member takes over.");
+            return;
+        }
         GetTree().Paused = true;
         Hud.Visible      = false;
 
@@ -525,6 +565,8 @@ public partial class Main : Node2D
     //   Coast        The coast of the organism stage, null until it showed up.
     //   CoastAt      Biomass from which the coast shows up, the next step after the organism.
     //   SpawnCoast   An archipelago ahead of the player, its first shore far off or right in front.
+    //   Pack         The pack of the land animal: kin, nest, offer (Tribe/Pack/PackKeeper.cs).
+    //   Tribe        The tribe: selection, stock, huts (Tribe/Village/TribeCommander.cs).
     //   CheatTo      F10 menu: jumps forward to a stage, the coast or more points.
     //
     //   The coast itself is kept by World/CoastKeeper.cs.
@@ -533,6 +575,10 @@ public partial class Main : Node2D
     public Coast Coast => _session.Coast;
 
     public float CoastAt => _coast.CoastAt;
+
+    public PackKeeper Pack => _pack;
+
+    public TribeCommander Tribe => _tribe;
 
     /// <summary>An archipelago ahead of the player (its facing), the landing island first.</summary>
     /// <param name="isNear">(Required) Right in front (cheat) instead of just outside the view.</param>
@@ -610,8 +656,33 @@ public partial class Main : Node2D
                 Coast landing = SpawnCoast(isNear: true);
                 Player.Position = landing.Origin + landing.Normal * Player.BodySize() * 2f;
                 break;
+            case CheatTarget.Pack:
+                CheatToLandAnimal();
+                _pack.CheatFoundPack();
+                break;
+            case CheatTarget.Tribe:
+                CheatToLandAnimal();
+                _pack.CheatFoundTribe();
+                break;
         }
         CloseCheatEditors();
+    }
+
+    /// <summary>The land animal on grass, one physics frame in, so the pack cheats find land below the player.</summary>
+    private void CheatToLandAnimal()
+    {
+        if (!Player.IsLandAnimal)
+        {
+            CheatTo(CheatTarget.LandAnimal);
+            _coast.Update(isSpawnAllowed: true);
+            Player._PhysicsProcess(0.1);
+        }
+        if (null != Coast && !Player.IsPackLeader)
+        {
+            // Deep enough inland for a nest, the nest cheat does not check the ground but the kin should stand on grass
+            Player.Position = Coast.Islands[0].Center;
+            _coast.Update(isSpawnAllowed: true);
+        }
     }
 
     /// <summary>Stage advances on the way open the cell editor, a cheat jumps past it.</summary>

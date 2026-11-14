@@ -7,7 +7,7 @@
 //     - Sea    from the organism on, under the water surface: algae ball, glowing plankton,
 //              fish roe, meat chunks of popped creatures
 //     - Land   on the islands, lying on the ground (GroundHeight from Main): fruit,
-//              mushroom, berries; it does not drift
+//              mushroom, berries; it does not drift, a fruit may drop from a canopy (DropFrom)
 //   Spawned by Main.
 //
 //   var food = new Food { Habitat = FoodHabitat.Land, GroundHeight = height };
@@ -37,8 +37,9 @@ public partial class Food : Node2D
     //   Setup       Size, kind, biomass value and a random drift.
     //   ColorOf     Main color per habitat and kind, meat chunks are red.
     //   BaseValue   Biomass per kind before scaling by size.
+    //   DropFrom    A fruit falls from the canopy down to the ground.
     //   _Ready      Builds the visual, see BUILD VISUAL.
-    //   _Process    Drifts (not on land), bobs, spins, sits on the ground on land.
+    //   _Process    Drifts (not on land), bobs, spins, sits on the ground on land, falls after DropFrom.
     //
 
     public FoodKind Kind { get; private set; } = FoodKind.Sugar;
@@ -59,6 +60,20 @@ public partial class Food : Node2D
 
     private Vector2 _drift = Vector2.Zero;
     private float _spin;
+    private float _fall;                            // world units left to fall, 0 on the ground
+    private float _fallSpeed;
+    private float _fallGravity;                     // world units per second squared, set by DropFrom
+    private const float FALL_SECONDS = 0.7f;         // a fruit reaches the ground about this fast
+
+    /// <summary>Lets land food fall from a canopy: it starts this far above the ground and drops.</summary>
+    /// <param name="height">(Required) Height above the ground in world units.</param>
+    /// <example><code>fruit.DropFrom(tree.Height * 0.7f);</code></example>
+    public void DropFrom(float height)
+    {
+        _fall        = Mathf.Max(height, 0f);
+        _fallSpeed   = 0f;
+        _fallGravity = 2f * _fall / (FALL_SECONDS * FALL_SECONDS);   // s = g t^2 / 2
+    }
 
     /// <summary>Sets size, kind and value, called before AddChild.</summary>
     /// <param name="size">(Required) Size on the plane.</param>
@@ -161,6 +176,12 @@ public partial class Food : Node2D
         {
             Position += _drift * dt;
         }
+        if (_fall > 0f)
+        {
+            // Constant acceleration, so a fruit of any canopy height lands after about FALL_SECONDS
+            _fallSpeed += _fallGravity * dt;
+            _fall       = Mathf.Max(0f, _fall - _fallSpeed * dt);
+        }
         _bob     += dt;
         _age     += dt;
         _visual.GlobalPosition = VisualPosition();
@@ -173,7 +194,7 @@ public partial class Food : Node2D
     {
         float height = Habitat switch
         {
-            FoodHabitat.Land => GroundHeight,
+            FoodHabitat.Land => GroundHeight + _fall,
             FoodHabitat.Sea  => (Mathf.Sin(_bob * 1.3f) * 0.3f - SEA_DEPTH) * Size * LookScale - Plane3D.SeaDrop,
             _                => Mathf.Sin(_bob * 1.3f) * Size * 0.4f * (1f - _engulfPull),
         };

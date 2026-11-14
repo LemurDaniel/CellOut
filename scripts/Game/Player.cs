@@ -12,7 +12,9 @@
 //   BecomeOrganism takes over the body plan and every trait comes from the creature.
 //   On land (Main sets IsOnLand at the coast) it needs air and legs: without a lung the
 //   air runs out, without legs it only crawls. The first step onto land with both makes
-//   it a land animal.
+//   it a land animal. The pack (a nest with conspecifics) and the tribe (the pack settles
+//   around a fire, the player becomes one commanded unit of many) are founded by the
+//   PackKeeper (Tribe/Pack/) through FoundSociety.
 //   Created by Main, which listens to its signals. Steered with WASD, arrows or the held
 //   mouse, divides or evolves with Space or the HUD buttons. In the third person view of
 //   the land animal Main turns the keys with the camera (InputTurn): W walks away from it.
@@ -24,6 +26,7 @@
 //     DIVISION           When the cells may divide and the division itself.
 //     ORGANISM           Evolving the full cluster into a creature and committing its body plan.
 //     LAND               Air, crawling and walking on land, the step to the land animal.
+//     SOCIETY            Pack and tribe: the stages the PackKeeper founds, orders and the takeover of a kin.
 //     STATS              Speed, goal progress and the directional combat values.
 //     GAMEPLAY           Biomass, damage and committing a new design.
 //     GROWTH             Stage advance, traits from the design and the cell radius.
@@ -57,11 +60,13 @@ public partial class Player : CellBody
     /// <summary>Every tunable number of the player from data/balance.json (player), the formulas are in Growth.</summary>
     private static PlayerBalance Tune => Balance.Current.Player;
 
-    public static readonly string[] STAGE_KEYS ={ "STAGE_PROTOCELL", "STAGE_SINGLE", "STAGE_MULTI", "STAGE_ORGANISM", "STAGE_LAND" };
+    public static readonly string[] STAGE_KEYS = { "STAGE_PROTOCELL", "STAGE_SINGLE", "STAGE_MULTI", "STAGE_ORGANISM", "STAGE_LAND", "STAGE_PACK", "STAGE_TRIBE" };
     public const int SINGLE_STAGE = 1;
     public const int MULTICELLULAR_STAGE = 2;
     public const int ORGANISM_STAGE = 3;
     public const int LAND_STAGE = 4;
+    public const int PACK_STAGE = 5;
+    public const int TRIBE_STAGE = 6;
 
     public int Stage { get; private set; }
     public int Level { get; private set; }
@@ -148,22 +153,8 @@ public partial class Player : CellBody
             return;
         }
 
-        // Keys, the held mouse button overrides them
-        var input = Vector2.Zero;
-        if (Input.IsPhysicalKeyPressed(Key.W) || Input.IsPhysicalKeyPressed(Key.Up))    input.Y -= 1f;
-        if (Input.IsPhysicalKeyPressed(Key.S) || Input.IsPhysicalKeyPressed(Key.Down))  input.Y += 1f;
-        if (Input.IsPhysicalKeyPressed(Key.A) || Input.IsPhysicalKeyPressed(Key.Left))  input.X -= 1f;
-        if (Input.IsPhysicalKeyPressed(Key.D) || Input.IsPhysicalKeyPressed(Key.Right)) input.X += 1f;
-        input = input.Rotated(InputTurn);
-        if (Input.IsMouseButtonPressed(MouseButton.Left))
-        {
-            Vector2 toMouse = Plane3D.MouseOnPlane(GetViewport(), GlobalPosition) - GlobalPosition;
-            if (toMouse.Length() > BodySize() * 0.3f)
-            {
-                input = toMouse.Normalized();
-            }
-        }
-        input = input.LimitLength(1f);
+        // Keys and the held mouse button, or the order of the tribe (SOCIETY)
+        Vector2 input = (IsCommanded ? OrderDirection() : SteeringInput()).LimitLength(1f);
 
         Velocity  = Velocity.Lerp(input * CurrentSpeed(), Mathf.Clamp(_acceleration * dt, 0f, 1f));
         Position += Velocity * dt;
@@ -179,6 +170,26 @@ public partial class Player : CellBody
         _diet.Decay(dt);
         Diet = _diet.Value(Design.Lean(), Design.Parts.Count > 0);
         UpdateLand(dt);
+    }
+
+    /// <summary>WASD, arrows or the held mouse button, the keys turned with the camera.</summary>
+    private Vector2 SteeringInput()
+    {
+        var input = Vector2.Zero;
+        if (Input.IsPhysicalKeyPressed(Key.W) || Input.IsPhysicalKeyPressed(Key.Up))    input.Y -= 1f;
+        if (Input.IsPhysicalKeyPressed(Key.S) || Input.IsPhysicalKeyPressed(Key.Down))  input.Y += 1f;
+        if (Input.IsPhysicalKeyPressed(Key.A) || Input.IsPhysicalKeyPressed(Key.Left))  input.X -= 1f;
+        if (Input.IsPhysicalKeyPressed(Key.D) || Input.IsPhysicalKeyPressed(Key.Right)) input.X += 1f;
+        input = input.Rotated(InputTurn);
+        if (Input.IsMouseButtonPressed(MouseButton.Left))
+        {
+            Vector2 toMouse = Plane3D.MouseOnPlane(GetViewport(), GlobalPosition) - GlobalPosition;
+            if (toMouse.Length() > BodySize() * 0.3f)
+            {
+                input = toMouse.Normalized();
+            }
+        }
+        return input;
     }
 
     // ===========================================================================
@@ -344,7 +355,7 @@ public partial class Player : CellBody
     // ================================   LAND   =================================
     // ===========================================================================
     //
-    //   IsLandAnimal   Stage 5: the creature stepped onto land with legs and lung.
+    //   IsLandAnimal   From stage 5 on: the creature stepped onto land with legs and lung.
     //   CanWalk        Legs placed and air breathed, the conditions of the step onto land.
     //   Air            Breath left, 0..1, drains on land without a lung.
     //   UpdateLand     Air drains or refills, suffocation hurts, the first walk on land advances.
@@ -354,7 +365,7 @@ public partial class Player : CellBody
 
     private float _landSpeed = Balance.Current.Creature.Land.CrawlSpeed;    // from CreatureStats, see ApplyCreature
 
-    public bool IsLandAnimal => LAND_STAGE == Stage;
+    public bool IsLandAnimal => Stage >= LAND_STAGE;
 
     public bool CanWalk => IsOrganism && Creature.LegPairs > 0 && Creature.BreathesAir;
 
@@ -402,6 +413,59 @@ public partial class Player : CellBody
             EmitSignal(SignalName.StageChanged, Stage);
             EmitSignal(SignalName.StatsChanged);
         }
+    }
+
+    // ===========================================================================
+    // ==============================   SOCIETY   ================================
+    // ===========================================================================
+    //
+    //   IsPackLeader   From stage 6 on: a nest with conspecifics that follow.
+    //   IsTribal       Stage 7: the pack settled around a fire, the player is one commanded unit.
+    //   IsCommanded    The tribe steers the body by orders (OrderTarget), keys and mouse are ignored.
+    //   FoundSociety   The PackKeeper advances to the pack or the tribe, one stage at a time.
+    //   Revive         A dead leader lives on in the body of a pack member (PackKeeper.TryTakeOver).
+    //
+
+    public bool IsPackLeader => Stage >= PACK_STAGE;
+
+    public bool IsTribal => Stage >= TRIBE_STAGE;
+
+    /// <summary>(Optional) True from the tribe on: the body follows OrderTarget instead of the keys. Defaults to false.</summary>
+    public bool IsCommanded { get; set; }
+
+    /// <summary>Advances to the pack (from the land animal) or the tribe (from the pack), with the stage bonus.</summary>
+    /// <param name="stage">(Required) PACK_STAGE or TRIBE_STAGE, the one right after the current stage.</param>
+    /// <example><code>player.FoundSociety(Player.PACK_STAGE);   // after the nest is built</code></example>
+    public void FoundSociety(int stage)
+    {
+        bool isSocial = PACK_STAGE == stage || TRIBE_STAGE == stage;
+        if (!isSocial || stage != Stage + 1)
+        {
+            throw new System.InvalidOperationException($"stage must be the pack or the tribe right after stage {Stage}, got '{stage}'.");
+        }
+        Stage            = stage;
+        EvolutionPoints += Tune.EpPerStage;
+        IsCommanded      = TRIBE_STAGE == stage;
+        Log.Verbose("Player", $"Society founded -> stage {Stage} ({STAGE_KEYS[Stage]}).");
+        EmitSignal(SignalName.StageChanged, Stage);
+        EmitSignal(SignalName.StatsChanged);
+    }
+
+    /// <summary>The leader lives on: full health, a grace period, at the place of the pack member taken over.</summary>
+    /// <param name="at">(Required) Plane position of the body taken over.</param>
+    public void Revive(Vector2 at)
+    {
+        if (!IsDead)
+        {
+            throw new System.InvalidOperationException("Revive is only for a dead player.");
+        }
+        IsDead       = false;
+        Hp           = MaxHp;
+        Invulnerable = Tune.RespawnInvulnerability;
+        Position     = at;
+        Velocity     = Vector2.Zero;
+        Log.Verbose("Player", $"Revived at {at} in the body of a pack member.");
+        EmitSignal(SignalName.StatsChanged);
     }
 
     // ===========================================================================

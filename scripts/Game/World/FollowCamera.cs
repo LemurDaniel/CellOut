@@ -1,8 +1,9 @@
 // NOTE:
 //   The chase camera of the game with everything that grows along with it: environment,
 //   sun, sky and backdrop. Top view over the soup, third person over the islands, where
-//   the world bends to a planet (Core/Plane3D.cs). It does not process on its own: Main
-//   advances it once per frame and routes the input to it.
+//   the world bends to a planet (Core/Plane3D.cs), and from the tribe on a strategy view
+//   from high above that the keys pan. It does not process on its own: Main advances it
+//   once per frame and routes the input to it.
 //
 //   var followCamera = new FollowCamera();
 //   followCamera.Setup(session);
@@ -122,8 +123,10 @@ public partial class FollowCamera : Node
     //   HandleInput    Mouse wheel zooms, a right drag orbits the third person camera.
     //   ZoomBy         Changes the zoom factor by steps, clamped.
     //   ThirdPerson    0 top view .. 1 third person, the land animal blends over TP_BLEND_SECONDS.
+    //   Strategy       0 chase camera .. 1 strategy view of the tribe, blends the same way.
     //   YawBehind      Camera yaw behind a facing.
     //   FollowFacing   Swings the third person camera behind the walking creature.
+    //   PanStrategy    WASD and arrows pan the strategy view over the island.
     //   Advance        Eases view, distance and focus, then moves camera, planet, sky and backdrop.
     //   UpdateWater    Colors of the stage, the fade into the depth, depth of field and the lens.
     //   UpdateSky      From the dark soup to sky, sunlight and haze over the open sea.
@@ -132,6 +135,9 @@ public partial class FollowCamera : Node
     //   Third person: behind and above the land animal, swinging behind it while it walks,
     //   orbited by a right drag (yaw, tilt), the keys turn with it (Player.InputTurn), the
     //   world bends to a planet (Plane3D.SetCurve).
+    //   Strategy view (tribe): high above the village, keeps the yaw it had, the keys pan
+    //   the focus instead of the creature (the tribe commands it by orders), the wheel zooms,
+    //   the right button is free for orders.
     //
 
     public const float ZOOM_STEP = 1.15f;           // the RNA prelude zooms in the same steps
@@ -152,6 +158,10 @@ public partial class FollowCamera : Node
     private const float TP_SEA_SINK = 0.95f;         // third person: swimmers sink this many sizes, just below the low sea (Coast.OPEN_SEA_HEIGHT)
     private const float TP_SHADOW_DISTANCE = 90f;   // third person: tall trees throw shadows this far, in player sizes
     private const float PLANET_RADIUS = 8000f;       // in Unit of the coast, the islands are ~260 Unit across
+    private const float RTS_TILT = 0.7f;             // strategy view: tilt from vertical
+    private const float RTS_DISTANCE = 40f;          // strategy view: camera distance in Unit of the coast
+    private const float RTS_PAN_SPEED = 0.9f;        // strategy view: camera distances per second the keys pan
+    private const float RTS_VIEW_SHARE = 1.1f;       // strategy view: spawning reaches a little past the view
 
     /// <summary>Wheel zoom on top of the automatic distance, 1 = default, bigger = farther away.</summary>
     public float ZoomFactor { get; private set; } = 1f;
@@ -161,6 +171,13 @@ public partial class FollowCamera : Node
 
     /// <summary>SmoothStep of ThirdPerson, the blend everything uses.</summary>
     public float View => _view;
+
+    /// <summary>0 chase camera .. 1 strategy view of the tribe (SmoothStep), the keys pan instead of steering.</summary>
+    public float Strategy => _strategy;
+
+    private float _strategyBlend;                    // 0..1 linear, _strategy is its SmoothStep
+    private float _strategy;
+    private Vector2 _strategyFocus;                  // plane point the strategy view looks at
 
     private float _camDistance;
     private const float SSAO_RADIUS = 0.35f;         // contact shadow reach in body sizes
@@ -183,8 +200,8 @@ public partial class FollowCamera : Node
     /// <example><code>if (followCamera.HandleInput(@event)) GetViewport().SetInputAsHandled();</code></example>
     public bool HandleInput(InputEvent @event)
     {
-        // Third person: a right drag orbits the camera, the cursor hides meanwhile
-        if (@event is InputEventMouseButton { ButtonIndex: MouseButton.Right } orbit && (_view > 0.5f || !orbit.Pressed))
+        // Third person: a right drag orbits the camera, the cursor hides meanwhile (the strategy view orders with it)
+        if (@event is InputEventMouseButton { ButtonIndex: MouseButton.Right } orbit && _strategy < 0.5f && (_view > 0.5f || !orbit.Pressed))
         {
             _isOrbiting     = orbit.Pressed;
             Input.MouseMode = _isOrbiting ? Input.MouseModeEnum.Captured : Input.MouseModeEnum.Visible;
@@ -252,7 +269,7 @@ public partial class FollowCamera : Node
     /// <summary>Swings the third person camera behind the facing of the walking creature.</summary>
     private void FollowFacing(float dt)
     {
-        if (_view < 0.5f || _isOrbiting || dt <= 0f)
+        if (_view < 0.5f || _isOrbiting || dt <= 0f || _strategy > 0f)
         {
             return;
         }
@@ -269,10 +286,26 @@ public partial class FollowCamera : Node
         _camYaw = Mathf.LerpAngle(_camYaw, YawBehind(Player.Facing), Mathf.Clamp(dt * FOLLOW_SPEED * speedShare, 0f, 1f));
     }
 
+    /// <summary>WASD and arrows pan the focus of the strategy view, relative to the camera yaw.</summary>
+    private void PanStrategy(float dt)
+    {
+        if (_strategy < 0.5f || dt <= 0f)
+        {
+            return;
+        }
+        var pan = Vector2.Zero;
+        if (Input.IsPhysicalKeyPressed(Key.W) || Input.IsPhysicalKeyPressed(Key.Up))    pan.Y -= 1f;
+        if (Input.IsPhysicalKeyPressed(Key.S) || Input.IsPhysicalKeyPressed(Key.Down))  pan.Y += 1f;
+        if (Input.IsPhysicalKeyPressed(Key.A) || Input.IsPhysicalKeyPressed(Key.Left))  pan.X -= 1f;
+        if (Input.IsPhysicalKeyPressed(Key.D) || Input.IsPhysicalKeyPressed(Key.Right)) pan.X += 1f;
+        _strategyFocus += pan.LimitLength(1f).Rotated(-_camYaw) * _camDistance * RTS_PAN_SPEED * dt;
+    }
+
     /*
       1. View      Blends towards third person once the player is a land animal; the
                    blend starts with the camera yaw behind the creature, then swings
-                   behind it while it walks (FollowFacing).
+                   behind it while it walks (FollowFacing). From the tribe on it blends
+                   on into the strategy view, which starts over the player and pans by keys.
       2. Pose      Yaw and tilt from the top view pose to the orbit pose, distance and the
                    look-up point eased, the camera never dips into a hill.
       3. Planet    Curvature with the blend, flat around the camera.
@@ -297,16 +330,34 @@ public partial class FollowCamera : Node
         _view       = Mathf.SmoothStep(0f, 1f, ThirdPerson);
         FollowFacing(dt);
 
+        float strategyTarget = Player.IsTribal ? 1f : 0f;
+        if (strategyTarget > 0f && _strategyBlend <= 0f)
+        {
+            _strategyFocus = Player.GlobalPosition;
+            Input.MouseMode = Input.MouseModeEnum.Visible;
+            _isOrbiting     = false;
+            Log.Verbose("FollowCamera", "Camera rises into the strategy view of the tribe.");
+        }
+        _strategyBlend = dt <= 0f ? strategyTarget : Mathf.MoveToward(_strategyBlend, strategyTarget, dt / TP_BLEND_SECONDS);
+        _strategy      = Mathf.SmoothStep(0f, 1f, _strategyBlend);
+        PanStrategy(dt);
+
         // Pose
+        float   unit  = null == Coast ? playerSize : Coast.Unit;
         float   yaw   = Mathf.LerpAngle(0f, _camYaw, _view);
-        float   tilt  = Mathf.Lerp(CAM_TILT, _camTilt, _view);
+        float   tilt  = Mathf.Lerp(Mathf.Lerp(CAM_TILT, _camTilt, _view), RTS_TILT, _strategy);
         float   sink  = Player.IsOnLand ? 0f : playerSize * TP_SEA_SINK;
         Vector3 focus = Plane3D.To3D(Player.GlobalPosition, (TP_LOOK_UP * playerSize + Player.GroundLift - sink) * _view);
+        if (_strategy > 0f)
+        {
+            float ground = null == Coast ? 0f : Coast.GroundHeight(_strategyFocus) * playerSize;
+            focus = focus.Lerp(Plane3D.To3D(_strategyFocus, ground), _strategy);
+        }
         if (dt <= 0f)
         {
             _camFocus = focus;
         }
-        float distance = playerSize * Mathf.Lerp(CAM_DISTANCE, TP_DISTANCE, _view) * ZoomFactor;
+        float distance = Mathf.Lerp(playerSize * Mathf.Lerp(CAM_DISTANCE, TP_DISTANCE, _view), unit * RTS_DISTANCE, _strategy) * ZoomFactor;
         _camDistance = Mathf.Lerp(_camDistance, distance, Mathf.Clamp(dt * 1.5f, 0f, 1f));
         _camFocus    = _camFocus.Lerp(focus, Mathf.Clamp(dt * 5f, 0f, 1f));
 
@@ -325,7 +376,6 @@ public partial class FollowCamera : Node
         Player.InputTurn = -yaw;
 
         // Planet
-        float unit = null == Coast ? playerSize : Coast.Unit;
         Plane3D.SetCurve(_view / (2f * PLANET_RADIUS * unit), position);
         Plane3D.SeaDrop = _view * playerSize * TP_SEA_SINK;
 
@@ -485,10 +535,11 @@ public partial class FollowCamera : Node
     //   ViewRadiusAt   Visible radius on the plane at any camera distance (title menu).
     //
 
-    /// <summary>Radius of the visible area on the plane at the current camera distance, in third person a fixed reach.</summary>
+    /// <summary>Radius of the visible area on the plane at the current camera distance, in third person a fixed reach, in the strategy view the whole view again.</summary>
     public float ViewRadius()
     {
-        return Mathf.Lerp(ViewRadiusAt(_camDistance), Player.BodySize() * TP_VIEW_RADIUS, _view);
+        float chase = Mathf.Lerp(ViewRadiusAt(_camDistance), Player.BodySize() * TP_VIEW_RADIUS, _view);
+        return Mathf.Lerp(chase, ViewRadiusAt(_camDistance) * RTS_VIEW_SHARE, _strategy);
     }
 
     /// <summary>Radius of the visible area on the plane at a camera distance, with a margin for the camera tilt.</summary>

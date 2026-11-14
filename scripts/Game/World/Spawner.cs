@@ -3,7 +3,8 @@
 //   evolution) bit by bit inside the view, later cells in a ring just outside it. Food
 //   never appears in sight: it comes as whole patches, all pieces at once, at a spot
 //   outside the view, the soup between them stays empty and the player has to go
-//   looking (rule in CLAUDE.md). A popped cell leaves meat right where it popped.
+//   looking (rule in CLAUDE.md). A popped cell leaves meat right where it popped. On the
+//   islands fruit drops from the trees near the land animal, the tree is the visible source.
 //   Sizes are relative to the player, kinds depend on the stage. It does not process on
 //   its own: Main calls Refill once per physics frame, after the contacts.
 //
@@ -19,8 +20,10 @@
 //     SETTINGS   The session, the camera and the splash signal.
 //     SPAWN      The starting queue, the refill, food, cells and their spawn points.
 //     PATCHES    Whole food patches outside the view.
+//     FRUIT      Fruit dropping from the trees of the islands, in sight of the land animal.
 //
 
+using System.Collections.Generic;
 using Godot;
 
 namespace CellOut;
@@ -114,6 +117,7 @@ public partial class Spawner : Node
         {
             SpawnCritter(isInView: false);
         }
+        DropFruit(dt);
     }
 
     /// <summary>Spawns as many cells of the queue as the elapsed share of POPULATE_SECONDS allows, starting a second in.</summary>
@@ -135,32 +139,23 @@ public partial class Spawner : Node
         return true;
     }
 
-    // Off for now (decision of the user): land food popping out of nothing looked wrong,
-    // it comes back with a source (e.g. fruit growing on trees and falling down)
-    private static readonly bool IS_LAND_FOOD_SPAWNED = false;    // readonly, not const: no unreachable code warning
-
     /*
       Habitat by stage and spot:
       - Up to the cluster: molecules of the soup
-      - Organism: sea food in the water, land food (fruit, mushrooms, berries) on the islands
-        only with IS_LAND_FOOD_SPAWNED, else that spot stays empty
+      - Organism: sea food in the water; a patch spot on an island stays empty, land food only
+        drops from a tree (FRUIT, decision of the user: food popping out of nothing looked wrong)
     */
     private void SpawnFood(Vector2 position)
     {
         float size = Player.BodySize();
-        var   food = new Food { Habitat = Player.IsOrganism ? FoodHabitat.Sea : FoodHabitat.Soup };
         if (Player.IsOrganism && null != Coast && Coast.IsOnLand(position))
         {
-            if (!IS_LAND_FOOD_SPAWNED)
-            {
-                return;
-            }
-            food.Habitat      = FoodHabitat.Land;
-            food.GroundHeight = Coast.GroundHeight(position) * size;
+            return;
         }
+        var food = new Food { Habitat = Player.IsOrganism ? FoodHabitat.Sea : FoodHabitat.Soup };
         food.Setup(size * Rand.Range(0.15f, 0.28f), (FoodKind)Rand.Index(3));
         food.Value *= Balance.Current.Diet.PlantFoodValue;
-        food.LookScale = FoodHabitat.Land == food.Habitat ? LAND_FOOD_LOOK : FoodHabitat.Sea == food.Habitat ? SEA_FOOD_LOOK : 1f;
+        food.LookScale = FoodHabitat.Sea == food.Habitat ? SEA_FOOD_LOOK : 1f;
         food.Position = position;
         FoodLayer.AddChild(food);
     }
@@ -351,5 +346,104 @@ public partial class Spawner : Node
         float viewRadius = _camera.ViewRadius();
         float distance   = viewRadius * (1f + Rand.Range(PATCH_NEAR, PATCH_FAR)) + radius;
         return Player.GlobalPosition + Vector2.FromAngle(Rand.Angle()) * distance;
+    }
+
+    // ===========================================================================
+    // ================================   FRUIT   ================================
+    // ===========================================================================
+    //
+    //   DropFruit    Every Fruit.Interval a fruit falls from a tree in view of the land animal.
+    //   FruitTrees   The fruit bearing trees around a point.
+    //   LandFood     Pieces of land food lying around.
+    //
+    //   Fruit may appear in sight because its source is visible: it drops out of the
+    //   canopy of a broadleaf or a cycad (Food.DropFrom) and lands below the tree.
+    //
+
+    private static readonly TreeSpecies[] FRUIT_SPECIES = { TreeSpecies.Broadleaf, TreeSpecies.Cycad };
+    private const float CANOPY_RADIUS = 0.3f;        // share of the tree height the fruit lands from the trunk
+    private const float CANOPY_HEIGHT = 0.65f;       // share of the tree height the fruit drops from
+
+    /// <summary>Fruit of the trees from data/balance.json (tribe.fruit).</summary>
+    private static FruitBalance Fruit => Balance.Current.Tribe.Fruit;
+
+    private float _fruitCooldown;
+
+    /// <summary>One fruit per Fruit.Interval from a random fruit tree in view, while fewer than Fruit.MaxOnGround lie around.</summary>
+    private void DropFruit(float dt)
+    {
+        if (null == Coast || !Player.IsLandAnimal)
+        {
+            return;
+        }
+        _fruitCooldown -= dt;
+        if (_fruitCooldown > 0f || LandFood() >= Fruit.MaxOnGround)
+        {
+            return;
+        }
+        _fruitCooldown = Fruit.Interval;
+
+        List<Coast.Tree> trees = FruitTrees(Player.GlobalPosition, _camera.ViewRadius());
+        if (0 == trees.Count)
+        {
+            return;
+        }
+        Coast.Tree tree     = trees[Rand.Index(trees.Count)];
+        float      size     = Player.BodySize();
+        Vector2    position = tree.Position + Vector2.FromAngle(Rand.Angle()) * tree.Height * CANOPY_RADIUS * Rand.Range(0.3f, 1f);
+        if (!Coast.IsOnLand(position))
+        {
+            return;
+        }
+        var fruit = new Food
+        {
+            Habitat      = FoodHabitat.Land,
+            GroundHeight = Coast.GroundHeight(position) * size,
+            LookScale    = LAND_FOOD_LOOK,
+            Position     = position,
+        };
+        fruit.Setup(size * Rand.Range(0.15f, 0.28f), Rand.Chance(0.7f) ? FoodKind.Sugar : FoodKind.Lipid);
+        fruit.Value *= Balance.Current.Diet.PlantFoodValue;
+        fruit.DropFrom(tree.Height * CANOPY_HEIGHT);
+        FoodLayer.AddChild(fruit);
+        Log.Verbose("Spawner", $"A fruit drops from a {tree.Species} at {position}.");
+    }
+
+    /// <summary>The broadleafs and cycads whose grid cells lie within the reach of a point.</summary>
+    private List<Coast.Tree> FruitTrees(Vector2 center, float reach)
+    {
+        var   trees = new List<Coast.Tree>();
+        float cell  = TreeGrid.TREE_CELL * Coast.Unit;
+        int   x0    = Mathf.FloorToInt((center.X - reach) / cell);
+        int   x1    = Mathf.FloorToInt((center.X + reach) / cell);
+        int   y0    = Mathf.FloorToInt((center.Y - reach) / cell);
+        int   y1    = Mathf.FloorToInt((center.Y + reach) / cell);
+        for (int x = x0; x <= x1; x++)
+        {
+            for (int y = y0; y <= y1; y++)
+            {
+                foreach (Coast.Tree tree in Coast.TreesIn(new Vector2I(x, y)))
+                {
+                    if (System.Array.IndexOf(FRUIT_SPECIES, tree.Species) >= 0 && tree.Position.DistanceTo(center) <= reach)
+                    {
+                        trees.Add(tree);
+                    }
+                }
+            }
+        }
+        return trees;
+    }
+
+    private int LandFood()
+    {
+        int count = 0;
+        foreach (Node node in FoodLayer.GetChildren())
+        {
+            if (node is Food { Habitat: FoodHabitat.Land } food && !food.IsQueuedForDeletion())
+            {
+                count++;
+            }
+        }
+        return count;
     }
 }

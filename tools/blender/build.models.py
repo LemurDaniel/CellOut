@@ -3,12 +3,13 @@
 #   - assets/models/creature/  feet, hands, wings, fins, brain, stalk eyes of the organism stage
 #   - assets/models/cell/      the eighteen cell editor parts (flagellum, cilium, jaw, spike, ...)
 #   - assets/models/tree/      primeval trees of the islands (fern, cycad, horsetail, broadleaf, giant)
+#   - assets/models/village/   the nest of the pack and the fire pit of the tribe
 #   Everything is generated: skin modifier tubes, displaced spheres, an armature per
 #   moving part with one looping animation (Walk, Grab, Flap, Flutter, Sway, Whip, Beat, Chomp).
 #   Materials only carry names (Skin, Claw, Pad, Feather, Membrane, Fin, FinRay, Brain, EyeWhite,
 #   Pupil, Glint, Chitin, Armor, Chloro, Grana, Vacuole, Droplet, Toxin, Venom, Iris, Dark, Bark,
-#   Leaf, LeafDark, Frond, Horsetail, Needle, Cone), the game recolors them (Core/PartModels.cs,
-#   Core/TreeModels.cs).
+#   Leaf, LeafDark, Frond, Horsetail, Needle, Cone, Twig, Moss, Earth, Down, Stone, Log, Ember), the
+#   game recolors them (Core/PartModels.cs, Core/TreeModels.cs).
 #   The builders live in models/ (one module per family, see README.md), this file
 #   registers them and exports. Requires: Blender 5.2. Usually run through Build-Models.ps1.
 #
@@ -38,9 +39,10 @@ import models.organs
 import models.fins
 import models.cells
 import models.trees
+import models.village
 
 # Inside a running Blender the modules stay loaded between runs: reload, helpers first
-for module in (models.helpers, models.limbs, models.organs, models.fins, models.cells, models.trees):
+for module in (models.helpers, models.limbs, models.organs, models.fins, models.cells, models.trees, models.village):
     importlib.reload(module)
 
 from models.cells import (
@@ -74,6 +76,7 @@ from models.trees import (
     build_tree_giant,
     build_tree_horsetail,
 )
+from models.village import build_fire, build_nest
 
 
 # ===========================================================================
@@ -142,6 +145,8 @@ PARTS = {
     'tree/tree.horsetail.glb':             build_tree_horsetail,
     'tree/tree.broadleaf.glb':             build_tree_broadleaf,
     'tree/tree.giant.glb':                 build_tree_giant,
+    'village/village.nest.glb':            build_nest,
+    'village/village.fire.glb':            build_fire,
 }
 
 

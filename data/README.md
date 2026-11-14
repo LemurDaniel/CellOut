@@ -18,6 +18,9 @@ Tunable numbers of the game. The code holds the formulas, this folder holds the 
 | `critter` | `Cell/Critter.cs` | Eat ratios, senses and speed of the NPC cells. |
 | `creature.parts` | `Creature/CreatureCatalog.cs` | Cost, weight and (legs) carry and stride or (wings) lift per creature part. |
 | `creature.body`, `creature.land`, `creature.effects` | `Creature/CreatureStats.cs` | Health, speed and weight of the body, walking on land, what every creature part does. |
+| `tribe.pack` | `Tribe/Pack/PackKeeper.cs`, `Tribe/Pack/Kin.cs` | Wild conspecifics, the call, the nest, pups and when the pack may become a tribe. |
+| `tribe.fruit` | `Game/World/Spawner.cs` | How often fruit drops from the trees and how much lies around. |
+| `tribe.village` | `Tribe/Village/TribeCommander.cs`, `Tribe/Village/TribeEconomy.cs` | Hut cost and distance, villagers per hut, gathering. |
 | `prelude` | `Prelude/Mutation.cs` | Evolution points and multipliers of the RNA world mutations. |
 
 What a single value means is the comment next to its property in `Balance.cs`.
