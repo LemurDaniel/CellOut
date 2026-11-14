@@ -227,19 +227,63 @@
       "pupGrowSeconds": 60,
       "followDistance": 2.2,
       "wanderRadius": 4,
-      "foundTribeAt": 4
+      "foundTribeAt": 4,
+      "nestRegen": 0.04
     },
     "fruit": {
       "interval": 2.5,
       "maxOnGround": 24
     },
     "village": {
-      "hutCost": 8,
-      "hutDistance": 7,
+      "hutDistance": 9,
       "villagerSeconds": 20,
-      "villagersPerHut": 1,
       "gatherRange": 12,
-      "foodPerFruit": 1
+      "foodPerFruit": 1,
+      "chopSeconds": 4,
+      "woodPerChop": 1,
+      "kinHealth": 30,
+      "kinDamage": 6,
+      "engageRange": 6,
+      "giftFood": 5
+    },
+    "huts": {
+      "walls": {
+        "Clay":   { "food": 4, "wood": 2, "health": 30 },
+        "Wattle": { "food": 2, "wood": 5, "health": 20 },
+        "Stone":  { "food": 6, "wood": 4, "health": 60 }
+      },
+      "roofs": {
+        "Grass":   { "food": 2, "wood": 1, "villagers": 1 },
+        "Reed":    { "food": 3, "wood": 3, "villagers": 2 },
+        "Shingle": { "food": 4, "wood": 6, "villagers": 3 }
+      },
+      "addons": {
+        "Storehouse": { "food": 3, "wood": 4, "foodPerFruit": 1 },
+        "Market":     { "food": 4, "wood": 3, "tradeBonus": 0.5 },
+        "Totem":      { "food": 2, "wood": 5, "relationBonus": 0.1 },
+        "Palisade":   { "food": 2, "wood": 8, "defense": 20 },
+        "Watchtower": { "food": 3, "wood": 6, "defense": 10 }
+      }
+    },
+    "rivals": {
+      "count": 3,
+      "sameIslandDistance": 70,
+      "huts": 3,
+      "villagers": 3,
+      "friendlyAt": 0.3,
+      "hostileAt": -0.3,
+      "tradeInterval": 45,
+      "tradeFood": 4,
+      "tradeWood": 3,
+      "raidInterval": 60,
+      "raiders": 3,
+      "raidDamage": 5,
+      "defenseScale": 40,
+      "raidSeconds": 25,
+      "relationPerTrade": 0.08,
+      "relationPerGift": 0.2,
+      "relationPerKill": 0.15,
+      "relationDrift": 0.004
     }
   },
 

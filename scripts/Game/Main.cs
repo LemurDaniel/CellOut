@@ -2,7 +2,7 @@
 //   The game world: an endless primordial soup around the player. Main is the
 //   coordinator: it builds the world, creates the components of World/ (camera,
 //   contacts, spawning, coast), Flow/ (start flow, cutscenes) and Tribe/ (pack, tribe,
-//   their panel), wires their signals, routes input and frames to them and reacts to the
+//   rivals, hut designer, their panel), wires their signals, routes input and frames to them and reacts to the
 //   events of the player: editors, stage changes, deaths, the evolution and the cheats. Logic runs in 2D on the plane,
 //   rendering in 3D (see Core/Plane3D.cs). Attached to the root of scenes/main.tscn.
 
@@ -52,6 +52,8 @@ public partial class Main : Node2D
     private CoastKeeper _coast;
     private PackKeeper _pack;
     private TribeCommander _tribe;
+    private RivalKeeper _rivals;
+    private HutEditor _hutEditor;
     private CutsceneDirector _cutscenes;
     private StartFlow _startFlow;
     private Node2D _fxLayer;
@@ -131,18 +133,29 @@ public partial class Main : Node2D
 
         _pack = new PackKeeper();
         _pack.Setup(_session, _followCamera);
-        _pack.SplashRequested += SpawnSplash;
-        _pack.KinAte          += (position, size, color) => SpawnSplash(position, size * 2f, color);
         AddChild(_pack);
 
         _tribe = new TribeCommander();
         _tribe.Setup(_session, _pack, _followCamera);
         AddChild(_tribe);
 
+        _rivals = new RivalKeeper();
+        _rivals.Setup(_session, _pack, _tribe);
+        _rivals.RaidStarted  += nameKey => Hud.ShowBanner("BANNER_RAID_TITLE", "BANNER_RAID_TEXT", Tr(nameKey));
+        _rivals.TradeArrived += (nameKey, food, wood) => Hud.ShowBanner("BANNER_TRADE_TITLE", "BANNER_TRADE_TEXT", Tr(nameKey), food, wood);
+        AddChild(_rivals);
+        _tribe.AttachRivals(_rivals);
+
+        _hutEditor = new HutEditor();
+        _hutEditor.Applied += design => _tribe.Design.CopyFrom(design);
+        AddChild(_hutEditor);
+
         var tribePanel = new TribePanel();
-        tribePanel.Watch(_pack, _tribe);
+        tribePanel.Watch(_pack, _tribe, _rivals);
         tribePanel.ActionPressed   += () => _pack.Act();
         tribePanel.BuildHutPressed += () => _tribe.TryBuildHut();
+        tribePanel.DesignPressed   += OpenHutEditor;
+        tribePanel.GiftPressed     += rival => _rivals.Gift(rival);
         AddChild(tribePanel);
 
         _cutscenes = new CutsceneDirector();
@@ -218,12 +231,13 @@ public partial class Main : Node2D
     // =======================   ROUTE INPUT AND FRAMES   ========================
     // ===========================================================================
     //
-    //   _UnhandledInput   E opens the editor, the tribe takes the mouse, the pack Space and F, the rest goes to the camera.
+    //   _UnhandledInput   E opens the editor, B the hut designer, the tribe takes the mouse, the pack Space and F, the rest goes to the camera.
+    //   OpenHutEditor     The hut designer of the tribe, over the running strategy view.
     //   ZoomFactor        Wheel zoom of the camera.
     //   ThirdPerson       0 top view .. 1 third person.
     //   ZoomBy            Changes the zoom factor by steps, clamped.
     //   _Process          Advances the camera once per frame.
-    //   _PhysicsProcess   Coast, pack, tribe, contacts and refill, in this order.
+    //   _PhysicsProcess   Coast, pack, tribe, rivals, contacts and refill, in this order.
     //
 
     public override void _UnhandledInput(InputEvent @event)
@@ -234,9 +248,24 @@ public partial class Main : Node2D
             GetViewport().SetInputAsHandled();
             return;
         }
+        if (@event is InputEventKey { Pressed: true, Echo: false, Keycode: Key.B } && Player.IsTribal && !_hutEditor.IsOpen)
+        {
+            OpenHutEditor();
+            GetViewport().SetInputAsHandled();
+            return;
+        }
         if (_tribe.HandleInput(@event) || _pack.HandleInput(@event) || _followCamera.HandleInput(@event))
         {
             GetViewport().SetInputAsHandled();
+        }
+    }
+
+    /// <summary>Opens the hut designer with the current blueprint of the tribe, the game runs on behind it.</summary>
+    private void OpenHutEditor()
+    {
+        if (_tribe.IsActive)
+        {
+            _hutEditor.Open(_tribe.Design, _tribe.Economy);
         }
     }
 
@@ -266,7 +295,8 @@ public partial class Main : Node2D
       One physics frame, the order matters:
       1. Coast      Spawns and follows, tells the player where land is (World/CoastKeeper.cs).
       2. Pack       Wild kin, the pack, their steering and meals, the offer (Tribe/Pack/PackKeeper.cs).
-      3. Tribe      Gathering, huts and villagers from the tribe on (Tribe/Village/TribeCommander.cs).
+      3. Tribe      Gathering, chopping, huts and villagers from the tribe on (Tribe/Village/TribeCommander.cs),
+                    then the neighbor tribes: traders, raids and fights (Tribe/Rivals/RivalKeeper.cs).
       4. Contacts   Food, engulfing, player vs. cells, cells vs. cells (World/ContactResolver.cs),
                     with the size and position of the player from before the coast moved it.
       5. Refill     Fills the soup after the start, then keeps it topped up, fruit from the trees (World/Spawner.cs).
@@ -280,6 +310,7 @@ public partial class Main : Node2D
         _coast.Update(isSpawnAllowed: !IsEvolving);
         _pack.Update(dt);
         _tribe.Update(dt);
+        _rivals.Update(dt);
         _contacts.Resolve(dt, playerSize, playerPosition, viewRadius);
         _spawner.Refill(dt);
     }
@@ -380,6 +411,9 @@ public partial class Main : Node2D
                 PlayStageCutscene(stage, "BANNER_PACK_TITLE", "BANNER_PACK_TEXT");
                 break;
             case Player.TRIBE_STAGE:
+                // The strategy view rises over the fire, the village is its reference point, the neighbors settle
+                _followCamera.StrategyAnchor = _pack.Nest?.Position;
+                _rivals.Settle();
                 PlayStageCutscene(stage, "BANNER_TRIBE_TITLE", "BANNER_TRIBE_TEXT");
                 break;
         }
@@ -567,6 +601,8 @@ public partial class Main : Node2D
     //   SpawnCoast   An archipelago ahead of the player, its first shore far off or right in front.
     //   Pack         The pack of the land animal: kin, nest, offer (Tribe/Pack/PackKeeper.cs).
     //   Tribe        The tribe: selection, stock, huts (Tribe/Village/TribeCommander.cs).
+    //   Rivals       The neighbor tribes (Tribe/Rivals/RivalKeeper.cs).
+    //   HutEditor    The hut designer (Tribe/Village/HutEditor.cs).
     //   CheatTo      F10 menu: jumps forward to a stage, the coast or more points.
     //
     //   The coast itself is kept by World/CoastKeeper.cs.
@@ -579,6 +615,10 @@ public partial class Main : Node2D
     public PackKeeper Pack => _pack;
 
     public TribeCommander Tribe => _tribe;
+
+    public RivalKeeper Rivals => _rivals;
+
+    public HutEditor HutEditor => _hutEditor;
 
     /// <summary>An archipelago ahead of the player (its facing), the landing island first.</summary>
     /// <param name="isNear">(Required) Right in front (cheat) instead of just outside the view.</param>
@@ -620,6 +660,10 @@ public partial class Main : Node2D
         {
             case CheatTarget.Points:
                 Player.GrantPoints(10);
+                break;
+            case CheatTarget.Resources:
+                _tribe.Economy.AddFood(20);
+                _tribe.Economy.AddWood(20);
                 break;
             case CheatTarget.SingleCell:
                 Player.AddBiomass(Mathf.Max(0f, Balance.Current.Player.SingleCellAt - Player.Biomass), BiomassSource.Raw);

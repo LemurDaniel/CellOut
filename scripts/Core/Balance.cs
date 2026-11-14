@@ -95,6 +95,9 @@ public sealed record Balance
         RequireEveryKind(balance.Cell.Parts, "cell.parts");
         RequireEveryKind(balance.Creature.Parts, "creature.parts");
         RequireEveryKind(balance.Prelude.Mutations, "prelude.mutations");
+        RequireEveryKind(balance.Tribe.Huts.Walls, "tribe.huts.walls");
+        RequireEveryKind(balance.Tribe.Huts.Roofs, "tribe.huts.roofs");
+        RequireEveryKind(balance.Tribe.Huts.Addons, "tribe.huts.addons");
         return balance;
     }
 
@@ -368,10 +371,12 @@ public sealed record CreatureEffectsBalance
 // ================================   TRIBE   ================================
 // ===========================================================================
 //
-//   TribeBalance     Pack, fruit and village of the social stages (Tribe/).
+//   TribeBalance     Pack, fruit, village, huts and rivals of the social stages (Tribe/).
 //   PackBalance      Conspecifics, calling, the nest and the pups (Tribe/Pack/PackKeeper.cs, Kin.cs).
 //   FruitBalance     Fruit dropping from the trees of the islands (Game/World/Spawner.cs).
-//   VillageBalance   Huts, villagers and gathering of the tribe (Tribe/Village/TribeCommander.cs, TribeEconomy.cs).
+//   VillageBalance   Villagers, gathering, chopping and fighting of the tribe (Tribe/Village/TribeCommander.cs).
+//   HutsBalance      Costs and effects of walls, roofs and add-ons (Tribe/Village/HutDesign.cs).
+//   RivalsBalance    Neighbor tribes, their trades, raids and relations (Tribe/Rivals/RivalKeeper.cs).
 //
 
 public sealed record TribeBalance
@@ -379,6 +384,8 @@ public sealed record TribeBalance
     public required PackBalance Pack { get; init; }
     public required FruitBalance Fruit { get; init; }
     public required VillageBalance Village { get; init; }
+    public required HutsBalance Huts { get; init; }
+    public required RivalsBalance Rivals { get; init; }
 }
 
 public sealed record PackBalance
@@ -394,6 +401,7 @@ public sealed record PackBalance
     public required float FollowDistance { get; init; }          // body sizes a follower keeps behind the leader
     public required float WanderRadius { get; init; }            // body sizes a kin roams around its home
     public required int FoundTribeAt { get; init; }              // pack members (without the leader) needed for the tribe
+    public required float NestRegen { get; init; }               // share of the maximum health the leader heals per second at the nest
 }
 
 public sealed record FruitBalance
@@ -404,12 +412,69 @@ public sealed record FruitBalance
 
 public sealed record VillageBalance
 {
-    public required int HutCost { get; init; }                   // food a hut costs
     public required float HutDistance { get; init; }             // Units from the fire to a hut
     public required float VillagerSeconds { get; init; }         // seconds a hut needs to raise a villager
-    public required int VillagersPerHut { get; init; }           // villagers one hut raises in all
     public required float GatherRange { get; init; }             // body sizes an idle villager looks for fruit
     public required int FoodPerFruit { get; init; }              // food stock one gathered fruit brings
+    public required float ChopSeconds { get; init; }             // seconds a villager chops for one load of wood
+    public required int WoodPerChop { get; init; }               // wood one load brings
+    public required float KinHealth { get; init; }               // hit points of a grown kin
+    public required float KinDamage { get; init; }               // damage per second a kin deals in a fight
+    public required float EngageRange { get; init; }             // body sizes an idle villager runs to fight an enemy
+    public required int GiftFood { get; init; }                  // food a gift to a rival tribe costs
+}
+
+public sealed record HutsBalance
+{
+    public required IReadOnlyDictionary<WallKind, HutWallBalance> Walls { get; init; }
+    public required IReadOnlyDictionary<RoofKind, HutRoofBalance> Roofs { get; init; }
+    public required IReadOnlyDictionary<HutAddon, HutAddonBalance> Addons { get; init; }
+}
+
+public sealed record HutWallBalance
+{
+    public required int Food { get; init; }
+    public required int Wood { get; init; }
+    public required float Health { get; init; }                  // hit points of the hut against raids
+}
+
+public sealed record HutRoofBalance
+{
+    public required int Food { get; init; }
+    public required int Wood { get; init; }
+    public required int Villagers { get; init; }                 // villagers the hut raises in all
+}
+
+public sealed record HutAddonBalance
+{
+    public required int Food { get; init; }
+    public required int Wood { get; init; }
+    public float Defense { get; init; }                          // raid damage is divided by 1 + defense / DefenseScale (rivals)
+    public float TradeBonus { get; init; }                       // share more a trader brings
+    public float RelationBonus { get; init; }                    // extra relation per trade
+    public int FoodPerFruit { get; init; }                       // extra food per gathered fruit while it stands
+}
+
+public sealed record RivalsBalance
+{
+    public required int Count { get; init; }                     // neighbor tribes, the first on the own island
+    public required float SameIslandDistance { get; init; }      // Units from the own fire to the neighbor on the same island
+    public required int Huts { get; init; }                      // huts of a rival village
+    public required int Villagers { get; init; }                 // villagers of a rival village
+    public required float FriendlyAt { get; init; }              // relation from which a tribe trades
+    public required float HostileAt { get; init; }               // relation below which a tribe raids
+    public required float TradeInterval { get; init; }           // seconds between traders of a friendly tribe
+    public required int TradeFood { get; init; }                 // a trader brings this much food
+    public required int TradeWood { get; init; }                 // and this much wood
+    public required float RaidInterval { get; init; }            // seconds between raids of a hostile tribe
+    public required int Raiders { get; init; }                   // raiders per raid
+    public required float RaidDamage { get; init; }              // damage per second a raider deals to a hut
+    public required float DefenseScale { get; init; }            // defense points that halve the raid damage
+    public required float RaidSeconds { get; init; }             // a raid ends after this long
+    public required float RelationPerTrade { get; init; }        // relation gain per delivered trade
+    public required float RelationPerGift { get; init; }         // relation gain per gift
+    public required float RelationPerKill { get; init; }         // relation loss when the player's tribe kills a rival
+    public required float RelationDrift { get; init; }           // relation moves this much per second towards neutral
 }
 
 // ===========================================================================

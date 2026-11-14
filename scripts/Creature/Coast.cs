@@ -200,6 +200,7 @@ public partial class Coast : Node3D
     //   Coast            Creates the tree grid on the terrain, so the trees answer before _Ready.
     //   TreesIn        The trees of one grid cell, the same every time (seeded by the cell).
     //   PushOutOfTrees   A point moved out of every trunk it overlaps.
+    //   HideGiants       The strategy view flies below the giant crowns, so they go.
     //
     //   Both delegate to World/TreeGrid.cs, heights and bands of the trees are described there.
     //
@@ -230,6 +231,13 @@ public partial class Coast : Node3D
     public Vector2 PushOutOfTrees(Vector2 point, float radius)
     {
         return _trees.PushOutOfTrees(point, radius);
+    }
+
+    /// <summary>Hides or shows the scale tree giants (World/CoastForest.cs), the strategy view flies below their crowns.</summary>
+    /// <param name="isHidden">(Required) True hides them.</param>
+    public void HideGiants(bool isHidden)
+    {
+        _forest?.HideSpecies(TreeSpecies.Giant, isHidden);
     }
 
     // ===========================================================================

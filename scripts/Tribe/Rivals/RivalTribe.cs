@@ -1,0 +1,221 @@
+// NOTE:
+//   A neighbor tribe: a fire with huts and villagers somewhere on the islands, its own
+//   body plan tint and a relation to the player's tribe from hostile (-1) to friendly
+//   (+1). A friendly tribe sends traders, a hostile one raiders (both are its kin with a
+//   Role), the RivalKeeper decides when and resolves what they do. Fire, huts and kin
+//   are its children, it steers its kin once per physics frame when the keeper calls
+//   Update.
+//
+//   var rival = new RivalTribe();
+//   rival.Setup(faction: 1, nameKey: "RIVAL_NAME_1", fire, entry, design, tint, relation: 0.5f);
+//   AddChild(rival);
+//   rival.Update(dt, coast, playerSize);
+
+//
+//   Chapters:
+//     SETTINGS   Faction, name, fire, entry point and the relation.
+//     VILLAGE    Fire, huts and villagers, built in _Ready.
+//     KIN        Villagers, traders and raiders: spawning, steering and leaving.
+//
+
+using System.Collections.Generic;
+using Godot;
+
+namespace CellOut;
+
+public partial class RivalTribe : Node2D
+{
+    // ===========================================================================
+    // ==============================   SETTINGS   ===============================
+    // ===========================================================================
+    //
+    //   Faction      Its number, 1 and up.
+    //   NameKey      Translation key of its name.
+    //   Fire         Plane point of its fire.
+    //   Entry        Plane point where its traders and raiders enter the player's island.
+    //   Relation     -1 hostile .. 1 friendly towards the player's tribe.
+    //   IsFriendly   Relation at FriendlyAt or above: it trades.
+    //   IsHostile    Relation at HostileAt or below: it raids.
+    //   Setup        Everything before AddChild.
+    //   Shift        Moves the relation, clamped.
+    //
+
+    /// <summary>Village size and relation thresholds from data/balance.json (tribe.rivals).</summary>
+    private static RivalsBalance Tune => Balance.Current.Tribe.Rivals;
+
+    public int Faction { get; private set; } = 1;
+    public string NameKey { get; private set; } = "RIVAL_NAME_1";
+    public Vector2 Fire { get; private set; }
+    public Vector2 Entry { get; private set; }
+    public float Relation { get; private set; }
+
+    public bool IsFriendly => Relation >= Tune.FriendlyAt;
+    public bool IsHostile => Relation <= Tune.HostileAt;
+
+    private readonly HutDesign _design = new();
+    private CreatureDesign _bodyPlan;
+    private Color _tint;
+    private float _size;
+
+    /// <summary>Sets up the tribe, call before AddChild.</summary>
+    /// <param name="faction">(Required) Its number, 1 and up.</param>
+    /// <param name="nameKey">(Required) Translation key of its name.</param>
+    /// <param name="fire">(Required) Plane point of its fire, on land.</param>
+    /// <param name="entry">(Required) Where its traders and raiders enter the player's island.</param>
+    /// <param name="bodyPlan">(Required) Body plan of its kin (the player's), copied per kin.</param>
+    /// <param name="design">(Required) Blueprint of its huts.</param>
+    /// <param name="tint">(Required) Color of its kin.</param>
+    /// <param name="relation">(Required) Starting relation, -1..1.</param>
+    /// <param name="size">(Required) Player.BodySize(), its kin are grown.</param>
+    public void Setup(int faction, string nameKey, Vector2 fire, Vector2 entry, CreatureDesign bodyPlan, HutDesign design, Color tint, float relation, float size)
+    {
+        Faction   = faction;
+        NameKey   = nameKey;
+        Fire      = fire;
+        Entry     = entry;
+        _bodyPlan = bodyPlan;
+        _design.CopyFrom(design);
+        _tint     = tint;
+        Relation  = Mathf.Clamp(relation, -1f, 1f);
+        _size     = size;
+    }
+
+    /// <summary>Moves the relation, clamped to -1..1.</summary>
+    /// <param name="amount">(Required) Positive towards friendly.</param>
+    public void Shift(float amount)
+    {
+        Relation = Mathf.Clamp(Relation + amount, -1f, 1f);
+    }
+
+    // ===========================================================================
+    // ===============================   VILLAGE   ===============================
+    // ===========================================================================
+    //
+    //   Nest     Its fire.
+    //   Huts     Its huts.
+    //   _Ready   Fire, huts on a ring and the villagers around it.
+    //
+
+    public Nest Nest { get; private set; }
+
+    private readonly List<Hut> _huts = new();
+
+    public IReadOnlyList<Hut> Huts => _huts;
+
+    private Coast _coast;
+
+    /// <summary>Hands in the coast, before AddChild: huts and kin need the ground and the land.</summary>
+    /// <param name="coast">(Required) The coast.</param>
+    public void AttachCoast(Coast coast)
+    {
+        _coast = coast;
+    }
+
+    public override void _Ready()
+    {
+        Nest = new Nest { Position = Fire, Size = _size, GroundHeight = _coast.GroundHeight(Fire) * _size };
+        AddChild(Nest);
+        Nest.LightFire();
+
+        float unit = _coast.Unit;
+        for (int i = 0; i < Tune.Huts; i++)
+        {
+            float   angle = Mathf.Tau * i / Tune.Huts + 0.4f;
+            Vector2 spot  = Fire + Vector2.FromAngle(angle) * Balance.Current.Tribe.Village.HutDistance * unit;
+            if (!_coast.IsOnLand(spot))
+            {
+                continue;
+            }
+            spot = _coast.PushOutOfTrees(spot, unit * Hut.SCALE);
+            var hut = new Hut { Position = spot, Size = unit * Hut.SCALE, GroundHeight = _coast.GroundHeight(spot) * _size };
+            hut.Setup(_design, Faction);
+            hut.Destroyed += () => _huts.Remove(hut);
+            _huts.Add(hut);
+            AddChild(hut);
+        }
+        for (int i = 0; i < Tune.Villagers; i++)
+        {
+            Kin villager = SpawnKin(Fire + Vector2.FromAngle(Rand.Angle()) * _size * 3f, KinRole.Villager);
+            villager.JoinTribe(Fire);
+        }
+        Log.Verbose("RivalTribe", $"Faction {Faction} settled at {Fire} with {_huts.Count} hut(s), relation {Relation:F2}.");
+    }
+
+    // ===========================================================================
+    // =================================   KIN   =================================
+    // ===========================================================================
+    //
+    //   Kin           Every kin of the tribe: villagers at home, traders and raiders abroad.
+    //   SpawnKin      One grown kin of the tribe at a spot with a role.
+    //   SendTrader    A trader walks from the entry point to the player's fire.
+    //   SendRaiders   Raiders walk from the entry point towards the player's village.
+    //   Update        Steers every kin, frees the ones that left, keeps fire and huts on the ground.
+    //
+
+    private readonly List<Kin> _kin = new();
+
+    public IReadOnlyList<Kin> Kin => _kin;
+
+    /// <summary>One grown kin of this tribe.</summary>
+    /// <param name="spot">(Required) Plane point, moved out of trunks.</param>
+    /// <param name="role">(Required) Villager, trader or raider.</param>
+    public Kin SpawnKin(Vector2 spot, KinRole role)
+    {
+        var kin = new Kin { Position = _coast.PushOutOfTrees(spot, _size), Role = role, Faction = Faction };
+        kin.Setup(_bodyPlan, _size, _tint, home: KinRole.Villager == role ? Fire : Entry);
+        _kin.Add(kin);
+        AddChild(kin);
+        return kin;
+    }
+
+    /// <summary>A trader enters at the entry point and walks to a target (the player's fire).</summary>
+    /// <param name="target">(Required) Plane point of the player's fire.</param>
+    public Kin SendTrader(Vector2 target)
+    {
+        Kin trader = SpawnKin(Entry, KinRole.Trader);
+        trader.JoinTribe(Entry);
+        trader.OrderMove(target);
+        Log.Verbose("RivalTribe", $"Faction {Faction} sends a trader to {target}.");
+        return trader;
+    }
+
+    /// <summary>Raiders enter at the entry point and walk towards a target (a hut or the fire).</summary>
+    /// <param name="target">(Required) Plane point to walk to.</param>
+    /// <param name="count">(Required) Raiders sent.</param>
+    public List<Kin> SendRaiders(Vector2 target, int count)
+    {
+        var raiders = new List<Kin>();
+        for (int i = 0; i < count; i++)
+        {
+            Kin raider = SpawnKin(Entry + Vector2.FromAngle(Rand.Angle()) * _size * 2f, KinRole.Raider);
+            raider.JoinTribe(Entry);
+            raider.OrderMove(target);
+            raiders.Add(raider);
+        }
+        Log.Verbose("RivalTribe", $"Faction {Faction} raids with {count} towards {target}.");
+        return raiders;
+    }
+
+    /// <summary>One physics frame of the tribe.</summary>
+    /// <param name="dt">(Required) Frame time in seconds.</param>
+    /// <param name="playerSize">(Required) Player.BodySize(), the ground scales with it.</param>
+    public void Update(float dt, float playerSize)
+    {
+        _kin.RemoveAll(kin => !IsInstanceValid(kin) || kin.IsQueuedForDeletion());
+        foreach (Kin kin in _kin)
+        {
+            kin.Steer(dt, _coast, _kin, null, playerSize, isPackFollowing: false);
+            // A trader or raider that walked home leaves the world
+            if (kin.IsLeaving && null == kin.OrderTarget)
+            {
+                kin.QueueFree();
+            }
+        }
+        Nest.Size         = playerSize;
+        Nest.GroundHeight = _coast.GroundHeight(Fire) * playerSize;
+        foreach (Hut hut in _huts)
+        {
+            hut.GroundHeight = _coast.GroundHeight(hut.Position) * playerSize;
+        }
+    }
+}

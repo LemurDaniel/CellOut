@@ -45,13 +45,11 @@ public partial class PackKeeper : Node2D
     //
     //   KinAte       A kin ate a piece of land food, the tribe counts it as gathered.
     //   NestBuilt    The nest stands, Main shows the stage.
-    //   SplashRequested   A plop is due on the plane, Main spawns it.
     //   Setup        The session and the camera (view radius), before AddChild.
     //
 
     [Signal] public delegate void KinAteEventHandler(Vector2 position, float size, Color color);
     [Signal] public delegate void NestBuiltEventHandler();
-    [Signal] public delegate void SplashRequestedEventHandler(Vector2 position, float radius, Color color);
 
     /// <summary>Every tunable number of the pack from data/balance.json (tribe.pack).</summary>
     private static PackBalance Tune => Balance.Current.Tribe.Pack;
@@ -80,6 +78,7 @@ public partial class PackKeeper : Node2D
     //   Members      Kin of the pack: following, staying or villagers.
     //   Nest         The nest, null until built.
     //   Offer        What Space does right now, recomputed every frame.
+    //   OfferHint    Translation key of what is missing for the next step, null when nothing is.
     //   IsStaying    Whether the pack waits at the nest (F toggles).
     //   Update       Spawns wild kin, steers all, lets them eat, keeps the nest on the ground, computes the offer.
     //   SpawnWild    A wild kin on grass just outside the view.
@@ -120,6 +119,9 @@ public partial class PackKeeper : Node2D
 
     public PackOffer Offer { get; private set; }
 
+    /// <summary>Key in translations.csv naming what is missing for the next step (find kin, go inland, more kin, back to the nest), null with an offer or before the land.</summary>
+    public string OfferHint { get; private set; }
+
     public bool IsStaying { get; private set; }
 
     /*
@@ -127,7 +129,7 @@ public partial class PackKeeper : Node2D
       1. Wild kin      Up to KinOnIsland roam the island of the land animal, one every KinSpawnInterval.
       2. Steer         Every kin walks: orders, following, roaming (Kin.Steer).
       3. Eat           A kin that touches land food eats it (KinAte), pups grow faster.
-      4. Nest          The nest stays on the ground that scales with the player.
+      4. Nest          The nest stays on the ground that scales with the player, the leader heals there (NestRegen).
       5. Offer         Call a kin nearby, build the nest, found the tribe, or nothing.
     */
     /// <summary>One physics frame of the pack.</summary>
@@ -153,7 +155,7 @@ public partial class PackKeeper : Node2D
         // Steer
         foreach (Kin kin in _kin)
         {
-            kin.Steer(dt, Coast, _kin, Player, size);
+            kin.Steer(dt, Coast, _kin, Player, size, isPackFollowing: !IsStaying);
         }
 
         // Eat
@@ -179,6 +181,10 @@ public partial class PackKeeper : Node2D
         {
             Nest.Size         = size;
             Nest.GroundHeight = Coast.GroundHeight(Nest.Position) * size;
+            if (Player.GlobalPosition.DistanceTo(Nest.Position) <= size * Tune.NestRange)
+            {
+                Player.Heal(Tune.NestRegen * dt);
+            }
         }
 
         // Offer
@@ -188,13 +194,16 @@ public partial class PackKeeper : Node2D
     /*
       > Land animal without a nest
           - A wild kin within CallRange: Call.
-          - A member follows and the player stands on grass (NestDepth inland): Nest.
+          - A member follows and the player stands on grass (NestDepth inland): Nest,
+            on the sand the hint says to go inland, without a member to find kin.
       > Pack with a nest, not yet a tribe
-          - At the nest (NestRange) with FoundTribeAt members: FoundTribe.
+          - At the nest (NestRange) with FoundTribeAt members: FoundTribe,
+            else the hint says to call more kin or to go back to the nest.
       > Otherwise nothing
     */
     private PackOffer ComputeOffer(float size)
     {
+        OfferHint = null;
         if (!Player.IsLandAnimal || Player.IsTribal || !Player.IsOnLand)
         {
             return PackOffer.None;
@@ -206,10 +215,20 @@ public partial class PackKeeper : Node2D
                 return PackOffer.Call;
             }
             bool isOnGrass = Coast.LandDepth(Player.GlobalPosition) >= Tune.NestDepth * Coast.Unit;
-            return Members > 0 && isOnGrass ? PackOffer.Nest : PackOffer.None;
+            if (Members > 0 && isOnGrass)
+            {
+                return PackOffer.Nest;
+            }
+            OfferHint = Members > 0 ? "PACK_HINT_INLAND" : "PACK_HINT_FIND";
+            return PackOffer.None;
         }
         bool isAtNest = Player.GlobalPosition.DistanceTo(Nest.Position) <= size * Tune.NestRange;
-        return isAtNest && Members >= Tune.FoundTribeAt ? PackOffer.FoundTribe : PackOffer.None;
+        if (isAtNest && Members >= Tune.FoundTribeAt)
+        {
+            return PackOffer.FoundTribe;
+        }
+        OfferHint = Members < Tune.FoundTribeAt ? "PACK_HINT_MORE" : "PACK_HINT_RETURN";
+        return PackOffer.None;
     }
 
     /// <summary>The closest wild kin within a range, null when none.</summary>
@@ -344,12 +363,11 @@ public partial class PackKeeper : Node2D
             return;
         }
         kin.Follow();
-        EmitSignal(SignalName.SplashRequested, kin.Position, kin.Radius * 1.5f, kin.BodyColor);
         Offer = ComputeOffer(Player.BodySize());
         Log.Verbose("PackKeeper", $"Called a kin, {Members} member(s).");
     }
 
-    /// <summary>The nest in front of the player, PupsAtNest pups are born next to it, the pack stage.</summary>
+    /// <summary>The nest in front of the player, PupsAtNest pups are born next to it and stay there until grown, the pack stage.</summary>
     private void BuildNest()
     {
         if (null != Nest || !Player.IsLandAnimal || Player.IsPackLeader)
@@ -362,7 +380,7 @@ public partial class PackKeeper : Node2D
         AddChild(Nest);
         for (int i = 0; i < Tune.PupsAtNest; i++)
         {
-            SpawnKin(spot + Vector2.FromAngle(Rand.Angle()) * size * 2.5f, size, KinMode.Following, isPup: true);
+            SpawnKin(spot + Vector2.FromAngle(Rand.Angle()) * size * 2.5f, size, KinMode.Staying, isPup: true);
         }
         Player.FoundSociety(Player.PACK_STAGE);
         EmitSignal(SignalName.NestBuilt);
@@ -395,9 +413,9 @@ public partial class PackKeeper : Node2D
         IsStaying = !IsStaying;
         foreach (Kin kin in _kin)
         {
-            if (KinMode.Wild == kin.Mode || KinMode.Villager == kin.Mode)
+            if (KinMode.Wild == kin.Mode || KinMode.Villager == kin.Mode || kin.IsPup)
             {
-                continue;
+                continue;     // pups stay at the nest until they are grown
             }
             if (IsStaying)
             {
@@ -420,8 +438,7 @@ public partial class PackKeeper : Node2D
             throw new System.InvalidOperationException("A villager needs the nest with the fire, build the nest first.");
         }
         float size = Player.BodySize();
-        Kin villager = SpawnKin(spot + Vector2.FromAngle(Rand.Angle()) * size * 2f, size, KinMode.Villager);
-        EmitSignal(SignalName.SplashRequested, villager.Position, size * 1.5f, villager.BodyColor);
+        SpawnKin(spot + Vector2.FromAngle(Rand.Angle()) * size * 2f, size, KinMode.Villager);
     }
 
     /// <summary>The dead leader lives on in the body of the biggest grown member, which leaves the pack.</summary>

@@ -451,6 +451,18 @@ public partial class Player : CellBody
         EmitSignal(SignalName.StatsChanged);
     }
 
+    /// <summary>Heals a share of the maximum health, e.g. resting at the nest.</summary>
+    /// <param name="share">(Required) Share of MaxHp, clamped at full health.</param>
+    public void Heal(float share)
+    {
+        if (IsDead || Hp >= MaxHp)
+        {
+            return;
+        }
+        Hp = Mathf.Min(MaxHp, Hp + MaxHp * share);
+        EmitSignal(SignalName.StatsChanged);
+    }
+
     /// <summary>The leader lives on: full health, a grace period, at the place of the pack member taken over.</summary>
     /// <param name="at">(Required) Plane position of the body taken over.</param>
     public void Revive(Vector2 at)

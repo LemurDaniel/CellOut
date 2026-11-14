@@ -29,6 +29,7 @@ public partial class CoastForest : Node3D
     //   Setup    (Required) terrain: ground height and the unit of the coast.
     //            (Required) trees: the seeded trees per grid cell.
     //   Follow   Chunks around the player come and go, all rebuild when the player grew.
+    //   HideSpecies   Hides or shows one species in every chunk (the strategy view hides the giants over the camera).
     //
 
     private const int TREE_CHUNK = 6;                // cells per chunk side
@@ -40,6 +41,29 @@ public partial class CoastForest : Node3D
     private TreeGrid _trees;
     private Vector2 _treesCenter = new(float.NaN, float.NaN);
     private float _treesSize;
+    private readonly HashSet<TreeSpecies> _hiddenSpecies = new();
+
+    /// <summary>Hides or shows a species in every chunk, also in chunks built later.</summary>
+    /// <param name="species">(Required) The species.</param>
+    /// <param name="isHidden">(Required) True hides it.</param>
+    /// <example><code>forest.HideSpecies(TreeSpecies.Giant, isHidden: true);   // the strategy view flies below their crowns</code></example>
+    public void HideSpecies(TreeSpecies species, bool isHidden)
+    {
+        if (isHidden ? !_hiddenSpecies.Add(species) : !_hiddenSpecies.Remove(species))
+        {
+            return;
+        }
+        foreach (Node3D chunk in _treeChunks.Values)
+        {
+            foreach (Node child in chunk.GetChildren())
+            {
+                if (child is MultiMeshInstance3D instance && instance.Name == species.ToString())
+                {
+                    instance.Visible = !isHidden;
+                }
+            }
+        }
+    }
 
     /// <summary>Hands over the terrain and its trees, called once before AddChild.</summary>
     /// <param name="terrain">(Required) The terrain of the coast.</param>
@@ -160,7 +184,14 @@ public partial class CoastForest : Node3D
                 multimesh.SetInstanceTransform(k, transforms[i][k]);
                 multimesh.SetInstanceColor(k, tints[i][k]);
             }
-            node.AddChild(new MultiMeshInstance3D { Multimesh = multimesh, VisibilityRangeEnd = TREE_VISIBLE[i] * _terrain.Unit });
+            var species = (TreeSpecies)i;
+            node.AddChild(new MultiMeshInstance3D
+            {
+                Name               = species.ToString(),
+                Multimesh          = multimesh,
+                VisibilityRangeEnd = TREE_VISIBLE[i] * _terrain.Unit,
+                Visible            = !_hiddenSpecies.Contains(species),
+            });
         }
         AddChild(node);
         return node;

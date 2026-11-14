@@ -28,6 +28,7 @@ public partial class Nest : Node2D
     //   Size           (Required) Player.BodySize() when built, the nest scales with it.
     //   GroundHeight   (Required) Ground below in world units, kept up to date by the PackKeeper.
     //   IsLit          Whether the fire burns.
+    //   Glow           0..1 how high the fire burns, the tribe sets it from its stock.
     //   _Ready         The nest model, scaled to the player.
     //   LightFire      The fire pit model, flames and the light of the tribe.
     //   _Process       Sits on the ground, the flames flicker.
@@ -36,6 +37,14 @@ public partial class Nest : Node2D
     public float Size { get; set; } = 14f;
     public float GroundHeight { get; set; }
     public bool IsLit { get; private set; }
+
+    /// <summary>(Optional) 0 a glimmer .. 1 a roaring fire, the tribe sets it from its stock. Defaults to 1.</summary>
+    public float Glow { get; set; } = 1f;
+
+    private const float GLOW_MIN_LIGHT = 0.8f;       // light energy at Glow 0, up to GLOW_MIN_LIGHT + GLOW_LIGHT_RANGE
+    private const float GLOW_LIGHT_RANGE = 1.2f;
+    private const float GLOW_MIN_FLAME = 0.6f;       // flame height at Glow 0, up to GLOW_MIN_FLAME + GLOW_FLAME_RANGE
+    private const float GLOW_FLAME_RANGE = 0.6f;
 
     private const string NEST_MODEL = "res://assets/models/village/village.nest.glb";
     private const string FIRE_MODEL = "res://assets/models/village/village.fire.glb";
@@ -101,8 +110,9 @@ public partial class Nest : Node2D
         if (null != _flames)
         {
             float flicker = 1f + Mathf.Sin(_time * 9f) * 0.08f + Mathf.Sin(_time * 23f) * 0.05f;
-            _flames.Scale      = new Vector3(1f, flicker, 1f);
-            _light.LightEnergy = 1.6f * flicker;
+            float glow    = Mathf.Clamp(Glow, 0f, 1f);
+            _flames.Scale      = new Vector3(1f, (GLOW_MIN_FLAME + GLOW_FLAME_RANGE * glow) * flicker, 1f);
+            _light.LightEnergy = (GLOW_MIN_LIGHT + GLOW_LIGHT_RANGE * glow) * flicker;
         }
     }
 

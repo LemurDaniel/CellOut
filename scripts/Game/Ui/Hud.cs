@@ -44,6 +44,7 @@ public partial class Hud : CanvasLayer
     private Label _bannerSub;
     private string _bannerTitleKey = "";
     private string _bannerTextKey = "";
+    private object[] _bannerArgs = System.Array.Empty<object>();
     private Tween _bannerTween;
     private DietBar _dietBar;
     private Button _languageButton;
@@ -192,12 +193,14 @@ public partial class Hud : CanvasLayer
     /// <summary>Shows a big title with subtitle that fades out after a few seconds.</summary>
     /// <param name="titleKey">(Required) Translation key of the title, e.g. BANNER_START_TITLE.</param>
     /// <param name="textKey">(Required) Translation key of the line below.</param>
-    public void ShowBanner(string titleKey, string textKey)
+    /// <param name="args">(Optional) Values for the placeholders of the line below. Defaults to none.</param>
+    public void ShowBanner(string titleKey, string textKey, params object[] args)
     {
         _bannerTitleKey = titleKey;
         _bannerTextKey  = textKey;
+        _bannerArgs     = args;
         _banner.Text    = Tr(titleKey);
-        _bannerSub.Text = Tr(textKey);
+        _bannerSub.Text = string.Format(Tr(textKey), args);
         _bannerTween?.Kill();
         SetAlpha(_banner, 1f);
         SetAlpha(_bannerSub, 1f);
@@ -245,7 +248,7 @@ public partial class Hud : CanvasLayer
         if (!string.IsNullOrEmpty(_bannerTitleKey))
         {
             _banner.Text    = Tr(_bannerTitleKey);
-            _bannerSub.Text = Tr(_bannerTextKey);
+            _bannerSub.Text = string.Format(Tr(_bannerTextKey), _bannerArgs);
         }
         Refresh();
     }

@@ -1,14 +1,17 @@
 // NOTE:
 //   The strategy layer of the tribe: from the tribe stage on the player commands the
 //   villagers (every Kin of the pack and the own body) from the strategy view of the
-//   camera. Left click or a drag box selects, right click orders the selection to a point.
-//   Idle villagers gather the fruit nearby, gathered fruit fills the stock
-//   (TribeEconomy), the stock pays for huts next to the fire, and every hut raises a
-//   villager. Selection rings are its children in world space. It does not process on
-//   its own: Main calls Update after the pack and routes the mouse to HandleInput.
+//   camera. Left click or a drag box selects, right click orders the selection: onto a
+//   tree it chops wood, onto an enemy it attacks, else it walks there. Idle villagers
+//   gather the fruit nearby, gathered fruit and chopped wood fill the stock
+//   (TribeEconomy), the stock pays for huts of the current blueprint (Design, edited in
+//   the HutEditor) next to the fire, and every hut raises villagers. Selection rings are
+//   its children in world space. It does not process on its own: Main calls Update after
+//   the pack and routes the mouse to HandleInput.
 //
 //   var tribe = new TribeCommander();
 //   tribe.Setup(session, pack, followCamera);
+//   tribe.AttachRivals(rivals);              // right clicks on enemies
 //   AddChild(tribe);
 //   tribe.Update(dt);                       // in _PhysicsProcess
 //   if (tribe.HandleInput(@event)) GetViewport().SetInputAsHandled();
@@ -16,9 +19,9 @@
 
 //
 //   Chapters:
-//     SETTINGS   The session, the pack, the camera and the stock.
+//     SETTINGS   The session, the pack, the camera, the rivals, the stock and the blueprint.
 //     SELECT     Click and drag box select units, right click orders them.
-//     VILLAGE    Gathering, huts and the villagers they raise, per physics frame.
+//     VILLAGE    Gathering, chopping, huts and the villagers they raise, per physics frame.
 //
 
 using System.Collections.Generic;
@@ -32,29 +35,43 @@ public partial class TribeCommander : Node3D
     // ==============================   SETTINGS   ===============================
     // ===========================================================================
     //
-    //   Changed    Stock or huts changed, the panel refreshes.
-    //   Economy    Food and huts of the tribe (TribeEconomy).
-    //   IsActive   From the tribe stage on, with a fire to build around.
-    //   Setup      The session, the pack and the camera, before AddChild.
-    //   OnKinAte   A villager ate land food: gathered for the stock.
+    //   Changed         Stock or huts changed, the panel refreshes.
+    //   Economy         Food, wood and huts of the tribe (TribeEconomy).
+    //   Design          The blueprint every new hut is built from (HutEditor).
+    //   IsActive        From the tribe stage on, with a fire to build around.
+    //   Defense         Defense of the village: the add-ons of every standing hut.
+    //   TradeBonus      Share more every trader brings: the markets of the standing huts.
+    //   RelationBonus   Extra relation per trade: the totems of the standing huts.
+    //   Setup           The session, the pack and the camera, before AddChild.
+    //   AttachRivals    The rival tribes, so a right click on an enemy orders an attack.
+    //   OnKinAte        A villager ate land food: gathered for the stock, more with a storehouse.
     //
 
     [Signal] public delegate void ChangedEventHandler();
 
-    /// <summary>Hut distance, gathering range and food per fruit from data/balance.json (tribe.village).</summary>
+    /// <summary>Hut distance, gathering range, chopping and food per fruit from data/balance.json (tribe.village).</summary>
     private static VillageBalance Tune => Balance.Current.Tribe.Village;
 
     public TribeEconomy Economy { get; } = new();
 
+    public HutDesign Design { get; } = new();
+
     private WorldSession _session;
     private PackKeeper _pack;
     private FollowCamera _camera;
+    private RivalKeeper _rivals;
 
     private Player Player => _session.Player;
     private Coast Coast => _session.Coast;
     private Node2D FoodLayer => _session.FoodLayer;
 
     public bool IsActive => Player.IsTribal && null != _pack.Nest;
+
+    public float Defense => Sum(hut => hut.Design.Defense);
+
+    public float TradeBonus => Sum(hut => hut.Design.TradeBonus);
+
+    public float RelationBonus => Sum(hut => hut.Design.RelationBonus);
 
     /// <summary>Hands in the shared state, call before AddChild.</summary>
     /// <param name="session">(Required) Player, food layer and coast.</param>
@@ -68,20 +85,37 @@ public partial class TribeCommander : Node3D
         _pack.KinAte += OnKinAte;
     }
 
+    /// <summary>The rival tribes, a right click on one of their kin orders an attack.</summary>
+    /// <param name="rivals">(Required) The rival keeper.</param>
+    public void AttachRivals(RivalKeeper rivals)
+    {
+        _rivals = rivals;
+    }
+
     public override void _Ready()
     {
         TopLevel = true;
     }
 
-    /// <summary>Gathered: every piece a villager eats fills the stock from the tribe on.</summary>
+    /// <summary>Gathered: every piece a villager eats fills the stock from the tribe on, storehouses add to it.</summary>
     private void OnKinAte(Vector2 position, float size, Color color)
     {
         if (!IsActive)
         {
             return;
         }
-        Economy.AddFood(Tune.FoodPerFruit);
+        Economy.AddFood(Tune.FoodPerFruit + (int)Sum(hut => hut.Design.FoodPerFruit));
         EmitSignal(SignalName.Changed);
+    }
+
+    private float Sum(System.Func<Hut, float> value)
+    {
+        float sum = 0f;
+        foreach (Hut hut in _huts)
+        {
+            sum += value(hut);
+        }
+        return sum;
     }
 
     // ===========================================================================
@@ -90,21 +124,25 @@ public partial class TribeCommander : Node3D
     //
     //   Selected      The commanded units right now.
     //   Units         Every villager and the player.
-    //   HandleInput   Left press starts a box, release selects (click: the nearest unit), right click orders.
+    //   HandleInput   Left press starts a box, release selects (click: the nearest unit), right click orders, Tab selects all.
     //   SelectAt      The unit under the cursor, Shift adds to the selection.
     //   SelectBox     Every unit whose screen position lies in the box.
-    //   Order         The selection walks to the point, spread on a small ring.
-    //   DrawRings     A ring under every selected unit, once per frame.
+    //   Order         The selection chops a tree, attacks an enemy or walks to the point (spread on a ring).
+    //   TreeAt        The tree whose trunk lies under a plane point, null when none.
+    //   DrawRings     A ring under every selected unit and a white one under the player, once per frame.
     //
 
     private const float PICK_RADIUS = 1.6f;          // body sizes around a unit a click still hits
+    private const float TREE_PICK = 2.5f;            // trunk radii around a trunk a click still hits
     private const float BOX_MIN = 6f;                // pixels: smaller drags count as a click
     private const float ORDER_SPREAD = 1.2f;         // body sizes between ordered units
     private const float RING_LIFT = 0.08f;           // ring height above the ground in body sizes
     private static readonly Color RING_COLOR = new(0.95f, 0.9f, 0.4f);
+    private static readonly Color PLAYER_RING_COLOR = new(1f, 1f, 1f);
 
     private readonly List<CellBody> _selected = new();
     private readonly Dictionary<CellBody, MeshInstance3D> _rings = new();
+    private MeshInstance3D _playerRing;
     private Vector2 _boxStart;
     private bool _isBoxing;
 
@@ -124,12 +162,23 @@ public partial class TribeCommander : Node3D
         return units;
     }
 
-    /// <summary>Takes the mouse part of an input event from the tribe on.</summary>
+    /// <summary>Takes the mouse part of an input event from the tribe on, Tab selects every unit.</summary>
     /// <param name="event">(Required) The event Main received in _UnhandledInput.</param>
     /// <returns>True when the tribe used the event.</returns>
     public bool HandleInput(InputEvent @event)
     {
-        if (!IsActive || @event is not InputEventMouseButton button)
+        if (!IsActive)
+        {
+            return false;
+        }
+        if (@event is InputEventKey { Pressed: true, Echo: false, Keycode: Key.Tab })
+        {
+            _selected.Clear();
+            _selected.AddRange(Units());
+            Log.Verbose("TribeCommander", $"Tab: all {_selected.Count} unit(s) selected.");
+            return true;
+        }
+        if (@event is not InputEventMouseButton button)
         {
             return false;
         }
@@ -210,23 +259,110 @@ public partial class TribeCommander : Node3D
         Log.Verbose("TribeCommander", $"Box selected {_selected.Count} unit(s).");
     }
 
-    /// <summary>Orders the selection to a plane point, several units spread on a ring around it.</summary>
-    /// <param name="point">(Required) Plane point to walk to.</param>
+    /*
+      A right click on the plane, for the selection:
+      > An enemy kin under the cursor: every selected kin attacks it (the player walks there).
+      > A trunk under the cursor: every selected kin chops it.
+      > Otherwise: everyone walks there, several units spread on a ring, never into the sea.
+    */
+    /// <summary>Orders the selection: attack, chop or walk.</summary>
+    /// <param name="point">(Required) Plane point under the cursor.</param>
     public void Order(Vector2 point)
     {
         _selected.RemoveAll(unit => !IsInstanceValid(unit) || unit.IsQueuedForDeletion());
+        if (0 == _selected.Count)
+        {
+            return;
+        }
+        float size  = Player.BodySize();
+        Kin   enemy = _rivals?.EnemyAt(point, size * PICK_RADIUS);
+        if (null != enemy)
+        {
+            foreach (CellBody unit in _selected)
+            {
+                if (unit is Kin kin)
+                {
+                    kin.OrderAttack(enemy);
+                }
+                else
+                {
+                    unit.OrderTarget = enemy.Position;
+                }
+            }
+            Log.Verbose("TribeCommander", $"{_selected.Count} unit(s) attack a kin of faction {enemy.Faction}.");
+            return;
+        }
+        if (TreeAt(point) is Coast.Tree tree)
+        {
+            foreach (CellBody unit in _selected)
+            {
+                if (unit is Kin kin)
+                {
+                    kin.OrderChop(tree.Position, tree.TrunkRadius);
+                }
+            }
+            Log.Verbose("TribeCommander", $"{_selected.Count} unit(s) chop a {tree.Species}.");
+            return;
+        }
         for (int i = 0; i < _selected.Count; i++)
         {
             float   spread = 1 == _selected.Count ? 0f : _selected[i].BodySize() * ORDER_SPREAD;
             Vector2 target = point + Vector2.FromAngle(Mathf.Tau * i / _selected.Count) * spread;
-            _selected[i].OrderTarget = null != Coast && !Coast.IsOnLand(target) ? point : target;
+            target = null != Coast && !Coast.IsOnLand(target) ? point : target;
+            if (_selected[i] is Kin kin)
+            {
+                kin.OrderMove(target);
+            }
+            else
+            {
+                _selected[i].OrderTarget = target;
+            }
         }
         Log.Verbose("TribeCommander", $"{_selected.Count} unit(s) ordered to {point}.");
     }
 
-    /// <summary>A ring under every selected unit, rings of unselected units go.</summary>
+    /// <summary>The tree whose trunk lies under a plane point (within TREE_PICK trunk radii), null when none.</summary>
+    private Coast.Tree? TreeAt(Vector2 point)
+    {
+        if (null == Coast)
+        {
+            return null;
+        }
+        float cell   = TreeGrid.TREE_CELL * Coast.Unit;
+        var   center = new Vector2I(Mathf.FloorToInt(point.X / cell), Mathf.FloorToInt(point.Y / cell));
+        Coast.Tree? hit      = null;
+        float       distance = float.PositiveInfinity;
+        for (int x = -1; x <= 1; x++)
+        {
+            for (int y = -1; y <= 1; y++)
+            {
+                foreach (Coast.Tree tree in Coast.TreesIn(center + new Vector2I(x, y)))
+                {
+                    float d = tree.Position.DistanceTo(point);
+                    if (d < tree.TrunkRadius * TREE_PICK && d < distance)
+                    {
+                        hit      = tree;
+                        distance = d;
+                    }
+                }
+            }
+        }
+        return hit;
+    }
+
+    /// <summary>A ring under every selected unit, rings of unselected units go, the player always carries a white one.</summary>
     private void DrawRings(float playerSize)
     {
+        // The player: from above, among same colored kin, it needs a marker of its own
+        if (null == _playerRing)
+        {
+            _playerRing = CellVisual3D.AddMesh(this, CellVisual3D.TorusMesh(), CellVisual3D.Material(PLAYER_RING_COLOR, 1.2f, 0.5f), Vector3.Zero, Vector3.One);
+            _playerRing.CastShadow = GeometryInstance3D.ShadowCastingSetting.Off;
+        }
+        float playerGround = null == Coast ? 0f : Coast.GroundHeight(Player.GlobalPosition) * playerSize;
+        _playerRing.GlobalPosition = Plane3D.To3D(Player.GlobalPosition, playerGround + playerSize * RING_LIFT * 1.5f - Plane3D.Drop(Player.GlobalPosition));
+        _playerRing.Scale          = new Vector3(playerSize * 1.1f, playerSize * 0.1f, playerSize * 1.1f);
+
         foreach (CellBody unit in new List<CellBody>(_rings.Keys))
         {
             if (!_selected.Contains(unit) || !IsInstanceValid(unit))
@@ -258,10 +394,11 @@ public partial class TribeCommander : Node3D
     // ===============================   VILLAGE   ===============================
     // ===========================================================================
     //
-    //   Huts          Every hut built so far.
-    //   Update        Idle villagers gather, huts raise villagers and stay on the ground, rings follow.
+    //   Huts          Every standing hut of the player's tribe.
+    //   Update        Idle villagers gather, choppers chop, huts raise villagers and stay on the
+    //                 ground, the fire shows the stock, rings follow.
     //   Gather        An idle villager walks to the nearest fruit within GatherRange.
-    //   TryBuildHut   Pays a hut and places it next to the fire on land.
+    //   TryBuildHut   Pays a hut of the blueprint and places it next to the fire on land.
     //
 
     private readonly List<Hut> _huts = new();
@@ -278,6 +415,23 @@ public partial class TribeCommander : Node3D
         }
         float size = Player.BodySize();
         Gather(size);
+
+        // Choppers at their trunk fill the wood stock
+        foreach (Kin kin in _pack.Kin)
+        {
+            if (kin.ChopTick(dt))
+            {
+                Economy.AddWood(Tune.WoodPerChop);
+                EmitSignal(SignalName.Changed);
+            }
+        }
+
+        // The fire burns as high as the stock pays for the blueprint: a glimmer means gather, a roaring fire means build
+        float foodShare = (float)Economy.Food / Mathf.Max(Design.FoodCost, 1);
+        float woodShare = (float)Economy.Wood / Mathf.Max(Design.WoodCost, 1);
+        _pack.Nest.Glow = Mathf.Clamp(Mathf.Min(foodShare, woodShare), 0.2f, 1f);
+
+        _huts.RemoveAll(hut => !IsInstanceValid(hut) || hut.IsQueuedForDeletion());
         foreach (Hut hut in _huts)
         {
             hut.GroundHeight = Coast.GroundHeight(hut.Position) * size;
@@ -290,12 +444,12 @@ public partial class TribeCommander : Node3D
         DrawRings(size);
     }
 
-    /// <summary>Every villager without an order walks to the nearest fruit within GatherRange, the pack lets it eat on touch.</summary>
+    /// <summary>Every idle villager walks to the nearest fruit within GatherRange, the pack lets it eat on touch.</summary>
     private void Gather(float size)
     {
         foreach (Kin kin in _pack.Kin)
         {
-            if (KinMode.Villager != kin.Mode || null != kin.OrderTarget)
+            if (KinMode.Villager != kin.Mode || !kin.IsIdle)
             {
                 continue;
             }
@@ -315,7 +469,7 @@ public partial class TribeCommander : Node3D
             }
             if (null != nearest)
             {
-                kin.OrderTarget = nearest.Position;
+                kin.OrderMove(nearest.Position);
             }
         }
     }
@@ -324,12 +478,12 @@ public partial class TribeCommander : Node3D
     private const int HUTS_PER_RING = 6;             // huts around the fire before the next ring starts
     private static readonly float HUT_ANGLE = Mathf.Tau / HUTS_PER_RING;
 
-    /// <summary>Pays a hut from the stock and places it HutDistance from the fire, on land and clear of trunks.</summary>
+    /// <summary>Pays a hut of the blueprint from the stock and places it HutDistance from the fire, on land and clear of trunks.</summary>
     /// <returns>True when a hut was built.</returns>
-    /// <example><code>if (!tribe.TryBuildHut()) ...   // not enough food</code></example>
+    /// <example><code>if (!tribe.TryBuildHut()) ...   // not enough food or wood</code></example>
     public bool TryBuildHut()
     {
-        if (!IsActive || !Economy.CanBuildHut)
+        if (!IsActive || !Economy.CanAfford(Design))
         {
             return false;
         }
@@ -338,20 +492,22 @@ public partial class TribeCommander : Node3D
         for (int i = 0; i < HUT_TRIES; i++)
         {
             // Hut n takes slot n around the fire, every HUTS_PER_RING a ring further out, a try skips to the next slot
-            int     slot  = _huts.Count + i;
+            int     slot  = Economy.Huts + i;
             float   angle = HUT_ANGLE * slot + 0.5f * HUT_ANGLE * (slot / HUTS_PER_RING);
             Vector2 spot  = fire + Vector2.FromAngle(angle) * Tune.HutDistance * unit * (1f + 0.6f * (slot / HUTS_PER_RING));
             if (!Coast.IsOnLand(spot))
             {
                 continue;
             }
-            spot = Coast.PushOutOfTrees(spot, unit * 1.5f);
-            Economy.BuildHut();
-            var hut = new Hut { Position = spot, Size = unit, GroundHeight = Coast.GroundHeight(spot) * Player.BodySize() };
+            spot = Coast.PushOutOfTrees(spot, unit * Hut.SCALE);
+            Economy.BuildHut(Design);
+            var hut = new Hut { Position = spot, Size = unit * Hut.SCALE, GroundHeight = Coast.GroundHeight(spot) * Player.BodySize() };
+            hut.Setup(Design, faction: 0);
+            hut.Destroyed += () => EmitSignal(SignalName.Changed);
             _huts.Add(hut);
             AddChild(hut);
             EmitSignal(SignalName.Changed);
-            Log.Verbose("TribeCommander", $"Hut {_huts.Count} built, {Economy.Food} food left.");
+            Log.Verbose("TribeCommander", $"Hut {Economy.Huts} built, {Economy.Food} food and {Economy.Wood} wood left.");
             return true;
         }
         return false;

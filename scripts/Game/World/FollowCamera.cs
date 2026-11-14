@@ -158,10 +158,12 @@ public partial class FollowCamera : Node
     private const float TP_SEA_SINK = 0.95f;         // third person: swimmers sink this many sizes, just below the low sea (Coast.OPEN_SEA_HEIGHT)
     private const float TP_SHADOW_DISTANCE = 90f;   // third person: tall trees throw shadows this far, in player sizes
     private const float PLANET_RADIUS = 8000f;       // in Unit of the coast, the islands are ~260 Unit across
-    private const float RTS_TILT = 0.7f;             // strategy view: tilt from vertical
-    private const float RTS_DISTANCE = 40f;          // strategy view: camera distance in Unit of the coast
+    private const float RTS_TILT = 0.55f;            // strategy view: tilt from vertical
+    private const float RTS_DISTANCE = 55f;          // strategy view: camera distance in Unit, above the broadleaf crowns (30 Unit), giants are hidden
     private const float RTS_PAN_SPEED = 0.9f;        // strategy view: camera distances per second the keys pan
     private const float RTS_VIEW_SHARE = 1.1f;       // strategy view: spawning reaches a little past the view
+    private const float RTS_MIN_ZOOM = 0.35f;        // strategy view: closer than the chase camera allows, not into the ground
+    private const float RTS_MAX_ZOOM = 1.6f;         // strategy view: the island stays in reach, no empty sky
 
     /// <summary>Wheel zoom on top of the automatic distance, 1 = default, bigger = farther away.</summary>
     public float ZoomFactor { get; private set; } = 1f;
@@ -174,6 +176,11 @@ public partial class FollowCamera : Node
 
     /// <summary>0 chase camera .. 1 strategy view of the tribe (SmoothStep), the keys pan instead of steering.</summary>
     public float Strategy => _strategy;
+
+    /// <summary>(Optional) Plane point the strategy view starts over (the fire), set by Main. Defaults to the player.</summary>
+    public Vector2? StrategyAnchor { get; set; }
+
+    private const float EDGE_SCROLL_PIXELS = 12f;    // strategy view: the mouse this close to the edge pans
 
     private float _strategyBlend;                    // 0..1 linear, _strategy is its SmoothStep
     private float _strategy;
@@ -243,12 +250,13 @@ public partial class FollowCamera : Node
         Log.Verbose("FollowCamera", $"Zoom {ZoomFactor:F2} and distance {distance:F0} taken over.");
     }
 
-    /// <summary>Zooms out (positive steps) or in (negative steps), clamped to MIN_ZOOM..MAX_ZOOM.</summary>
+    /// <summary>Zooms out (positive steps) or in (negative steps), clamped to MIN_ZOOM..MAX_ZOOM (the strategy view has its own limits).</summary>
     /// <param name="steps">(Required) Number of wheel steps, each one ZOOM_STEP.</param>
     /// <example><code>ZoomBy(-2)  // two steps closer</code></example>
     public void ZoomBy(int steps)
     {
-        ZoomFactor = Mathf.Clamp(ZoomFactor * Mathf.Pow(ZOOM_STEP, steps), MIN_ZOOM, MAX_ZOOM);
+        bool isStrategy = _strategy > 0.5f;
+        ZoomFactor = Mathf.Clamp(ZoomFactor * Mathf.Pow(ZOOM_STEP, steps), isStrategy ? RTS_MIN_ZOOM : MIN_ZOOM, isStrategy ? RTS_MAX_ZOOM : MAX_ZOOM);
         Log.Verbose("FollowCamera", $"Zoom factor {ZoomFactor:F2}.");
     }
 
@@ -286,7 +294,7 @@ public partial class FollowCamera : Node
         _camYaw = Mathf.LerpAngle(_camYaw, YawBehind(Player.Facing), Mathf.Clamp(dt * FOLLOW_SPEED * speedShare, 0f, 1f));
     }
 
-    /// <summary>WASD and arrows pan the focus of the strategy view, relative to the camera yaw.</summary>
+    /// <summary>WASD, arrows and the mouse at the screen edge pan the focus of the strategy view, relative to the camera yaw.</summary>
     private void PanStrategy(float dt)
     {
         if (_strategy < 0.5f || dt <= 0f)
@@ -298,6 +306,17 @@ public partial class FollowCamera : Node
         if (Input.IsPhysicalKeyPressed(Key.S) || Input.IsPhysicalKeyPressed(Key.Down))  pan.Y += 1f;
         if (Input.IsPhysicalKeyPressed(Key.A) || Input.IsPhysicalKeyPressed(Key.Left))  pan.X -= 1f;
         if (Input.IsPhysicalKeyPressed(Key.D) || Input.IsPhysicalKeyPressed(Key.Right)) pan.X += 1f;
+
+        // Edge scrolling, only with the cursor inside the window
+        Vector2 mouse = GetViewport().GetMousePosition();
+        Vector2 size  = GetViewport().GetVisibleRect().Size;
+        if (mouse.X >= 0f && mouse.Y >= 0f && mouse.X <= size.X && mouse.Y <= size.Y)
+        {
+            if (mouse.X < EDGE_SCROLL_PIXELS)          pan.X -= 1f;
+            if (mouse.X > size.X - EDGE_SCROLL_PIXELS) pan.X += 1f;
+            if (mouse.Y < EDGE_SCROLL_PIXELS)          pan.Y -= 1f;
+            if (mouse.Y > size.Y - EDGE_SCROLL_PIXELS) pan.Y += 1f;
+        }
         _strategyFocus += pan.LimitLength(1f).Rotated(-_camYaw) * _camDistance * RTS_PAN_SPEED * dt;
     }
 
@@ -333,7 +352,7 @@ public partial class FollowCamera : Node
         float strategyTarget = Player.IsTribal ? 1f : 0f;
         if (strategyTarget > 0f && _strategyBlend <= 0f)
         {
-            _strategyFocus = Player.GlobalPosition;
+            _strategyFocus = StrategyAnchor ?? Player.GlobalPosition;
             Input.MouseMode = Input.MouseModeEnum.Visible;
             _isOrbiting     = false;
             Log.Verbose("FollowCamera", "Camera rises into the strategy view of the tribe.");
@@ -341,6 +360,7 @@ public partial class FollowCamera : Node
         _strategyBlend = dt <= 0f ? strategyTarget : Mathf.MoveToward(_strategyBlend, strategyTarget, dt / TP_BLEND_SECONDS);
         _strategy      = Mathf.SmoothStep(0f, 1f, _strategyBlend);
         PanStrategy(dt);
+        Coast?.HideGiants(_strategy > 0.5f);     // the giants (up to 75 Unit) would stand between camera and village
 
         // Pose
         float   unit  = null == Coast ? playerSize : Coast.Unit;

@@ -508,7 +508,8 @@ public partial class SmokeTest : Node
     //   Fliegen                 A blob with one feather pair is too heavy, a slim body with two pairs could fly.
     //   Hirn                    A big brain adds 2 EP per level (4 instead of 2).
     //   Rudel                   Nest, three followers and two pups after the cheat (enough for the tribe offer), a deadly hit is survived in a member's body.
-    //   Stamm                   Fire lit, villagers commanded, the stock pays a hut, the camera rises into the strategy view.
+    //   Stamm                   Fire lit, villagers commanded, the stock pays a hut of the blueprint, the designer changes
+    //                           the blueprint, a chopper yields wood, rivals settle, a gift and a forced raid, the camera rises.
     //   Teil-Modelle            Every Blender part model (creature and cell) loads with meshes and its looping animation.
     //   Grafikstufen            The tier cycles Low, Medium, High, owners hear the change, depth blur only above Low.
     //   Wasserfarben            The water follows the stage: primordial, pond, sea; the lens and the depth fog are set.
@@ -720,11 +721,63 @@ public partial class SmokeTest : Node
         bool isOrdered = 1 == tribe.Selected.Count && tribe.Selected[0] == player && target == player.OrderTarget
             && player.OrderDirection().IsEqualApprox(Vector2.Right);
 
-        // A full stock pays a hut, an empty one does not
+        // A full stock pays a hut of the blueprint, an empty one does not
         bool isPoor = !tribe.TryBuildHut();
-        tribe.Economy.AddFood(tribe.Economy.HutCost);
-        bool isBuilt = tribe.TryBuildHut() && 1 == tribe.Huts.Count && 0 == tribe.Economy.Food && 1 == tribe.Economy.Huts;
-        return isTribe && isOrdered && isPoor && isBuilt;
+        tribe.Economy.AddFood(tribe.Design.FoodCost);
+        tribe.Economy.AddWood(tribe.Design.WoodCost);
+        bool isBuilt = tribe.TryBuildHut() && 1 == tribe.Huts.Count && 0 == tribe.Economy.Food && 0 == tribe.Economy.Wood && 1 == tribe.Economy.Huts
+            && Mathf.IsEqualApprox(tribe.Huts[0].MaxHp, Balance.Current.Tribe.Huts.Walls[WallKind.Clay].Health);
+
+        // The designer: stone wall and a palisade change cost, health and defense of the next hut
+        HutEditor editor = _main.HutEditor;
+        editor.Open(tribe.Design, tribe.Economy);
+        editor.Draft.Wall = WallKind.Stone;
+        editor.Draft.Toggle(HutAddon.Palisade);
+        editor.Apply();
+        HutsBalance huts = Balance.Current.Tribe.Huts;
+        bool isDesigned = !editor.IsOpen && WallKind.Stone == tribe.Design.Wall && tribe.Design.Has(HutAddon.Palisade)
+            && tribe.Design.WoodCost == huts.Walls[WallKind.Stone].Wood + huts.Roofs[RoofKind.Grass].Wood + huts.Addons[HutAddon.Palisade].Wood
+            && Mathf.IsEqualApprox(tribe.Design.Defense, huts.Addons[HutAddon.Palisade].Defense);
+
+        // Wood: a villager ordered onto a trunk chops a load every ChopSeconds once it stands there
+        Kin chopper = null;
+        foreach (Kin kin in pack.Kin)
+        {
+            if (KinMode.Villager == kin.Mode)
+            {
+                chopper = kin;
+                break;
+            }
+        }
+        int woodBefore = tribe.Economy.Wood;
+        bool isChopped = false;
+        if (null != chopper)
+        {
+            chopper.OrderChop(chopper.Position + Vector2.Right * player.BodySize() * 2f, player.BodySize() * 0.3f);
+            chopper.OrderTarget = null;     // as if it arrived
+            isChopped = chopper.IsChopping && chopper.ChopTick(Balance.Current.Tribe.Village.ChopSeconds + 0.1f);
+            tribe.Update(0.001f);
+            isChopped = isChopped && tribe.Economy.Wood == woodBefore;   // the tick above was consumed by the probe, the next needs ChopSeconds
+        }
+
+        // Rivals: settled with the tribe, the first friendly, the second hostile; a gift costs food and raises the relation; a raid sends raiders
+        RivalKeeper rivals = _main.Rivals;
+        bool hasRivals = rivals.Rivals.Count >= 2 && rivals.Rivals[0].IsFriendly && rivals.Rivals[1].IsHostile;
+        bool isGifted  = false;
+        bool isRaided  = false;
+        if (hasRivals)
+        {
+            RivalTribe friend = rivals.Rivals[0];
+            RivalTribe enemy  = rivals.Rivals[1];
+            float relationBefore = friend.Relation;
+            int   giftFood       = Balance.Current.Tribe.Village.GiftFood;
+            tribe.Economy.AddFood(giftFood);
+            isGifted = rivals.Gift(friend) && 0 == tribe.Economy.Food && friend.Relation > relationBefore && !rivals.Gift(friend);
+            int kinBefore = enemy.Kin.Count;
+            rivals.ForceRaid(enemy);
+            isRaided = enemy.Kin.Count == kinBefore + Balance.Current.Tribe.Rivals.Raiders;
+        }
+        return isTribe && isOrdered && isPoor && isBuilt && isDesigned && isChopped && hasRivals && isGifted && isRaided;
     }
 
     private bool ProbeZoom()

@@ -39,11 +39,13 @@ public partial class GraphicsReel : Node
     private const int LAND_FRAME = 400;
     private const int PACK_FRAME = 520;
     private const int TRIBE_FRAME = 620;
+    private const int BUILD_FRAME = 630;            // tribe: stock by cheat, a blueprint with every add-on, two huts
+    private const int DESIGN_FRAME = 700;           // tribe: the hut designer opens over the village
     private const int QUIT_FRAME = 740;
-    private const int RUSH_HOLD = 100;              // rushing: every stage poses this many frames (stills: frames 112, 212)
+    private const int RUSH_HOLD = 100;              // rushing: every stage poses this many frames (stills: frames 112, 198, 212)
 
     /// <summary>The last frame of every stage, the ones to look at.</summary>
-    public static readonly int[] STILL_FRAMES = { 58, 118, 178, 238, 328, 398, 518, 618, 738 };
+    public static readonly int[] STILL_FRAMES = { 58, 118, 178, 238, 328, 398, 518, 618, 698, 738 };
 
     private static readonly bool IS_RUSHING_TRIBE = "1" == OS.GetEnvironment("CELLOUT_REEL_TRIBE");
     private static readonly bool IS_RUSHING = IS_RUSHING_TRIBE || "1" == OS.GetEnvironment("CELLOUT_REEL_LAND");
@@ -90,6 +92,8 @@ public partial class GraphicsReel : Node
                 10                 => SHAPE_FRAME,
                 14                 => IS_RUSHING_TRIBE ? PACK_FRAME : LAND_FRAME,
                 14 + RUSH_HOLD     => IS_RUSHING_TRIBE ? TRIBE_FRAME : QUIT_FRAME,
+                24 + RUSH_HOLD     => BUILD_FRAME,
+                104 + RUSH_HOLD    => DESIGN_FRAME,
                 14 + 2 * RUSH_HOLD => QUIT_FRAME,
                 _                  => -1,
             };
@@ -130,6 +134,23 @@ public partial class GraphicsReel : Node
                 break;
             case TRIBE_FRAME:
                 _main.CheatTo(CheatTarget.Tribe);
+                break;
+            case BUILD_FRAME:
+                _main.CheatTo(CheatTarget.Resources);
+                _main.CheatTo(CheatTarget.Resources);
+                _main.Tribe.Design.Wall = WallKind.Stone;
+                _main.Tribe.Design.Roof = RoofKind.Reed;
+                foreach (HutAddon addon in new[] { HutAddon.Palisade, HutAddon.Totem, HutAddon.Market, HutAddon.Watchtower })
+                {
+                    _main.Tribe.Design.Toggle(addon);
+                }
+                _main.Tribe.TryBuildHut();
+                _main.Tribe.Design.Wall = WallKind.Wattle;
+                _main.Tribe.Design.Roof = RoofKind.Shingle;
+                _main.Tribe.TryBuildHut();
+                break;
+            case DESIGN_FRAME:
+                _main.HutEditor.Open(_main.Tribe.Design, _main.Tribe.Economy);
                 break;
             case QUIT_FRAME:
                 GetTree().Quit();

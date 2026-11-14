@@ -1,22 +1,27 @@
 // NOTE:
-//   The HUD of pack and tribe: the pack size top center, the hint for F, the offered
-//   action as a button bottom center (call, build the nest, found the tribe, like the
-//   divide and organism buttons of the Hud) and from the tribe on the stock line with
-//   the build button. Every text is a key in locale/translations.csv. Created by Main,
-//   which wires the buttons to the PackKeeper and the TribeCommander. Reads their state
-//   every frame, so it needs no signals from them.
+//   The HUD of pack and tribe: the pack size top center, the hint of what is missing or
+//   the F hint, the offered action as a button bottom center (call, build the nest, found
+//   the tribe, like the divide and organism buttons of the Hud) and from the tribe on the
+//   stock line (villagers, food, wood, huts, picked), the build and the design button, and
+//   the rival tribes on the left with their relation and a gift button each. Every text is
+//   a key in locale/translations.csv. Created by Main, which wires the buttons. Reads the
+//   state of pack, tribe and rivals every frame, so it needs no signals from them.
 //
 //   var panel = new TribePanel();
-//   panel.Watch(pack, tribe);
+//   panel.Watch(pack, tribe, rivals);
 //   panel.ActionPressed   += () => pack.Act();
 //   panel.BuildHutPressed += () => tribe.TryBuildHut();
+//   panel.DesignPressed   += () => hutEditor.Open(tribe.Design, tribe.Economy);
+//   panel.GiftPressed     += rival => rivals.Gift(rival);
 //   AddChild(panel);
 
 //
 //   Chapters:
-//     PANEL   Widgets, texts and the refresh per frame.
+//     PANEL    Widgets, texts and the refresh per frame.
+//     RIVALS   One row per rival tribe: name, relation, gift.
 //
 
+using System.Collections.Generic;
 using Godot;
 
 namespace CellOut;
@@ -29,34 +34,42 @@ public partial class TribePanel : CanvasLayer
     //
     //   ActionPressed     The offered action was pressed, Main lets the pack act.
     //   BuildHutPressed   The build button was pressed, Main lets the tribe build.
-    //   Watch             The pack and the tribe whose state the panel shows.
-    //   _Ready            Status line top center, action button and build button bottom center.
-    //   _Process          Texts and visibility from the state of pack and tribe.
+    //   DesignPressed     The design button was pressed, Main opens the hut editor.
+    //   GiftPressed       A gift button was pressed, Main lets the rivals take it.
+    //   Watch             The pack, the tribe and the rivals whose state the panel shows.
+    //   _Ready            Status line top center, action, build and design buttons bottom center, rivals left.
+    //   _Process          Texts and visibility from the state of pack, tribe and rivals.
     //   _Notification     Re-translates after a locale change.
     //
 
     [Signal] public delegate void ActionPressedEventHandler();
     [Signal] public delegate void BuildHutPressedEventHandler();
+    [Signal] public delegate void DesignPressedEventHandler();
+    [Signal] public delegate void GiftPressedEventHandler(RivalTribe rival);
 
     private static readonly Color ACTION_ACCENT = new(0.95f, 0.8f, 0.4f);
     private static readonly Color BUILD_ACCENT = new(0.8f, 0.6f, 0.4f);
-    private const string STATUS_SEPARATOR = " · ";
+    private static readonly Color DESIGN_ACCENT = new(0.6f, 0.7f, 0.9f);
 
     private PackKeeper _pack;
     private TribeCommander _tribe;
+    private RivalKeeper _rivals;
     private Label _status;
     private Label _hint;
     private Button _action;
     private Button _build;
+    private Button _design;
     private PackOffer _shownOffer = PackOffer.None;
 
-    /// <summary>The pack and the tribe whose state the panel shows, call before AddChild.</summary>
+    /// <summary>The pack, the tribe and the rivals whose state the panel shows, call before AddChild.</summary>
     /// <param name="pack">(Required) The pack: offer, members, nest.</param>
-    /// <param name="tribe">(Required) The tribe: stock and huts.</param>
-    public void Watch(PackKeeper pack, TribeCommander tribe)
+    /// <param name="tribe">(Required) The tribe: stock, blueprint and huts.</param>
+    /// <param name="rivals">(Required) The rival tribes and their relations.</param>
+    public void Watch(PackKeeper pack, TribeCommander tribe, RivalKeeper rivals)
     {
-        _pack  = pack;
-        _tribe = tribe;
+        _pack   = pack;
+        _tribe  = tribe;
+        _rivals = rivals;
     }
 
     public override void _Ready()
@@ -76,7 +89,7 @@ public partial class TribePanel : CanvasLayer
             top.AddChild(label);
         }
 
-        // Action and build button bottom center, the row of the Hud buttons is empty at these stages
+        // Action, build and design button bottom center, the row of the Hud buttons is empty at these stages
         var bottom = new MarginContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
         bottom.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
         bottom.AddThemeConstantOverride("margin_bottom", 40);
@@ -89,18 +102,24 @@ public partial class TribePanel : CanvasLayer
         };
         row.AddThemeConstantOverride("separation", 18);
         bottom.AddChild(row);
-        _action = NewActionButton(ACTION_ACCENT);
+        _action = NewActionButton(ACTION_ACCENT, 280);
         _action.Pressed += () => EmitSignal(SignalName.ActionPressed);
         row.AddChild(_action);
-        _build = NewActionButton(BUILD_ACCENT);
+        _build = NewActionButton(BUILD_ACCENT, 280);
         _build.Pressed += () => EmitSignal(SignalName.BuildHutPressed);
         row.AddChild(_build);
+        _design = NewActionButton(DESIGN_ACCENT, 220);
+        _design.Pressed += () => EmitSignal(SignalName.DesignPressed);
+        row.AddChild(_design);
+        BuildRivalRows();
     }
 
     /*
-      > Before the land animal, or without a pack and offer: everything hidden
-      > Land animal and pack: pack size, the F hint from the pack on, the offered action
-      > Tribe: stock line (villagers, food, huts), the build button (grey without food)
+      > Before the land animal: everything hidden
+      > Land animal and pack: pack size, the hint of what is missing (else the F hint from the
+        pack on), the offered action
+      > Tribe: stock line (villagers, food, wood, huts, picked), build (grey without stock) and
+        design button, one row per rival tribe
     */
     public override void _Process(double delta)
     {
@@ -108,28 +127,33 @@ public partial class TribePanel : CanvasLayer
         {
             return;
         }
-        bool isTribe = _tribe.IsActive;
-        bool hasPack = null != _pack.Nest || _pack.Members > 0;
+        bool   isTribe = _tribe.IsActive;
+        bool   hasPack = null != _pack.Nest || _pack.Members > 0;
+        string missing = _pack.OfferHint;
 
         _status.Visible = hasPack || isTribe;
-        _hint.Visible   = (hasPack && null != _pack.Nest && !isTribe) || isTribe;
+        _hint.Visible   = isTribe || null != missing || (hasPack && null != _pack.Nest);
         if (isTribe)
         {
-            _status.Text = string.Format(Tr("TRIBE_STATUS"), _tribe.Units().Count, _tribe.Economy.Food, _tribe.Economy.Huts);
+            _status.Text = string.Format(Tr("TRIBE_STATUS"), _tribe.Units().Count, _tribe.Economy.Food, _tribe.Economy.Wood, _tribe.Economy.Huts, _tribe.Selected.Count);
             _hint.Text   = Tr("TRIBE_HINT");
         }
-        else if (hasPack)
+        else
         {
-            _status.Text = string.Format(Tr("PACK_STATUS"), _pack.Members);
-            _hint.Text   = Tr(_pack.IsStaying ? "PACK_HINT_STAY" : "PACK_HINT_FOLLOW");
+            // With the nest the goal is the tribe: members of the needed ones
+            _status.Text = null == _pack.Nest
+                ? string.Format(Tr("PACK_STATUS"), _pack.Members)
+                : string.Format(Tr("PACK_STATUS_GOAL"), _pack.Members, Balance.Current.Tribe.Pack.FoundTribeAt);
+            // What is missing for the next step beats the F hint
+            _hint.Text = null != missing ? Tr(missing) : Tr(_pack.IsStaying ? "PACK_HINT_STAY" : "PACK_HINT_FOLLOW");
         }
 
         // The offered action pops in when it changes
         PackOffer offer = _pack.Offer;
         if (offer != _shownOffer)
         {
-            _shownOffer   = offer;
-            _action.Text  = offer switch
+            _shownOffer  = offer;
+            _action.Text = offer switch
             {
                 PackOffer.Call       => Tr("PACK_CALL_BUTTON"),
                 PackOffer.Nest       => Tr("PACK_NEST_BUTTON"),
@@ -143,9 +167,12 @@ public partial class TribePanel : CanvasLayer
         }
         _action.Visible = PackOffer.None != offer;
 
-        _build.Visible  = isTribe;
-        _build.Disabled = !isTribe || !_tribe.Economy.CanBuildHut;
-        _build.Text     = string.Format(Tr("TRIBE_BUILD_HUT"), _tribe.Economy.HutCost);
+        _build.Visible   = isTribe;
+        _build.Disabled  = !isTribe || !_tribe.Economy.CanAfford(_tribe.Design);
+        _build.Text      = string.Format(Tr("TRIBE_BUILD_HUT"), _tribe.Design.FoodCost, _tribe.Design.WoodCost);
+        _design.Visible  = isTribe;
+        _design.Text     = Tr("TRIBE_DESIGN_HUT");
+        RefreshRivalRows(isTribe);
     }
 
     public override void _Notification(int what)
@@ -157,11 +184,11 @@ public partial class TribePanel : CanvasLayer
     }
 
     /// <summary>Pill button without focus: Space acts through the game, a focused button would fire twice.</summary>
-    private static Button NewActionButton(Color accent)
+    private static Button NewActionButton(Color accent, float width)
     {
         var button = new Button
         {
-            CustomMinimumSize = new Vector2(280, 54),
+            CustomMinimumSize = new Vector2(width, 54),
             FocusMode         = Control.FocusModeEnum.None,
             AutoTranslateMode = AutoTranslateModeEnum.Disabled,
             Visible           = false,
@@ -183,5 +210,78 @@ public partial class TribePanel : CanvasLayer
         label.AddThemeColorOverride("font_outline_color", EditorStyle.OUTLINE);
         label.AddThemeConstantOverride("outline_size", Mathf.Max(4, fontSize / 5));
         return label;
+    }
+
+    // ===========================================================================
+    // ===============================   RIVALS   ================================
+    // ===========================================================================
+    //
+    //   BuildRivalRows     A column on the left with room for every rival tribe.
+    //   RefreshRivalRows   Name, relation word and value, the gift button grey without food.
+    //
+
+    private const int MAX_RIVAL_ROWS = 4;
+    private static readonly Color GIFT_ACCENT = new(0.6f, 0.85f, 0.55f);
+
+    private readonly List<(HBoxContainer Row, Label Label, Button Gift)> _rivalRows = new();
+    private VBoxContainer _rivalColumn;
+
+    private void BuildRivalRows()
+    {
+        _rivalColumn = new VBoxContainer { Visible = false };
+        _rivalColumn.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.CenterLeft);
+        _rivalColumn.GrowVertical = Control.GrowDirection.Both;
+        _rivalColumn.Position    += new Vector2(20, 0);
+        _rivalColumn.AddThemeConstantOverride("separation", 8);
+        AddChild(_rivalColumn);
+        for (int i = 0; i < MAX_RIVAL_ROWS; i++)
+        {
+            var row = new HBoxContainer { Visible = false };
+            row.AddThemeConstantOverride("separation", 10);
+            Label label = NewLabel(15);
+            label.Visible = true;
+            label.CustomMinimumSize = new Vector2(220, 0);
+            var gift = new Button
+            {
+                FocusMode         = Control.FocusModeEnum.None,
+                AutoTranslateMode = AutoTranslateModeEnum.Disabled,
+                CustomMinimumSize = new Vector2(150, 32),
+            };
+            gift.AddThemeFontSizeOverride("font_size", 14);
+            EditorStyle.ApplyButton(gift, GIFT_ACCENT);
+            int index = i;
+            gift.Pressed += () =>
+            {
+                if (index < _rivals.Rivals.Count)
+                {
+                    EmitSignal(SignalName.GiftPressed, _rivals.Rivals[index]);
+                }
+            };
+            row.AddChild(label);
+            row.AddChild(gift);
+            _rivalColumn.AddChild(row);
+            _rivalRows.Add((row, label, gift));
+        }
+    }
+
+    private void RefreshRivalRows(bool isTribe)
+    {
+        IReadOnlyList<RivalTribe> rivals = _rivals.Rivals;
+        _rivalColumn.Visible = isTribe && rivals.Count > 0;
+        int giftFood = Balance.Current.Tribe.Village.GiftFood;
+        for (int i = 0; i < _rivalRows.Count; i++)
+        {
+            (HBoxContainer row, Label label, Button gift) = _rivalRows[i];
+            row.Visible = i < rivals.Count;
+            if (!row.Visible)
+            {
+                continue;
+            }
+            RivalTribe rival = rivals[i];
+            string mood = rival.IsFriendly ? Tr("RIVAL_FRIENDLY") : rival.IsHostile ? Tr("RIVAL_HOSTILE") : Tr("RIVAL_NEUTRAL");
+            label.Text    = string.Format(Tr("RIVAL_ROW"), Tr(rival.NameKey), mood, (int)Mathf.Round(rival.Relation * 100f));
+            gift.Text     = string.Format(Tr("RIVAL_GIFT"), giftFood);
+            gift.Disabled = _tribe.Economy.Food < giftFood;
+        }
     }
 }
