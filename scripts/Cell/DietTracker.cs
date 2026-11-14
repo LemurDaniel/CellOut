@@ -1,6 +1,8 @@
 // NOTE:
 //   Tracks how herbivore or carnivore the player plays: eaten plant biomass
-//   (molecules, light) against eaten meat (cells and their remains). Old meals fade
+//   (molecules, light) against eaten meat (cells and their remains). Eaten food and meat
+//   weigh more than the biomass they bring (diet.plantWeight, diet.meatWeight), so every
+//   meal moves the bar clearly. Old meals fade
 //   with a half-life, so the player can still swing over. Owned by Player.
 //
 //   var tracker = new DietTracker();
@@ -39,7 +41,7 @@ public sealed class DietTracker
     //   Value    Mix of eating lean and part lean, -1 .. 1.
     //
 
-    /// <summary>Half-life, light weight, eating weight and neutral mass from data/balance.json (diet).</summary>
+    /// <summary>Half-life, plant, light and meat weight, eating weight and neutral mass from data/balance.json (diet).</summary>
     private static DietBalance Tune => Balance.Current.Diet;
 
     private float _plant;
@@ -53,13 +55,13 @@ public sealed class DietTracker
         switch (source)
         {
             case BiomassSource.Plant:
-                _plant += amount;
+                _plant += amount * Tune.PlantWeight;
                 break;
             case BiomassSource.Light:
                 _plant += amount * Tune.LightWeight;
                 break;
             case BiomassSource.Meat:
-                _meat += amount;
+                _meat += amount * Tune.MeatWeight;
                 break;
         }
     }

@@ -5,7 +5,9 @@
 //   with the next template base (A-U, G-C) adds a link, a wrong base still sticks but
 //   as a mutation that does not count for the goal: it rolls a trait (Prelude/Mutation.cs,
 //   good ones white, bad ones red) that the cell keeps, plus evolution points. A bitten
-//   off mutation link takes its trait along. The ring around the head glows in the wanted color.
+//   off mutation link takes its trait along. Too many mutations break the chain (error
+//   catastrophe, RnaChain.ErrorCut, limits in data/balance.json prelude.error*), the lost
+//   links float away. The ring around the head glows in the wanted color.
 //   Rival strands swim around and eat nucleotides too. A head biting into a chain breaks
 //   it there, the broken off links float away as nucleotides: rivals bite the player,
 //   the player bites rivals. GOAL_LINKS paired links offer the evolve button (or Space):
@@ -197,7 +199,7 @@ public partial class RnaWorld : Node3D
     //   LinkCount        All links behind the head.
     //   IsGoalReached    Enough paired links, the player may evolve.
     //   IsEvolving       The cell forms around the strand, steering and bites are over.
-    //   Attach           Adds a link at the end, a paired one or a mutation.
+    //   Attach           Adds a link at the end, a paired one or a mutation, too many mutations break the chain.
     //   BreakAt          A bite: breaks the chain at the first link inside a circle.
     //   Evolve           Starts the genesis of the cell once the goal is reached (button, Space).
     //   Skip             Ends the prelude at once (Tab, smoke test).
@@ -228,7 +230,10 @@ public partial class RnaWorld : Node3D
     /// <summary>The traits of the mutation links on the player chain, a bitten off link takes its trait along.</summary>
     public IReadOnlyList<MutationKind> Mutations => _player.Chain.Mutations;
 
-    /// <summary>Adds a link at the end of the player chain, paired if it fits Wanted, else as a mutation with a rolled trait.</summary>
+    /// <summary>
+    /// Adds a link at the end of the player chain, paired if it fits Wanted, else as a mutation with a rolled trait.
+    /// A mutation that tips the chain over the error threshold (RnaChain.ErrorCut) breaks it, the lost links float away.
+    /// </summary>
     /// <param name="kind">(Required) The swallowed base.</param>
     /// <returns>True when it paired.</returns>
     /// <example><code>prelude.Attach(prelude.Wanted)  // true</code></example>
@@ -237,8 +242,18 @@ public partial class RnaWorld : Node3D
         bool          isPaired = kind == Wanted;
         MutationKind? mutation = isPaired ? null : Mutation.Roll();
         _player.AddLink(kind, mutation);
+        Log.Verbose("RnaWorld", $"{kind} {(isPaired ? "paired" : $"stuck as mutation {mutation}")}, {_player.Chain.PairedCount}/{GOAL_LINKS} paired, {_player.Chain.MutationCount} mutations.");
+
+        // Error catastrophe: too many mutations break the chain
+        PreludeBalance tune = Balance.Current.Prelude;
+        int            cut  = isPaired ? -1 : _player.Chain.ErrorCut(tune.ErrorRun, tune.ErrorShare, tune.ErrorMinLinks);
+        if (cut >= 0)
+        {
+            int lost = BreakStrand(_player, cut, _player.HeadPosition);
+            _hud?.ShowErrorCatastrophe();
+            Log.Verbose("RnaWorld", $"Error catastrophe at link {cut}, {lost} links lost.");
+        }
         RecountLinks();
-        Log.Verbose("RnaWorld", $"{kind} {(isPaired ? "paired" : $"stuck as mutation {mutation}")}, {PairedCount}/{GOAL_LINKS} paired, {MutationCount} mutations.");
         return isPaired;
     }
 

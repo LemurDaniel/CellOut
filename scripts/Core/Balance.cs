@@ -173,7 +173,9 @@ public sealed record PlayerBalance
 public sealed record DietBalance
 {
     public required float HalfLife { get; init; }                // seconds until a meal counts half
+    public required float PlantWeight { get; init; }             // eaten food lying around counts this many times as plant
     public required float LightWeight { get; init; }             // photosynthesis counts this share as plant
+    public required float MeatWeight { get; init; }              // eaten cells and their remains count this many times as meat
     public required float EatingWeight { get; init; }            // share of the eating lean once parts exist
     public required float NeutralMass { get; init; }             // damps the value while little was eaten
     public required float PlantFoodValue { get; init; }          // multiplier on the value of every piece of a food patch
@@ -218,6 +220,16 @@ public sealed record CellEffectsBalance
     public required float CiliaAcceleration { get; init; }
     public required float JawDigestMeat { get; init; }
     public required float ToxinDamage { get; init; }             // multiplier on spike and jaw damage
+    public required float MitochondrionSpeed { get; init; }      // added speed share
+    public required float MitochondrionAcceleration { get; init; }
+    public required float StarchRegen { get; init; }             // added share of the base regeneration
+    public required float StarchSpeed { get; init; }             // speed multiplier, the store weighs
+    public required float SlimeDamage { get; init; }             // multiplier on the damage taken from every side
+    public required float SlimeMinDamage { get; init; }          // stacked slime never lets less through
+    public required float PseudopodMagnet { get; init; }         // added pull range in body sizes
+    public required float PiliKnockback { get; init; }           // multiplier on the push back of a hit
+    public required float CamouflageSense { get; init; }         // multiplier on the range NPC cells notice the player
+    public required float CamouflageMinSense { get; init; }      // stacked pigment never hides more
 }
 
 public sealed record CellCombatBalance
@@ -228,6 +240,14 @@ public sealed record CellCombatBalance
     public required float SpikeDamage { get; init; }             // at the reference size
     public required float JawDamage { get; init; }
     public required float PlateDamageFactor { get; init; }       // share of the damage that gets through a plate
+    public required float StingArc { get; init; }                // half angle a nematocyst covers, radians
+    public required float StingReach { get; init; }              // reach beyond the membrane in body sizes
+    public required float StingDamage { get; init; }             // per shot at the reference size, times the toxin
+    public required float StingCooldown { get; init; }           // seconds until the same cell is stung again
+    public required float StunTime { get; init; }                // seconds a stung cell is paralysed
+    public required float StunSpeed { get; init; }               // share of the speed left while paralysed
+    public required float SuckerArc { get; init; }
+    public required float SuckerDamage { get; init; }            // per second while latched, at the reference size, times the toxin
 }
 
 public sealed record CritterBalance
@@ -240,6 +260,7 @@ public sealed record CritterBalance
     public required float BacteriumSpeed { get; init; }          // share of the swim speed of the player size
     public required float AmoebaSpeed { get; init; }
     public required float HunterSpeed { get; init; }
+    public required float ColonySpeed { get; init; }             // a cluster swims slower than a single hunter
 }
 
 // ===========================================================================
@@ -345,18 +366,24 @@ public sealed record CreatureEffectsBalance
 // ===============================   PRELUDE   ===============================
 // ===========================================================================
 //
-//   PreludeBalance    Evolution points and multipliers of the mutations (Prelude/Mutation.cs).
-//   MutationBalance   Multipliers of one mutation, 1 = no effect.
+//   PreludeBalance    Evolution points, the error threshold of the chain and the mutations (Prelude/Mutation.cs).
+//   MutationBalance   Roll weight and multipliers of one mutation, 1 = no effect.
 //
 
 public sealed record PreludeBalance
 {
-    public required int EpPerMutation { get; init; }
+    public required int EpPerMutation { get; init; }      // per good mutation
+    public required int MaxMutationEp { get; init; }      // cap of the EP all mutations bring together
+    public required int ErrorRun { get; init; }           // mutations in a row that break the chain
+    public required float ErrorShare { get; init; }       // share of mutations above which the chain breaks
+    public required int ErrorMinLinks { get; init; }      // the share counts from this chain length on
     public required IReadOnlyDictionary<MutationKind, MutationBalance> Mutations { get; init; }
 }
 
 public sealed record MutationBalance
 {
+    public required float Weight { get; init; }           // relative chance in the roll
+
     public float Health { get; init; } = 1f;
     public float Speed { get; init; } = 1f;
     public float Magnet { get; init; } = 1f;

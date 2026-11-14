@@ -1,7 +1,7 @@
 # NOTE:
 #   Builds the models of Cell Out in Blender and exports one .glb per model:
 #   - assets/models/creature/  feet, hands, wings, fins, brain, stalk eyes of the organism stage
-#   - assets/models/cell/      the ten cell editor parts (flagellum, cilium, jaw, spike, ...)
+#   - assets/models/cell/      the eighteen cell editor parts (flagellum, cilium, jaw, spike, ...)
 #   - assets/models/tree/      primeval trees of the islands (fern, cycad, horsetail, broadleaf, giant)
 #   Everything is generated: skin modifier tubes, displaced spheres, an armature per
 #   moving part with one looping animation (Walk, Grab, Flap, Flutter, Sway, Whip, Beat, Chomp).
@@ -45,13 +45,21 @@ for module in (models.helpers, models.limbs, models.organs, models.fins, models.
 
 from models.cells import (
     build_armor,
+    build_camouflage,
     build_cell_jaw,
     build_chloroplast,
     build_cilium,
     build_eyespot,
     build_filter,
     build_flagellum,
+    build_mitochondrion,
+    build_nematocyst,
+    build_pili,
+    build_pseudopod,
+    build_slime,
     build_spike,
+    build_starch,
+    build_sucker,
     build_toxin,
     build_vacuole,
 )
@@ -121,6 +129,14 @@ PARTS = {
     'cell/cell.chloroplast.glb':           build_chloroplast,
     'cell/cell.vacuole.glb':               build_vacuole,
     'cell/cell.toxin.glb':                 build_toxin,
+    'cell/cell.mitochondrion.glb':         build_mitochondrion,
+    'cell/cell.starch.glb':                build_starch,
+    'cell/cell.slime.glb':                 build_slime,
+    'cell/cell.pseudopod.glb':             build_pseudopod,
+    'cell/cell.pili.glb':                  build_pili,
+    'cell/cell.camouflage.glb':            build_camouflage,
+    'cell/cell.nematocyst.glb':            build_nematocyst,
+    'cell/cell.sucker.glb':                build_sucker,
     'tree/tree.fern.glb':                  build_tree_fern,
     'tree/tree.cycad.glb':                 build_tree_cycad,
     'tree/tree.horsetail.glb':             build_tree_horsetail,

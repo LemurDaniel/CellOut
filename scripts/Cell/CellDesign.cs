@@ -314,9 +314,14 @@ public sealed class CellDesign
 
     /*
       NPC cells carry the same parts as the player, picked by their kind:
-      - Bacterium:  a flagellum at the back, extras: chloroplast, filter mouth, cilia, vacuole, flagellum
-      - Amoeba:     cilia, extras: vacuole, eyespot, filter mouth, armor plate, flagellum, cilia
-      - Hunter:     a spike in front, extras: jaw, toxin, spike, flagellum, eyespot, armor plate
+      - Bacterium:  a flagellum at the back, extras: chloroplast, filter mouth, cilia, vacuole, flagellum,
+                    mitochondrion, camouflage pigment
+      - Amoeba:     cilia, extras: vacuole, eyespot, filter mouth, armor plate, flagellum, cilia,
+                    pseudopod (twice), slime coat
+      - Hunter:     a spike in front, extras: jaw, toxin, spike, flagellum, eyespot, armor plate,
+                    nematocyst, sucker
+      - Colony:     cilia (every cell of the cluster carries them), extras: spike, jaw, armor plate,
+                    flagellum, eyespot, spike, slime coat, nematocyst
       Extras: one per stage of the player (up to MAX_CRITTER_EXTRAS) plus a coin flip for one more.
       Organisms carry no cell parts, their creature body counts.
     */
@@ -334,9 +339,10 @@ public sealed class CellDesign
 
         (PartKind signature, PartKind[] extras) = kind switch
         {
-            CritterKind.Bacterium => (PartKind.Flagellum, new[] { PartKind.Chloroplast, PartKind.FilterMouth, PartKind.Cilia, PartKind.Vacuole, PartKind.Flagellum }),
-            CritterKind.Amoeba    => (PartKind.Cilia, new[] { PartKind.Vacuole, PartKind.Eyespot, PartKind.FilterMouth, PartKind.ArmorPlate, PartKind.Flagellum, PartKind.Cilia }),
-            CritterKind.Hunter    => (PartKind.Spike, new[] { PartKind.Jaw, PartKind.Toxin, PartKind.Spike, PartKind.Flagellum, PartKind.Eyespot, PartKind.ArmorPlate }),
+            CritterKind.Bacterium => (PartKind.Flagellum, new[] { PartKind.Chloroplast, PartKind.FilterMouth, PartKind.Cilia, PartKind.Vacuole, PartKind.Flagellum, PartKind.Mitochondrion, PartKind.Camouflage }),
+            CritterKind.Amoeba    => (PartKind.Cilia, new[] { PartKind.Vacuole, PartKind.Eyespot, PartKind.FilterMouth, PartKind.ArmorPlate, PartKind.Flagellum, PartKind.Cilia, PartKind.Pseudopod, PartKind.Pseudopod, PartKind.SlimeCoat }),
+            CritterKind.Hunter    => (PartKind.Spike, new[] { PartKind.Jaw, PartKind.Toxin, PartKind.Spike, PartKind.Flagellum, PartKind.Eyespot, PartKind.ArmorPlate, PartKind.Nematocyst, PartKind.Sucker }),
+            CritterKind.Colony    => (PartKind.Cilia, new[] { PartKind.Spike, PartKind.Jaw, PartKind.ArmorPlate, PartKind.Flagellum, PartKind.Eyespot, PartKind.Spike, PartKind.SlimeCoat, PartKind.Nematocyst }),
             _ => throw new System.ArgumentOutOfRangeException(nameof(kind), $"kind must be a known CritterKind, got '{kind}'."),
         };
         design.PlaceRandom(signature);
@@ -351,8 +357,8 @@ public sealed class CellDesign
     private const int PLACE_TRIES = 6;
 
     /// <summary>
-    /// One part at a random spot that suits it: flagella at the back, spikes and jaws in
-    /// front, other rim parts anywhere around, inner parts anywhere inside. Free, paid 0.
+    /// One part at a random spot that suits it: flagella at the back, spikes, jaws, nematocysts
+    /// and suckers in front, other rim parts anywhere around, inner parts anywhere inside. Free, paid 0.
     /// </summary>
     private void PlaceRandom(PartKind kind)
     {
@@ -369,7 +375,8 @@ public sealed class CellDesign
             float angle = kind switch
             {
                 PartKind.Flagellum               => Mathf.Pi + Rand.Range(-0.6f, 0.6f),
-                PartKind.Spike or PartKind.Jaw   => Rand.Range(-0.7f, 0.7f),
+                PartKind.Spike or PartKind.Jaw
+                    or PartKind.Nematocyst or PartKind.Sucker => Rand.Range(-0.7f, 0.7f),
                 _                                => Rand.Angle(),
             };
             if (TryPlace(kind, Vector2.FromAngle(angle), 0, Rand.Range(-0.2f, 0.5f)))

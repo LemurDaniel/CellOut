@@ -8,6 +8,7 @@
 //   Chapters:
 //     PAIR THE TEMPLATE   Base pairing and the template that grows on demand.
 //     PULL THE CHAIN      Adding, following, counting and breaking links.
+//     BREAK ON ERRORS     The error catastrophe: too many mutations break the chain.
 //     OUTLINE ISLANDS     Shore radius, land depth, the way to the sea and placement.
 //
 
@@ -128,6 +129,53 @@ public class WorldTests
         Assert.Equal(2, chain.Count);
         Assert.Equal(new[] { MutationKind.Tough }, chain.Mutations);
         Assert.Equal(-1, chain.FirstLinkAt(new Vector2(-3f, 0f), radius: 0.2f));
+    }
+
+    // ===========================================================================
+    // ===========================   BREAK ON ERRORS   ===========================
+    // ===========================================================================
+    //
+    //   MixedChainIsStable        Mutations between paired links stay below both limits.
+    //   RunBreaksAtItsStart       Three mutations in a row break the chain at the first of them.
+    //   ShareBreaksTheBackHalf    Too many mutations break at the first mutation of the back half.
+    //   ShortChainIgnoresShare    Below minLinks only the run counts.
+    //
+
+    private static RnaChain ChainOf(string pattern)
+    {
+        // "PPM" => paired, paired, mutation
+        var chain = new RnaChain(spacing: 0.5f, size: 2f);
+        foreach (char link in pattern)
+        {
+            chain.Add(RnaBase.A, 'M' == link ? MutationKind.Tough : null, Vector2.Zero, 0f);
+        }
+        return chain;
+    }
+
+    [Fact]
+    public void MixedChainIsStable()
+    {
+        Assert.Equal(-1, ChainOf("PPMPPMPPM").ErrorCut(maxRun: 3, maxShare: 0.34f, minLinks: 6));
+    }
+
+    [Fact]
+    public void RunBreaksAtItsStart()
+    {
+        Assert.Equal(2, ChainOf("PPMMM").ErrorCut(maxRun: 3, maxShare: 0.34f, minLinks: 6));
+        Assert.Equal(-1, ChainOf("PPMM").ErrorCut(maxRun: 3, maxShare: 0.34f, minLinks: 6));
+    }
+
+    [Fact]
+    public void ShareBreaksTheBackHalf()
+    {
+        // 4 of 8 are mutations (50 %), the back half starts at index 4, its first mutation is index 5
+        Assert.Equal(5, ChainOf("PMPMPMPM").ErrorCut(maxRun: 3, maxShare: 0.34f, minLinks: 6));
+    }
+
+    [Fact]
+    public void ShortChainIgnoresShare()
+    {
+        Assert.Equal(-1, ChainOf("PMPM").ErrorCut(maxRun: 3, maxShare: 0.34f, minLinks: 6));
     }
 
     // ===========================================================================

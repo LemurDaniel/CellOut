@@ -114,6 +114,9 @@ public partial class Player : CellBody
     private readonly List<float> _jawAngles = new();
     private readonly List<float> _plateAngles = new();
 
+    /// <summary>Traits only a cell has (regeneration, slime, pili, pigment, stings, suckers), neutral for an organism.</summary>
+    public CellStats CellTraits { get; private set; } = new();
+
     // ===========================================================================
     // ================================   MOVE   =================================
     // ===========================================================================
@@ -167,7 +170,7 @@ public partial class Player : CellBody
 
         // Regeneration, photosynthesis and fading meals
         Invulnerable = Mathf.Max(0f, Invulnerable - dt);
-        Hp           = Mathf.Min(MaxHp, Hp + MaxHp * Tune.RegenPerSecond * dt);
+        Hp           = Mathf.Min(MaxHp, Hp + MaxHp * Tune.RegenPerSecond * CellTraits.Regen * dt);
         if (_photosynthesis > 0f)
         {
             // By body size, not cell radius: a division shrinks the cells and must not cut the light
@@ -418,7 +421,7 @@ public partial class Player : CellBody
     /// <summary>Swim speed in the water, on land the walking (or crawling) speed of LAND.</summary>
     public float CurrentSpeed()
     {
-        return SwimSpeed(BodySize()) * (IsOnLand ? _landSpeed : _speedMultiplier);
+        return SwimSpeed(BodySize()) * (IsOnLand ? _landSpeed : _speedMultiplier) * StunFactor;
     }
 
     public float GoalProgress()
@@ -461,10 +464,10 @@ public partial class Player : CellBody
         return Growth.EatRatio(CanBiteToward(worldAngle), Divisions);
     }
 
-    /// <summary>Share of the damage taken from the given world direction, plates halve it.</summary>
+    /// <summary>Share of the damage taken from the given world direction, plates halve it, slime lowers it everywhere.</summary>
     public float DamageFactorFrom(float worldAngle)
     {
-        return CellStats.DamageFactor(_plateAngles, worldAngle - Facing);
+        return CellStats.DamageFactor(_plateAngles, worldAngle - Facing) * CellTraits.DamageTaken;
     }
 
     public bool HasThorns()
@@ -534,7 +537,7 @@ public partial class Player : CellBody
         Hp           -= amount * DamageFactorFrom(toAttacker.Angle());
         HurtFlash     = 1f;
         Invulnerable  = Tune.HitInvulnerability;
-        Velocity     -= toAttacker.Normalized() * CurrentSpeed() * Tune.Knockback;
+        Velocity     -= toAttacker.Normalized() * CurrentSpeed() * Tune.Knockback * CellTraits.Knockback;
         CheckDeath();
         return true;
     }
@@ -644,7 +647,7 @@ public partial class Player : CellBody
 
     /// <summary>
     /// Takes over the mutations the RNA strand caught in the prelude (Prelude/RnaWorld.cs):
-    /// their traits (Prelude/Mutation.cs), evolution points for each one and a hue shift of the protocell.
+    /// their traits (Prelude/Mutation.cs), evolution points for the good ones (capped) and a hue shift of the protocell.
     /// </summary>
     /// <param name="mutations">(Required) Mutations of the strand, empty changes nothing.</param>
     /// <example><code>player.ApplyMutations(new[] { MutationKind.Tough, MutationKind.Sluggish });</code></example>
@@ -655,7 +658,7 @@ public partial class Player : CellBody
             return;
         }
         _mutations.AddRange(mutations);
-        EvolutionPoints += Balance.Current.Prelude.EpPerMutation * mutations.Count;
+        EvolutionPoints += Mutation.EvolutionPoints(mutations);
 
         Color tinted = PROTOCELL_COLOR;
         tinted.H    = Mathf.Wrap(PROTOCELL_COLOR.H + MUTATION_HUE_SHIFT * _mutations.Count, 0f, 1f);
@@ -703,6 +706,7 @@ public partial class Player : CellBody
         _spikeAngles.Clear();
         _jawAngles.Clear();
         _plateAngles.Clear();
+        CellTraits = new CellStats();
 
         // An organism takes every trait from its body plan, the cell parts are history
         if (IsOrganism)
@@ -725,6 +729,7 @@ public partial class Player : CellBody
             _spikeAngles.AddRange(cell.SpikeAngles);
             _jawAngles.AddRange(cell.JawAngles);
             _plateAngles.AddRange(cell.PlateAngles);
+            CellTraits = cell;
 
             // The mutations of the RNA prelude ride along through the cell phase
             foreach (MutationKind kind in _mutations)

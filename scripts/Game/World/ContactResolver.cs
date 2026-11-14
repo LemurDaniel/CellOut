@@ -52,7 +52,7 @@ public partial class ContactResolver : Node
     /// <summary>Biomass for an eaten cell.</summary>
     /// <param name="radius">(Required) Radius of the eaten cell on the plane.</param>
     /// <returns>The biomass, about 7-13% of the own biomass for a large prey.</returns>
-    /// <example><code>float reward = ContactResolver.KillReward(critter.Radius);</code></example>
+    /// <example><code>float reward = ContactResolver.KillReward(critter.BodySize());</code></example>
     public static float KillReward(float radius)
     {
         return radius * radius * KILL_REWARD_FACTOR;
@@ -64,8 +64,8 @@ public partial class ContactResolver : Node
     //
     //   1. Food               Attracts and cleans up food, the player and cells start swallowing what they touch.
     //   2. Engulf             Pulls swallowed cells into their eaters, digests them when done.
-    //   3. Player vs. cells   Swallow smaller cells, get swallowed by bigger ones, bump equal ones,
-    //                         cells far away despawn.
+    //   3. Player vs. cells   Sting cells within reach, swallow smaller ones, get swallowed by bigger
+    //                         ones, hold or bump equal ones, cells far away despawn.
     //   4. Cells vs. cells    Bigger cells start swallowing smaller ones, equal ones push apart.
     //
 
@@ -119,7 +119,7 @@ public partial class ContactResolver : Node
             foreach (Node critterNode in CritterLayer.GetChildren())
             {
                 if (critterNode is Critter grazer && !grazer.IsEngulfed && !grazer.IsQueuedForDeletion()
-                    && grazer.Position.DistanceTo(food.Position) < grazer.Radius + food.Size * 0.5f)
+                    && grazer.Position.DistanceTo(food.Position) < grazer.BodySize() + food.Size * 0.5f)
                 {
                     food.StartEngulf(grazer);
                     break;
@@ -136,7 +136,8 @@ public partial class ContactResolver : Node
 
         // ---------------------------------------------------------------------------
         // Player vs. cells
-        //   Swallow smaller cells, get swallowed by bigger ones, bump equal ones, cells far away despawn.
+        //   Sting cells within reach, swallow smaller ones, get swallowed by bigger ones, hold or bump
+        //   equal ones, cells far away despawn.
         // ---------------------------------------------------------------------------
 
         float thornScale = playerSize / CellBody.REFERENCE_SIZE;
@@ -150,7 +151,7 @@ public partial class ContactResolver : Node
             // Sea creatures stay in the water
             if (null != Coast)
             {
-                critter.Position = Coast.ToSea(critter.Position, critter.Radius);
+                critter.Position = Coast.ToSea(critter.Position, critter.BodySize());
             }
             float distance = playerPosition.DistanceTo(critter.Position);
             if (distance > despawnDistance)
@@ -162,11 +163,12 @@ public partial class ContactResolver : Node
             // A jaw towards the cell and every division let the player swallow bigger cells
             float direction   = (critter.Position - playerPosition).Angle();
             float eatRatio    = Player.EatRatioToward(direction);
-            bool  canEat      = Player.Stage >= Player.SINGLE_STAGE && playerSize > critter.Radius * eatRatio;
+            bool  canEat      = Player.Stage >= Player.SINGLE_STAGE && playerSize > critter.BodySize() * eatRatio;
             bool  isDangerous = critter.CanEat(playerSize);
             float thornHit    = Player.ContactDamageToward(direction) * thornScale;
             float critterHit  = critter.ContactDamageToward(direction + Mathf.Pi);   // its spikes and jaws towards the player
-            if (distance > playerSize + critter.Radius)
+            StingFromDistance(critter, direction, distance, playerSize, thornScale);
+            if (critter.IsQueuedForDeletion() || distance > playerSize + critter.BodySize())
             {
                 continue;
             }
@@ -174,12 +176,12 @@ public partial class ContactResolver : Node
             // Smaller: the membrane flows around it on contact, ENGULF finishes the meal
             if (canEat)
             {
-                if (distance < playerSize + critter.Radius * ENGULF_CONTACT)
+                if (distance < playerSize + critter.BodySize() * ENGULF_CONTACT)
                 {
                     // Spiky prey stings once while it is swallowed
                     critter.StartEngulf(Player);
                     Player.Digest(critterHit, critter.Position);
-                    Log.Verbose("ContactResolver", $"Player engulfs a {critter.Kind} of radius {critter.Radius:F1}.");
+                    Log.Verbose("ContactResolver", $"Player engulfs a {critter.Kind} of radius {critter.BodySize():F1}.");
                 }
                 continue;
             }
@@ -191,11 +193,26 @@ public partial class ContactResolver : Node
                 continue;
             }
 
-            // Equal: push apart, spikes and jaws towards it hurt on bump
-            Vector2 normal  = (critter.Position - playerPosition).Normalized();
-            float   overlap = playerSize + critter.Radius - distance;
-            critter.Position += normal * overlap * 0.5f;
-            Player.Position  -= normal * overlap * 0.5f;
+            // Equal: a sucker towards it holds it on the membrane and drains it, else push apart
+            Vector2 normal = (critter.Position - playerPosition).Normalized();
+            if (Player.CellTraits.CanSuckToward(direction - Player.Facing))
+            {
+                critter.Position = Player.Position + normal * (playerSize + critter.BodySize()) * LATCH_GAP;
+                critter.Hurt(Combat.SuckerDamage * Player.CellTraits.Toxin * thornScale * dt, Player.GlobalPosition);
+            }
+            else
+            {
+                float overlap = playerSize + critter.BodySize() - distance;
+                critter.Position += normal * overlap * 0.5f;
+                Player.Position  -= normal * overlap * 0.5f;
+            }
+            // Its suckers towards the player drain it while they touch
+            float drain = critter.SuckerDrainToward(direction + Mathf.Pi);
+            if (drain > 0f)
+            {
+                Player.Digest(drain * dt, critter.Position);
+            }
+            // Spikes and jaws towards each other hurt on bump
             if (thornHit > 0f && critter.BumpCooldown <= 0f)
             {
                 critter.Hurt(thornHit, Player.GlobalPosition);
@@ -222,6 +239,7 @@ public partial class ContactResolver : Node
     //   UpdateEngulfing          Advances every swallow, hands out the reward of finished ones.
     //   UpdateFoodEngulfing      The same for swallowed food: biomass for the player, nothing for a critter.
     //   EngulfPlayer             One frame of a bigger cell swallowing the player.
+    //   StingFromDistance        Nematocysts of the player and the cell shoot at each other within reach, a hit paralyses.
     //   ResolveCritterContacts   Checks every pair of cells once: start swallowing or push apart.
     //
 
@@ -360,7 +378,7 @@ public partial class ContactResolver : Node
         }
 
         // Pseudopods around the player
-        float depth = 1f - distance / (playerSize + critter.Radius);
+        float depth = 1f - distance / (playerSize + critter.BodySize());
         critter.EngulfReach = Mathf.Max(critter.EngulfReach, Mathf.Clamp(depth * 2f, 0f, 1f));
         critter.EngulfPoint = Player.GlobalPosition;
 
@@ -370,11 +388,53 @@ public partial class ContactResolver : Node
         Player.Position += toCenter.LimitLength(Player.CurrentSpeed() * pull * dt);
 
         // Digest the player, thorns hurt back
-        float damage = (0 == Player.Stage ? 6f : 12f) * critter.Radius / playerSize;
+        float damage = (0 == Player.Stage ? 6f : 12f) * critter.BodySize() / playerSize;
         Player.Digest((damage * DIGEST_PER_SECOND + critterHit) * dt, critter.Position);
         if (thornHit > 0f)
         {
             critter.Hurt(thornHit * THORNS_PER_SECOND * dt, Player.GlobalPosition);
+        }
+    }
+
+    /// <summary>Arcs, reach and damage of nematocysts and suckers from data/balance.json (cell.combat).</summary>
+    private static CellCombatBalance Combat => Balance.Current.Cell.Combat;
+
+    private const float LATCH_GAP = 0.98f;         // share of the contact distance a held cell sits at, keeps the contact
+
+    /*
+      A nematocyst fires at a cell that is close but not touching yet, both ways:
+      - Within reach (StingReach sizes of the shooter beyond its membrane) and inside the arc of a nematocyst.
+      - The player hits the same cell once per StingCooldown, a cell reloads for StingCooldown.
+      - Hurts the target (times the toxin; the player's shot scaled like spikes, the cell's
+        unscaled like its spikes) and paralyses it for StunTime.
+    */
+    /// <summary>Nematocysts of the player and the cell shoot at each other within reach, a hit paralyses.</summary>
+    /// <param name="direction">(Required) World direction from the player to the cell.</param>
+    /// <param name="thornScale">(Required) Damage scale of the player size against REFERENCE_SIZE.</param>
+    private void StingFromDistance(Critter critter, float direction, float distance, float playerSize, float thornScale)
+    {
+        float gap = distance - playerSize - critter.BodySize();
+
+        // The player shoots at the cell
+        float sting = Player.CellTraits.StingToward(direction - Player.Facing) * thornScale;
+        if (sting > 0f && critter.StingCooldown <= 0f && gap <= playerSize * Combat.StingReach)
+        {
+            critter.Hurt(sting, Player.GlobalPosition);
+            critter.Stun(Combat.StunTime);
+            critter.StingCooldown = Combat.StingCooldown;
+            Log.Verbose("ContactResolver", $"Player stings a {critter.Kind} for {sting:F1}, paralysed for {Combat.StunTime:F1} s.");
+        }
+
+        // The cell shoots back
+        float shot = critter.StingToward(direction + Mathf.Pi);
+        if (shot > 0f && critter.StingReload <= 0f && !critter.IsQueuedForDeletion() && gap <= critter.BodySize() * Combat.StingReach)
+        {
+            critter.StingReload = Combat.StingCooldown;
+            if (Player.TakeDamage(shot, critter.Position))
+            {
+                Player.Stun(Combat.StunTime);
+                Log.Verbose("ContactResolver", $"A {critter.Kind} stings the player for {shot:F1}, paralysed for {Combat.StunTime:F1} s.");
+            }
         }
     }
 
@@ -401,15 +461,15 @@ public partial class ContactResolver : Node
                     continue;
                 }
                 float distance = a.Position.DistanceTo(b.Position);
-                if (distance >= a.Radius + b.Radius)
+                if (distance >= a.BodySize() + b.BodySize())
                 {
                     continue;
                 }
 
                 // Bigger one flows around the smaller one on contact, ENGULF finishes the meal
-                Critter big   = a.Radius >= b.Radius ? a : b;
+                Critter big   = a.BodySize() >= b.BodySize() ? a : b;
                 Critter small = big == a ? b : a;
-                if (big.CanEat(small.Radius))
+                if (big.CanEat(small.BodySize()))
                 {
                     small.StartEngulf(big);
                     continue;
@@ -417,7 +477,7 @@ public partial class ContactResolver : Node
 
                 // Similar size: push apart
                 Vector2 normal  = distance > 0.01f ? (b.Position - a.Position).Normalized() : Vector2.Right;
-                float   overlap = a.Radius + b.Radius - distance;
+                float   overlap = a.BodySize() + b.BodySize() - distance;
                 a.Position -= normal * overlap * 0.5f;
                 b.Position += normal * overlap * 0.5f;
             }

@@ -184,7 +184,6 @@ public partial class Main : Node2D
         Hud.Visible = true;
         _spawner.StartPopulating();
         Log.Verbose("Main", $"Populating: food patches outside the view, {Spawner.START_CRITTERS} cells over {Spawner.POPULATE_SECONDS} s.");
-        SpawnSplash(Player.GlobalPosition, Player.BodySize() * 1.4f, Player.BodyColor);
         // The game title already opened the RNA prelude, the protocell gets its own stage banner
         if (_startFlow.HasPlayedPrelude)
         {
@@ -509,7 +508,6 @@ public partial class Main : Node2D
         _cutscenes.EndEvolve();
         Player.IsHidden = false;
         Hud.Visible     = true;
-        SpawnSplash(Player.GlobalPosition, Player.BodySize() * 1.6f, Player.BodyColor);
 
         // Creatures and sea food pop up like the soup after the start (Spawner.StartPopulating), the molecules go
         foreach (Node food in FoodLayer.GetChildren())

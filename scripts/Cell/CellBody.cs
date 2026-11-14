@@ -42,7 +42,7 @@ public partial class CellBody : Node2D
     // ===========================================================================
     //
     //   State        Size, movement and the visual traits.
-    //   Lifecycle    Creates the 3D visual (cell or creature), decays the hurt flash and turns towards the movement.
+    //   Lifecycle    Creates the 3D visual (cell or creature), decays hurt flash and stun, turns towards the movement.
     //   Layout       Swim speed, the cluster layout for CellVisual3D and the body size.
     //
 
@@ -68,6 +68,20 @@ public partial class CellBody : Node2D
     public bool IsProtocell { get; set; }
     public int EyeCount { get; set; }       // face eyes, 0: every cell starts blind, eyes come as Eyespot parts
     public float HurtFlash { get; set; }
+
+    /// <summary>Seconds left of a nematocyst paralysis, the body swims at StunFactor meanwhile.</summary>
+    public float Stunned { get; private set; }
+
+    /// <summary>Share of the speed left: StunSpeed of data/balance.json (cell.combat) while stunned, else 1.</summary>
+    public float StunFactor => Stunned > 0f ? Balance.Current.Cell.Combat.StunSpeed : 1f;
+
+    /// <summary>Paralyses the body (a nematocyst sting): it swims slowed until the time ran out.</summary>
+    /// <param name="seconds">(Required) Stun time, a running stun is only extended.</param>
+    /// <example><code>critter.Stun(Balance.Current.Cell.Combat.StunTime);</code></example>
+    public void Stun(float seconds)
+    {
+        Stunned = Mathf.Max(Stunned, seconds);
+    }
     public bool IsHidden { get; set; }        // not rendered at all, e.g. the player during the title menu
     public bool IsPartsOnly { get; set; }     // renders only the placed parts, no core cell (editor drag icon and ghost)
     public bool IsOnLand { get; set; }        // set by Main at the coast, creatures walk or crawl there
@@ -93,7 +107,7 @@ public partial class CellBody : Node2D
 
     // ---------------------------------------------------------------------------
     // Lifecycle
-    //   Creates the 3D visual (cell or creature), decays the hurt flash and turns towards the movement.
+    //   Creates the 3D visual (cell or creature), decays hurt flash and stun, turns towards the movement.
     // ---------------------------------------------------------------------------
 
     public override void _Ready()
@@ -141,6 +155,7 @@ public partial class CellBody : Node2D
     {
         float dt = (float)delta;
         HurtFlash = Mathf.Max(0f, HurtFlash - dt * HURT_FLASH_DECAY);
+        Stunned   = Mathf.Max(0f, Stunned - dt);
         if (Velocity.LengthSquared() > 4f)
         {
             Facing = Mathf.LerpAngle(Facing, Velocity.Angle(), Mathf.Clamp(dt * FACING_SPEED, 0f, 1f));

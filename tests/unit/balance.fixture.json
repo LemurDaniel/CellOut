@@ -37,7 +37,9 @@
 
   "diet": {
     "halfLife": 90,
+    "plantWeight": 2,
     "lightWeight": 0.5,
+    "meatWeight": 2,
     "eatingWeight": 0.6,
     "neutralMass": 5,
     "plantFoodValue": 2.0
@@ -48,13 +50,21 @@
       "Chloroplast": { "cost": 4 },
       "FilterMouth": { "cost": 2 },
       "ArmorPlate":  { "cost": 4, "maxDiet": -0.2 },
+      "Mitochondrion": { "cost": 4 },
+      "StarchGranule": { "cost": 3 },
+      "SlimeCoat":   { "cost": 4, "maxDiet": 0.2 },
       "Flagellum":   { "cost": 4 },
       "Eyespot":     { "cost": 2 },
       "Vacuole":     { "cost": 4 },
       "Cilia":       { "cost": 5, "minDiet": -0.5, "maxDiet": 0.5 },
+      "Pseudopod":   { "cost": 3 },
+      "Pili":        { "cost": 3 },
+      "Camouflage":  { "cost": 4, "minDiet": -0.6, "maxDiet": 0.6 },
       "Spike":       { "cost": 2 },
       "Jaw":         { "cost": 5, "minDiet": 0.2 },
-      "Toxin":       { "cost": 6, "minDiet": 0.5 }
+      "Toxin":       { "cost": 6, "minDiet": 0.5 },
+      "Nematocyst":  { "cost": 5, "minDiet": 0.4 },
+      "Sucker":      { "cost": 4, "minDiet": 0.2 }
     },
     "effects": {
       "chloroplastLight": 0.4,
@@ -68,7 +78,17 @@
       "vacuoleDigest": 1.2,
       "ciliaAcceleration": 1.4,
       "jawDigestMeat": 1.2,
-      "toxinDamage": 1.6
+      "toxinDamage": 1.6,
+      "mitochondrionSpeed": 0.08,
+      "mitochondrionAcceleration": 1.1,
+      "starchRegen": 1,
+      "starchSpeed": 0.94,
+      "slimeDamage": 0.8,
+      "slimeMinDamage": 0.5,
+      "pseudopodMagnet": 0.8,
+      "piliKnockback": 0.5,
+      "camouflageSense": 0.75,
+      "camouflageMinSense": 0.4
     },
     "combat": {
       "spikeArc": 0.7,
@@ -76,7 +96,15 @@
       "plateArc": 0.9,
       "spikeDamage": 8,
       "jawDamage": 10,
-      "plateDamageFactor": 0.5
+      "plateDamageFactor": 0.5,
+      "stingArc": 0.5,
+      "stingReach": 0.8,
+      "stingDamage": 5,
+      "stingCooldown": 1.2,
+      "stunTime": 1.5,
+      "stunSpeed": 0.3,
+      "suckerArc": 0.6,
+      "suckerDamage": 6
     }
   },
 
@@ -88,7 +116,8 @@
     "wanderSpeed": 0.45,
     "bacteriumSpeed": 0.6,
     "amoebaSpeed": 0.5,
-    "hunterSpeed": 0.7
+    "hunterSpeed": 0.7,
+    "colonySpeed": 0.55
   },
 
   "creature": {
@@ -188,13 +217,17 @@
 
   "prelude": {
     "epPerMutation": 1,
+    "maxMutationEp": 5,
+    "errorRun": 3,
+    "errorShare": 0.6,
+    "errorMinLinks": 10,
     "mutations": {
-      "Tough":    { "health": 1.05 },
-      "Swift":    { "speed": 1.03 },
-      "Sticky":   { "magnet": 1.1 },
-      "Greedy":   { "digest": 1.04 },
-      "Brittle":  { "health": 0.96 },
-      "Sluggish": { "speed": 0.97 }
+      "Tough":    { "weight": 1, "health": 1.05 },
+      "Swift":    { "weight": 1, "speed": 1.03 },
+      "Sticky":   { "weight": 1, "magnet": 1.1 },
+      "Greedy":   { "weight": 1, "digest": 1.04 },
+      "Brittle":  { "weight": 2, "health": 0.96 },
+      "Sluggish": { "weight": 2, "speed": 0.97 }
     }
   }
 }

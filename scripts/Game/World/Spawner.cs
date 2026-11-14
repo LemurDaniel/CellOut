@@ -61,18 +61,22 @@ public partial class Spawner : Node
     // ================================   SPAWN   ================================
     // ===========================================================================
     //
-    //   StartPopulating   The first food patches outside the view, queues the starting cells.
-    //   Refill            Spawns the queue first, then keeps the world topped up outside the view.
-    //   UpdatePopulating  Spawns the cell queue bit by bit inside the view, with a plop.
-    //   SpawnFood         One piece of food at a point (molecule, sea or land food), size and value relative to the player.
-    //   SpawnCritter      One cell, kind and size depend on the stage, never right on top of the player.
-    //   SpawnPosition     A point inside the view or in a ring just outside it, in the sea if asked.
-    //   OnCritterPopped   A popped cell leaves four rich meat chunks.
+    //   StartPopulating      The first food patches outside the view, queues the starting cells.
+    //   Refill               Spawns the queue first, then keeps the world topped up outside the view.
+    //   UpdatePopulating     Spawns the cell queue bit by bit inside the view, with a plop.
+    //   SpawnFood            One piece of food at a point (molecule, sea or land food), size and value relative to the player.
+    //   SpawnCritter         One cell or colony, kind and size depend on the stage, never right on top of the player.
+    //   SpawnPosition        A point inside the view or in a ring just outside it, in the sea if asked.
+    //   OnCritterPopped      A popped cell leaves four rich meat chunks.
+    //   OnColonyCellsBurst   Burst cells of a colony leave one meat chunk each (capped).
     //
 
     public const float POPULATE_SECONDS = 5f;      // the starting cells arrive over this time
     private const float SEA_FOOD_LOOK = 2.2f;      // sea and land food are drawn bigger than their value size,
     private const float LAND_FOOD_LOOK = 2.6f;     // next to a creature a molecule sized apple looked lost
+    private const float COLONY_SHARE = 0.2f;       // share of colonies among the cells of the multicellular stage
+    private const float COLONY_MIN_SIZE = 0.6f;    // body size of a colony in player sizes
+    private const float COLONY_MAX_SIZE = 2f;
 
     private int _pendingCritters;
     private float _populateTime;
@@ -169,12 +173,30 @@ public partial class Spawner : Node
 
         /*
           Kind by stage and roll:
-          - Protocell:   60% bacteria (0.4-0.8x), 40% amoebas (1.3-1.8x, dangerous)
-          - Later:       55% bacteria (0.35-0.8x), 30% amoebas (0.8-1.4x), 15% hunters (1.4-2.2x)
+          - Protocell:      60% bacteria (0.4-0.8x), 40% amoebas (1.3-1.8x, dangerous)
+          - Multicellular:  COLONY_SHARE colonies (ColonyRule.CellCountFor, cells about as big as
+                            the player's), the rest rolls like the later stages
+          - Later:          55% bacteria (0.35-0.8x), 30% amoebas (0.8-1.4x), 15% hunters (1.4-2.2x)
         */
         CritterKind kind;
         float radius;
-        if (0 == Player.Stage)
+        int   cellCount     = 1;
+        bool  isColonyStage = Player.MULTICELLULAR_STAGE == Player.Stage;
+        bool  isColony      = isColonyStage && roll < COLONY_SHARE;
+
+        // The rest of the multicellular roll is stretched back to 0..1 for the single cells
+        if (isColonyStage && !isColony)
+        {
+            roll = (roll - COLONY_SHARE) / (1f - COLONY_SHARE);
+        }
+
+        if (isColony)
+        {
+            kind      = CritterKind.Colony;
+            cellCount = ColonyRule.CellCountFor(Player.CellCount, Rand.Index(3) - 1);
+            radius    = playerSize * Mathf.Clamp(Rand.Range(0.85f, 1.25f) * Mathf.Sqrt((float)cellCount / Player.CellCount), COLONY_MIN_SIZE, COLONY_MAX_SIZE);
+        }
+        else if (0 == Player.Stage)
         {
             kind   = roll < 0.6f ? CritterKind.Bacterium : CritterKind.Amoeba;
             radius = playerSize * (CritterKind.Bacterium == kind ? Rand.Range(0.4f, 0.8f) : Rand.Range(1.3f, 1.8f));
@@ -197,7 +219,7 @@ public partial class Spawner : Node
 
         // In the organism stage the sea is full of creatures instead of cells
         var critter = new Critter { Target = Player, FoodLayer = FoodLayer };
-        critter.Setup(radius, kind, playerSize, Player.Stage);
+        critter.Setup(radius, kind, playerSize, Player.Stage, cellCount);
         if (Player.IsOrganism)
         {
             critter.Creature = CreatureDesign.ForCritter(kind);
@@ -212,7 +234,8 @@ public partial class Spawner : Node
             position = Player.GlobalPosition + fromPlayer.Normalized() * safeDistance;
         }
         critter.Position = position;
-        critter.Popped  += OnCritterPopped;
+        critter.Popped     += OnCritterPopped;
+        critter.CellsBurst += OnColonyCellsBurst;
         CritterLayer.AddChild(critter);
         return critter;
     }
@@ -242,15 +265,33 @@ public partial class Spawner : Node
     private const int POP_FOOD = 4;
     private const float POP_FOOD_BONUS = 3f;
 
+    private const int MAX_BURST_FOOD = 6;          // a big colony bursts many cells, the soup must not flood
+
     private void OnCritterPopped(Vector2 position, float radius, Color color)
     {
         EmitSignal(SignalName.SplashRequested, position, radius * 1.8f, color);
-        for (int i = 0; i < POP_FOOD; i++)
+        SpawnMeat(position, radius, radius * 0.6f, POP_FOOD);
+    }
+
+    /// <param name="cellRadius">(Required) Radius of one burst cell, the chunks are sized by it.</param>
+    /// <param name="bodySize">(Required) Body size before the burst, the chunks land just outside it
+    /// (inside, the colony would swallow them right back).</param>
+    private void OnColonyCellsBurst(Vector2 position, float cellRadius, float bodySize, Color color, int count)
+    {
+        EmitSignal(SignalName.SplashRequested, position, bodySize * 1.2f, color);
+        SpawnMeat(position, cellRadius, bodySize * 1.15f, Mathf.Min(count, MAX_BURST_FOOD));
+    }
+
+    /// <summary>Rich meat chunks on a ring around a point, sized by the radius of what burst.</summary>
+    /// <param name="spread">(Required) Distance of the chunks from the point.</param>
+    private void SpawnMeat(Vector2 position, float radius, float spread, int count)
+    {
+        for (int i = 0; i < count; i++)
         {
             var food = new Food { IsMeat = true, Habitat = Player.IsOrganism ? FoodHabitat.Sea : FoodHabitat.Soup };
             food.Setup(radius * Rand.Range(0.2f, 0.3f), (FoodKind)Rand.Index(3));
             food.LookScale = FoodHabitat.Sea == food.Habitat ? SEA_FOOD_LOOK : 1f;
-            food.Position = position + Vector2.FromAngle(Rand.Angle()) * radius * 0.6f;
+            food.Position = position + Vector2.FromAngle(Rand.Angle()) * spread;
             food.Value   *= POP_FOOD_BONUS;
             FoodLayer.CallDeferred(Node.MethodName.AddChild, food);
         }

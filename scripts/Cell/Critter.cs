@@ -1,10 +1,13 @@
 // NOTE:
 //   NPC cells: flee from bigger cells, hunt smaller ones (the player and other critters),
 //   graze on food nearby, keep their distance to equal ones and drift otherwise. Spawned by Main,
-//   the ContactResolver lets them eat the food they touch.
+//   the ContactResolver lets them eat the food they touch. A colony is a cluster of cells
+//   like the multicellular player: a deadly hit bursts some of its cells (CellsBurst), it
+//   only pops as a single cell. All rules use the body size (BodySize), Radius is one cell.
 //
 //   var critter = new Critter();
-//   critter.Setup(radius, CritterKind.Hunter, player.BodySize());
+//   critter.Setup(size, CritterKind.Hunter, player.BodySize());
+//   colony.Setup(size, CritterKind.Colony, player.BodySize(), player.Stage, cellCount: 8);
 
 //
 //   Chapters:
@@ -19,7 +22,7 @@ using Godot;
 
 namespace CellOut;
 
-public enum CritterKind { Bacterium, Amoeba, Hunter }
+public enum CritterKind { Bacterium, Amoeba, Hunter, Colony }
 
 public partial class Critter : CellBody
 {
@@ -41,8 +44,10 @@ public partial class Critter : CellBody
 
     private const float SEPARATION_WEIGHT = 0.6f;
     private const float ENGULF_SLOWDOWN = 0.3f;    // share of the speed while swallowing, busy flowing around the prey
+    private const float BURST_GRACE = 0.5f;        // seconds without bump damage after a colony lost cells
 
     [Signal] public delegate void PoppedEventHandler(Vector2 position, float radius, Color color);
+    [Signal] public delegate void CellsBurstEventHandler(Vector2 position, float cellRadius, float bodySize, Color color, int count);
 
     // ---------------------------------------------------------------------------
     // Hunt
@@ -66,24 +71,32 @@ public partial class Critter : CellBody
     // ================================   SETUP   ================================
     // ===========================================================================
     //
-    //   Setup   Size, look, editor parts (CellDesign.ForCritter) and speed per kind, called before AddChild.
+    //   Setup         Size, look, editor parts (CellDesign.ForCritter) and speed per kind, called before AddChild.
+    //   SetBodySize   Sets the size of the whole body, a cluster shares it between its cells.
+    //   FullHp        Health of a fresh body of the current size.
     //
 
     private CellStats _stats = new();
 
     /// <summary>Sets size, look, parts and speed of the critter.</summary>
-    /// <param name="radius">(Required) Radius on the plane.</param>
-    /// <param name="kind">(Required) Bacteria only flee, amoebas and hunters also hunt.</param>
+    /// <param name="radius">(Required) Radius of the whole body on the plane.</param>
+    /// <param name="kind">(Required) Bacteria only flee, amoebas, hunters and colonies also hunt.</param>
     /// <param name="playerSize">(Required) Current Player.BodySize(), the speed scales with it.</param>
     /// <param name="stage">(Optional) Stage of the player, every stage adds a part. Defaults to 0.</param>
+    /// <param name="cellCount">(Optional) Cells of the body, more than 1 only for a colony. Defaults to 1.</param>
     /// <example><code>critter.Setup(20f, CritterKind.Hunter, player.BodySize(), player.Stage);</code></example>
-    public void Setup(float radius, CritterKind kind, float playerSize, int stage = 0)
+    public void Setup(float radius, CritterKind kind, float playerSize, int stage = 0, int cellCount = 1)
     {
-        Radius = radius;
-        Kind   = kind;
+        if (cellCount < 1 || (cellCount > 1 && CritterKind.Colony != kind))
+        {
+            throw new System.ArgumentOutOfRangeException(nameof(cellCount), $"cellCount must be 1, or more only for a colony, got '{cellCount}' for '{kind}'.");
+        }
+        Kind      = kind;
+        CellCount = cellCount;
+        SetBodySize(radius);
         Design = CellDesign.ForCritter(kind, stage);
         _stats = CellStats.From(Design);
-        Hp     = radius * 1.5f * _stats.Health;
+        Hp     = FullHp();
         _sense = radius * Tune.SenseRadii * (1f + _stats.SightBonus);
 
         float speedFactor;
@@ -101,10 +114,26 @@ public partial class Critter : CellBody
                 BodyColor   = Color.FromHsv(Rand.Range(0f, 0.04f), 0.6f, 0.92f);
                 speedFactor = Tune.HunterSpeed;
                 break;
+            case CritterKind.Colony:
+                BodyColor   = Color.FromHsv(Rand.Range(0.44f, 0.54f), 0.55f, 0.9f);
+                speedFactor = Tune.ColonySpeed;
+                break;
             default:
                 throw new System.ArgumentOutOfRangeException(nameof(kind), $"kind must be a known CritterKind, got '{kind}'.");
         }
         _speed = SwimSpeed(playerSize) * speedFactor * _stats.Speed;
+    }
+
+    /// <summary>Sets the size of the whole body, every cell of a cluster gets its share (CellBody.ClusterExtent).</summary>
+    /// <param name="size">(Required) Radius of the whole body on the plane.</param>
+    private void SetBodySize(float size)
+    {
+        Radius = size / ClusterExtent(CellCount);
+    }
+
+    private float FullHp()
+    {
+        return BodySize() * 1.5f * _stats.Health;
     }
 
     // ===========================================================================
@@ -114,7 +143,11 @@ public partial class Critter : CellBody
     //   CanEat                Whether this critter can eat something of the given radius, a jaw allows bigger prey.
     //   Devour                Grows a little after a meal (capped, digestion parts help) and stays sated for a while.
     //   Hurt                  Takes damage (armor plates towards the attacker halve it), pops at zero health.
+    //   BurstCells            A colony at zero health loses cells instead of popping.
     //   ContactDamageToward   Spike and jaw damage dealt towards a world direction (CellStats).
+    //   StingToward           Nematocyst damage of one shot towards a world direction, StingReload between shots.
+    //   SuckerDrainToward     Damage per second of its suckers towards a world direction.
+    //   Camouflage            Its pigment: other cells notice it later.
     //   DamageFactorFrom      Share of the damage taken from a world direction, plates halve it.
     //
 
@@ -123,7 +156,7 @@ public partial class Critter : CellBody
     public bool CanEat(float otherRadius)
     {
         float ratio = _stats.JawAngles.Count > 0 ? Tune.JawEatRatio : Tune.EatRatio;
-        return CritterKind.Bacterium != Kind && Radius > otherRadius * ratio;
+        return CritterKind.Bacterium != Kind && BodySize() > otherRadius * ratio;
     }
 
     /// <summary>Spike and jaw damage this critter deals towards a world direction, toxin included.</summary>
@@ -142,16 +175,40 @@ public partial class Critter : CellBody
 
     /// <summary>Grows after a meal and pauses hunting for the sated time.</summary>
     /// <param name="eatenRadius">(Required) Radius of the eaten cell.</param>
-    /// <param name="maxRadius">(Required) Upper limit, keeps critters relative to the player.</param>
+    /// <param name="maxRadius">(Required) Upper limit of the body size, keeps critters relative to the player.</param>
     public void Devour(float eatenRadius, float maxRadius)
     {
         float digested = eatenRadius * eatenRadius * 0.35f * _stats.DigestAll * _stats.DigestMeat;
-        Radius  = Mathf.Min(Mathf.Sqrt(Radius * Radius + digested), maxRadius);
+        float size     = BodySize();
+        SetBodySize(Mathf.Min(Mathf.Sqrt(size * size + digested), maxRadius));
         Hp     += eatenRadius * 0.75f;
         _sated  = Tune.SatedTime;
     }
 
-    /// <summary>Takes damage and pops at zero health, Main turns the pop into food.</summary>
+    /// <summary>Seconds until the next nematocyst sting of the player may hit this critter.</summary>
+    public float StingCooldown { get; set; }
+
+    /// <summary>Seconds until its own nematocysts may fire again.</summary>
+    public float StingReload { get; set; }
+
+    /// <summary>Damage of one nematocyst shot towards a world direction (times its toxin), 0 when none points there.</summary>
+    /// <param name="worldAngle">(Required) Direction from the critter to the target.</param>
+    public float StingToward(float worldAngle)
+    {
+        return _stats.StingToward(worldAngle - Facing);
+    }
+
+    /// <summary>Damage per second its suckers drain towards a world direction (times its toxin), 0 when none points there.</summary>
+    /// <param name="worldAngle">(Required) Direction from the critter to the target.</param>
+    public float SuckerDrainToward(float worldAngle)
+    {
+        return _stats.CanSuckToward(worldAngle - Facing) ? Balance.Current.Cell.Combat.SuckerDamage * _stats.Toxin : 0f;
+    }
+
+    /// <summary>Multiplier on the range other cells notice this one (camouflage pigment), 1 without.</summary>
+    public float Camouflage => _stats.Camouflage;
+
+    /// <summary>Takes damage and pops at zero health, Main turns the pop into food. A colony loses cells first.</summary>
     /// <param name="amount">(Required) Damage in hit points before armor.</param>
     /// <param name="from">(Optional) Plane point of the attacker, armor plates towards it halve the damage. Defaults to no armor.</param>
     public void Hurt(float amount, Vector2? from = null)
@@ -163,8 +220,31 @@ public partial class Critter : CellBody
         {
             return;
         }
-        EmitSignal(SignalName.Popped, GlobalPosition, Radius, BodyColor);
+        if (CellCount > 1)
+        {
+            BurstCells();
+            return;
+        }
+        EmitSignal(SignalName.Popped, GlobalPosition, BodySize(), BodyColor);
         QueueFree();
+    }
+
+    /// <summary>
+    /// Bursts cells like the player does on a deadly hit (Growth.CellsLost), the body
+    /// shrinks with them (ColonyRule.SizeAfterBurst), health refills for the smaller body.
+    /// </summary>
+    private void BurstCells()
+    {
+        int   before     = CellCount;
+        int   lost       = Mathf.Min(Growth.CellsLost(before), before - 1);
+        float cellRadius = Radius;
+        float size       = BodySize();
+        CellCount = before - lost;
+        SetBodySize(ColonyRule.SizeAfterBurst(size, before, CellCount));
+        Hp           = FullHp();
+        BumpCooldown = BURST_GRACE;
+        Log.Verbose("Critter", $"Colony hit -> {lost} cell(s) burst, {CellCount} left, size {BodySize():F1}.");
+        EmitSignal(SignalName.CellsBurst, GlobalPosition, cellRadius, size, BodyColor, lost);
     }
 
     // ===========================================================================
@@ -195,7 +275,7 @@ public partial class Critter : CellBody
     /// <summary>0 at the catch .. 1 digested.</summary>
     public float EngulfProgress { get; private set; }
 
-    /// <summary>Radius at the catch, the reward and the eater's growth use it.</summary>
+    /// <summary>Body size at the catch, the reward and the eater's growth use it.</summary>
     public float EngulfRadius { get; private set; }
 
     public bool IsEngulfed => null != Engulfer;
@@ -208,7 +288,7 @@ public partial class Critter : CellBody
     {
         Engulfer       = eater ?? throw new System.ArgumentNullException(nameof(eater), "eater must be the cell that swallows this one.");
         EngulfProgress = 0f;
-        EngulfRadius   = Radius;
+        EngulfRadius   = BodySize();
         _engulfOffset  = GlobalPosition - eater.GlobalPosition;
         Velocity       = Vector2.Zero;
     }
@@ -225,14 +305,14 @@ public partial class Critter : CellBody
         float wiggle   = Mathf.Sin(EngulfProgress * 40f) * ENGULF_WIGGLE * EngulfRadius * (1f - pull);
         Vector2 side   = _engulfOffset.Orthogonal().Normalized();
         GlobalPosition = Engulfer.GlobalPosition + _engulfOffset * (1f - pull) + side * wiggle;
-        Radius         = EngulfRadius * Mathf.Lerp(1f, ENGULF_SHRINK, pull);
+        SetBodySize(EngulfRadius * Mathf.Lerp(1f, ENGULF_SHRINK, pull));
         return EngulfProgress >= 1f;
     }
 
     /// <summary>The eater vanished (eaten itself, freed): the cell is free again with its size at the catch.</summary>
     public void ReleaseEngulf()
     {
-        Radius         = EngulfRadius;
+        SetBodySize(EngulfRadius);
         Engulfer       = null;
         EngulfProgress = 0f;
     }
@@ -250,8 +330,10 @@ public partial class Critter : CellBody
     public override void _PhysicsProcess(double delta)
     {
         float dt = (float)delta;
-        BumpCooldown = Mathf.Max(0f, BumpCooldown - dt);
-        _sated       = Mathf.Max(0f, _sated - dt);
+        BumpCooldown  = Mathf.Max(0f, BumpCooldown - dt);
+        StingCooldown = Mathf.Max(0f, StingCooldown - dt);
+        StingReload   = Mathf.Max(0f, StingReload - dt);
+        _sated        = Mathf.Max(0f, _sated - dt);
 
         // Being swallowed: Main moves the cell (ENGULF), it does not steer any more
         if (IsEngulfed)
@@ -275,8 +357,8 @@ public partial class Critter : CellBody
             Vector2 toPlayer   = Target.GlobalPosition - GlobalPosition;
             float   playerSize = Target.BodySize();
             float   distance   = toPlayer.Length();
-            bool    isInSense  = distance < _sense + playerSize;
-            if (isInSense && Target.Stage >= 1 && playerSize > Radius * Tune.EatRatio)
+            bool    isInSense  = distance < _sense * Target.CellTraits.Camouflage + playerSize;   // pigment hides the player
+            if (isInSense && Target.Stage >= 1 && playerSize > BodySize() * Tune.EatRatio)
             {
                 flee -= toPlayer / Mathf.Max(distance, 1f);
             }
@@ -288,29 +370,31 @@ public partial class Critter : CellBody
         }
 
         // Other critters, the siblings in the same layer
+        float size = BodySize();
         foreach (Node node in GetParent().GetChildren())
         {
             if (node is not Critter other || other == this || other.IsQueuedForDeletion() || other.IsEngulfed)
             {
                 continue;
             }
-            Vector2 toOther  = other.Position - Position;
-            float   distance = toOther.Length();
-            if (distance > _sense + other.Radius)
+            Vector2 toOther   = other.Position - Position;
+            float   distance  = toOther.Length();
+            float   otherSize = other.BodySize();
+            if (distance > _sense * other.Camouflage + otherSize)   // pigment hides the other
             {
                 continue;
             }
 
-            if (other.CanEat(Radius))
+            if (other.CanEat(size))
             {
                 flee -= toOther / Mathf.Max(distance, 1f);
             }
-            else if (CanEat(other.Radius) && distance < preyDist)
+            else if (CanEat(otherSize) && distance < preyDist)
             {
                 preyDir  = toOther;
                 preyDist = distance;
             }
-            else if (!CanEat(other.Radius) && distance < (Radius + other.Radius) * 1.5f)
+            else if (!CanEat(otherSize) && distance < (size + otherSize) * 1.5f)
             {
                 separate -= toOther / Mathf.Max(distance, 1f);
             }
@@ -375,6 +459,8 @@ public partial class Critter : CellBody
 
         // While it swallows something (EngulfReach set by Main) it nearly stops, prey can still wriggle free
         float speed = EngulfReach > 0f ? _speed * ENGULF_SLOWDOWN : _speed;
+        // A sting paralyses it for a while (CellBody.Stun)
+        speed *= StunFactor;
         Velocity  = Velocity.Lerp(desired * speed, Mathf.Clamp(dt * 2f * _stats.Acceleration, 0f, 1f));
         Position += Velocity * dt;
     }

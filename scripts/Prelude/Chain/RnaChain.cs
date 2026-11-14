@@ -1,8 +1,8 @@
 // NOTE:
 //   The chain of links behind the head of one RNA strand of the prelude
 //   (Prelude/RnaWorld.cs), player and rivals alike: which bases hang on it, which of them
-//   are mutations, where they are on the plane, how they follow the head and where a bite
-//   breaks the chain. Pure logic on value structs without any engine call, so it runs in
+//   are mutations, where they are on the plane, how they follow the head, where a bite
+//   breaks the chain and where too many mutations break it (error catastrophe). Pure logic on value structs without any engine call, so it runs in
 //   a unit test. Prelude/View/RnaStrand.cs draws it.
 //
 //   var chain = new RnaChain(RnaStrand.LINK_SPACING, size);
@@ -10,12 +10,14 @@
 //   chain.Follow(head, heading);                       // after the head moved
 //   int cut = chain.FirstLinkAt(bite, reach);          // -1 for none
 //   IReadOnlyList<RnaChain.Link> lost = chain.CutAt(cut);
+//   int unstable = chain.ErrorCut(maxRun: 3, maxShare: 0.34f, minLinks: 6);   // -1 while stable
 
 //
 //   Chapters:
 //     LINKS      The links and their counts.
 //     MOVEMENT   Adding a link at the end and following the head.
 //     BITES      Finding the bitten link and cutting the chain there.
+//     ERRORS     Where too many mutations break the chain.
 //
 
 using System.Collections.Generic;
@@ -140,5 +142,54 @@ public sealed class RnaChain
         List<Link> lost = _links.GetRange(index, _links.Count - index);
         _links.RemoveRange(index, lost.Count);
         return lost;
+    }
+
+    // ===========================================================================
+    // ================================   ERRORS   ===============================
+    // ===========================================================================
+    //
+    //   Error catastrophe (Eigen): a replicator that copies with too many errors loses its
+    //   information. Here the chain breaks once its tail has too many mutations.
+    //
+    //   ErrorCut   Index where the chain breaks under its mutations, -1 while it is stable.
+    //
+
+    /// <summary>
+    /// Where the chain breaks under its mutations, checked after every new link:
+    /// <para>> maxRun mutations in a row at the end: the chain breaks at the first of them.</para>
+    /// <para>> From minLinks links on more than maxShare of them mutations: the chain breaks at
+    ///   the first mutation in its back half, the front half stays.</para>
+    /// </summary>
+    /// <param name="maxRun">(Required) Mutations in a row at the end that break the chain.</param>
+    /// <param name="maxShare">(Required) Share of mutations above which the chain breaks, 0..1.</param>
+    /// <param name="minLinks">(Required) The share only counts from this many links on.</param>
+    /// <returns>The index of the first lost link (for CutAt), -1 while the chain is stable.</returns>
+    /// <example><code>chain.ErrorCut(3, 0.34f, 6)  // 2 for paired, paired, mutation, mutation, mutation</code></example>
+    public int ErrorCut(int maxRun, float maxShare, int minLinks)
+    {
+        // Mutations in a row at the end
+        int runStart = _links.Count;
+        while (runStart > 0 && _links[runStart - 1].IsMutation)
+        {
+            runStart--;
+        }
+        if (_links.Count - runStart >= maxRun)
+        {
+            return runStart;
+        }
+
+        // Too many mutations overall
+        if (_links.Count < minLinks || MutationCount <= maxShare * _links.Count)
+        {
+            return -1;
+        }
+        for (int i = _links.Count / 2; i < _links.Count; i++)
+        {
+            if (_links[i].IsMutation)
+            {
+                return i;
+            }
+        }
+        return -1;
     }
 }

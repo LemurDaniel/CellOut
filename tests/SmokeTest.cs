@@ -547,6 +547,7 @@ public partial class SmokeTest : Node
             ("Umfließen", ProbeEngulf()),
             ("Verdaut werden", ProbeDigest()),
             ("Gegner-Teile", ProbeCritterParts()),
+            ("Mehrzeller-Gegner", ProbeColony()),
             ("3D-Kamera aktiv", null != GetViewport().GetCamera3D()),
             ("3D-Zellhaufen", null != player.Visual && player.Visual.GetChildCount() >= player.CellCount + 1),
             ("Haufen-Layout", ProbeClusterLayout()),
@@ -558,6 +559,7 @@ public partial class SmokeTest : Node
             ("Texte DE", ProbeTexts("de", "Protozelle")),
             ("Sprach-Button", ProbeLanguageButton()),
             ("Stachel gerichtet", ProbeDirectionalSpike()),
+            ("Schleim, Pili, Tarnung", ProbeCellTraits()),
             ("Geißel hinten", ProbeFlagellumThrust()),
             ("Ernährung links", ProbeDiet().IsHerbivore),
             ("Ernährung rechts", ProbeDiet().IsCarnivore),
@@ -613,6 +615,7 @@ public partial class SmokeTest : Node
     //   ProbeTexts            Stage name as expected and no part key left untranslated.
     //   ProbeLanguageButton   Toggling from German lands on English, German is restored.
     //   ProbeDirectionalSpike Spike at angle 0: 8 damage forward, none backward.
+    //   ProbeCellTraits       Slime, pili, pigment and a front nematocyst on a loose player, a stun slows it.
     //   ProbeFlagellumThrust  Back flagellum vs. front flagellum on two loose players.
     //   ProbeDiet             100 plant, then 500 meat on a fresh tracker.
     //   ProbeRefund           Place a spike, remove it, get its cost back.
@@ -691,6 +694,29 @@ public partial class SmokeTest : Node
             && Mathf.IsZeroApprox(probe.ContactDamageToward(Mathf.Pi));
         probe.Free();
         return isDirectional;
+    }
+
+    private static bool ProbeCellTraits()
+    {
+        var design = new CellDesign();
+        design.TryPlace(PartKind.SlimeCoat, Vector2.Zero, paidCost: 0);
+        design.TryPlace(PartKind.Camouflage, new Vector2(0.4f, 0f), paidCost: 0);
+        design.TryPlace(PartKind.Pili, Vector2.Left, paidCost: 0);
+        design.TryPlace(PartKind.Nematocyst, Vector2.Right, paidCost: 0);
+        var probe = new Player();
+        probe.CommitDesign(design, 0);
+        bool isApplied = Mathf.IsEqualApprox(probe.DamageFactorFrom(Mathf.Pi), 0.8f)
+            && Mathf.IsEqualApprox(probe.CellTraits.Knockback, 0.5f)
+            && Mathf.IsEqualApprox(probe.CellTraits.Camouflage, 0.75f)
+            && probe.CellTraits.StingToward(0f) > 0f
+            && Mathf.IsZeroApprox(probe.CellTraits.StingToward(Mathf.Pi));
+
+        // A sting paralyses: the swim speed drops to StunSpeed
+        float free = probe.CurrentSpeed();
+        probe.Stun(1f);
+        bool isStunned = Mathf.IsEqualApprox(probe.CurrentSpeed(), free * Balance.Current.Cell.Combat.StunSpeed);
+        probe.Free();
+        return isApplied && isStunned;
     }
 
     private static bool ProbeFlagellumThrust()
@@ -778,6 +804,57 @@ public partial class SmokeTest : Node
         return isHalfway && isDigested;
     }
 
+    /// <summary>A colony shares its body size between its cells, deadly hits burst cells until one is left, then it pops.</summary>
+    private bool ProbeColony()
+    {
+        // A single cell keeps its radius as body size, a colony shares it
+        var single = new Critter { IsHidden = true };
+        single.Setup(10f, CritterKind.Hunter, 14f, Player.MULTICELLULAR_STAGE);
+        bool isSingleSized = Mathf.IsEqualApprox(single.BodySize(), 10f) && Mathf.IsEqualApprox(single.Radius, 10f);
+        single.Free();
+
+        var colony = new Critter { IsHidden = true };
+        colony.Setup(20f, CritterKind.Colony, 14f, Player.MULTICELLULAR_STAGE, cellCount: 8);
+        AddChild(colony);
+        int burstCells = 0;
+        colony.CellsBurst += (_, _, _, _, count) => burstCells += count;
+        bool isShared = Mathf.IsEqualApprox(colony.BodySize(), 20f) && colony.Radius < 10f && 8 == colony.CellCount;
+
+        // First deadly hit: a quarter of the cells burst, the body shrinks, health refills
+        int lost = Growth.CellsLost(8);
+        colony.Hurt(colony.Hp + 1f);
+        bool isBurst = !colony.IsQueuedForDeletion()
+            && 8 - lost == colony.CellCount
+            && lost == burstCells
+            && Mathf.IsEqualApprox(colony.BodySize(), ColonyRule.SizeAfterBurst(20f, 8, 8 - lost))
+            && colony.Hp > 0f;
+
+        // Down to the last cell, then the next deadly hit pops it
+        for (int i = 0; i < 20 && colony.CellCount > 1; i++)
+        {
+            colony.Hurt(colony.Hp + 1f);
+        }
+        bool isLastCell = 1 == colony.CellCount && !colony.IsQueuedForDeletion();
+        colony.Hurt(colony.Hp + 1f);
+        bool isPopped = colony.IsQueuedForDeletion();
+
+        // Only a colony may have more than one cell
+        bool isRejected = false;
+        var  hunter     = new Critter();
+        try
+        {
+            hunter.Setup(10f, CritterKind.Hunter, 14f, 1, cellCount: 4);
+        }
+        catch (System.ArgumentOutOfRangeException)
+        {
+            isRejected = true;     // expected: hunters are single cells
+        }
+        hunter.Free();
+
+        bool hasColonyParts = CellDesign.ForCritter(CritterKind.Colony, 2).Count(PartKind.Cilia) >= 1;
+        return isSingleSized && isShared && isBurst && isLastCell && isPopped && isRejected && hasColonyParts;
+    }
+
     private static bool ProbeDigest()
     {
         var probe = new Player();
@@ -807,13 +884,18 @@ public partial class SmokeTest : Node
                 && 0 == CellDesign.ForCritter(CritterKind.Hunter, Player.ORGANISM_STAGE).Parts.Count;
         }
 
+        // The new parts show up on NPCs: 200 late rolls per kind find them
+        bool HasRolled(CritterKind kind, PartKind part) => Enumerable.Range(0, 200).Any(_ => CellDesign.ForCritter(kind, 2).Count(part) > 0);
+        bool hasNewParts = HasRolled(CritterKind.Hunter, PartKind.Nematocyst) && HasRolled(CritterKind.Hunter, PartKind.Sucker)
+            && HasRolled(CritterKind.Amoeba, PartKind.Pseudopod) && HasRolled(CritterKind.Bacterium, PartKind.Camouflage);
+
         // A hunter's spike hurts towards its direction (facing 0: local = world)
         var hunter = new Critter();
         hunter.Setup(20f, CritterKind.Hunter, 20f, 1);
         float spikeAngle = hunter.Design.Parts.First(part => PartKind.Spike == part.Kind).Angle;
         bool  isArmed    = hunter.ContactDamageToward(spikeAngle) >= Balance.Current.Cell.Combat.SpikeDamage;
         hunter.Free();
-        return isByKind && isArmed;
+        return isByKind && isArmed && hasNewParts;
     }
 
     private bool ProbeIntro()
@@ -879,14 +961,14 @@ public partial class SmokeTest : Node
 
     private bool ProbeMutations()
     {
-        // Tough (+5 % HP) and Sluggish (-3 % speed) on a fresh protocell: 50 * 1.05 HP, two EP more, slower
+        // Tough (+5 % HP) and Sluggish (-3 % speed) on a fresh protocell: 50 * 1.05 HP, EP only for Tough, slower
         var probe = new Player();
         AddChild(probe);
         int   pointsBefore = probe.EvolutionPoints;
         float speedBefore  = probe.CurrentSpeed();
         probe.ApplyMutations(new[] { MutationKind.Tough, MutationKind.Sluggish });
         bool isOk = Mathf.IsEqualApprox(probe.MaxHp, 52.5f)
-            && pointsBefore + 2 * Balance.Current.Prelude.EpPerMutation == probe.EvolutionPoints
+            && pointsBefore + Balance.Current.Prelude.EpPerMutation == probe.EvolutionPoints
             && Mathf.IsEqualApprox(probe.CurrentSpeed(), speedBefore * 0.97f)
             && 2 == probe.Mutations.Count;
         probe.QueueFree();

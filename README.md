@@ -63,7 +63,7 @@ Without the editor: `dotnet build`, then `godot --path .` with the .NET binary.
 
 Smaller cells you touch get engulfed and digested, bigger ones engulf you. Swim away before your health runs out: at zero it's **game over**.
 
-**Diet bar** (top right): molecules and photosynthesis pull to the left (herbivore), eaten cells to the right (carnivore), editor parts in their own direction. The position unlocks parts: armour plate on the left, cilia in the middle, jaws and venom vacuole on the right.
+**Diet bar** (top right): molecules and photosynthesis pull to the left (herbivore), eaten cells to the right (carnivore), editor parts in their own direction. The position unlocks parts: armour plate and slime coat on the left, cilia and camouflage pigment in the middle, jaws, suckers, venom vacuole and nematocysts on the right.
 
 ## 🧬 Stages
 

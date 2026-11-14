@@ -12,7 +12,7 @@
 //
 //   Chapters:
 //     SETTINGS        Inputs from Main, the clay color and the timeline.
-//     BUILD           Cell multimesh, the hidden clay blob and its ring.
+//     BUILD           Cell multimesh and the hidden clay blob.
 //     PLAY TIMELINE   Camera, divisions into a ball, melting into clay, settling.
 //     HELPERS         Cell positions per cluster size.
 //
@@ -70,7 +70,7 @@ public partial class EvolveCutscene : Node3D
     // ================================   BUILD   ================================
     // ===========================================================================
     //
-    //   _Ready   Keeps running while paused, builds the cells, the blob and the ring.
+    //   _Ready   Keeps running while paused, builds the cells and the blob.
     //
 
     private static readonly Shader CLAY_SHADER = GD.Load<Shader>("res://shaders/clay.gdshader");
@@ -79,8 +79,6 @@ public partial class EvolveCutscene : Node3D
     public int VisibleCells => _cells.VisibleInstanceCount;
     private MeshInstance3D _blob;
     private ShaderMaterial _clay;
-    private MeshInstance3D _ring;
-    private StandardMaterial3D _ringMaterial;
     private Color[] _cellTints;
     private Transform3D _cameraStart;
     private Transform3D _cameraEnd;
@@ -124,16 +122,6 @@ public partial class EvolveCutscene : Node3D
         _clay.SetShaderParameter("seed", Rand.Range(0f, 100f));
         _clay.SetShaderParameter("knead", 1f);
         _blob = CellVisual3D.AddMesh(this, CellVisual3D.SphereMesh(), _clay, Vector3.Zero, Vector3.One * 0.001f);
-
-        // Ring burst when the clay forms
-        _ringMaterial = new StandardMaterial3D
-        {
-            ShadingMode  = BaseMaterial3D.ShadingModeEnum.Unshaded,
-            Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
-            AlbedoColor  = new Color(ClayColor.Lightened(0.4f), 0f),
-        };
-        _ring = CellVisual3D.AddMesh(this, CellVisual3D.TorusMesh(), _ringMaterial, Vector3.Zero, Vector3.One * 0.001f);
-        _ring.CastShadow = GeometryInstance3D.ShadowCastingSetting.Off;
         Log.Verbose("EvolveCutscene", $"Started: {Player.MAX_CELLS} -> {Player.ORGANISM_CELLS} cells, size {Size:F1}.");
         UpdateTimeline();
     }
@@ -144,7 +132,7 @@ public partial class EvolveCutscene : Node3D
     //
     //   1. Camera     Eases into a closer, lower pose and orbits slowly.
     //   2. Cells      Divide three times while the cluster curls up into a ball.
-    //   3. Clay       The cells shrink into the swelling blob, a ring bursts out.
+    //   3. Clay       The cells shrink into the swelling blob.
     //   4. Settle     The wobble fades, Finished fires once, the blob keeps breathing.
     //
 
@@ -198,7 +186,7 @@ public partial class EvolveCutscene : Node3D
 
         // ---------------------------------------------------------------------------
         // Clay
-        //   The cells shrink into the swelling blob, a ring bursts out.
+        //   The cells shrink into the swelling blob.
         // ---------------------------------------------------------------------------
 
         float swell  = Ease.BackOut(melt);
@@ -207,10 +195,6 @@ public partial class EvolveCutscene : Node3D
         _blob.Scale = new Vector3(blob, blob * 0.9f, blob);
         _blob.RotateY((float)GetProcessDeltaTime() * 0.3f);
         _clay.SetShaderParameter("wobble", melt > 0f ? Mathf.Lerp(1.2f, 0.15f, settle) : 0f);
-
-        float burst = Mathf.Clamp((_time - MELT_END + 0.4f) / 0.8f, 0f, 1f);
-        _ring.Scale               = new Vector3(1f, 0.3f, 1f) * Mathf.Lerp(BLOB_RADIUS, BLOB_RADIUS * 2.6f, burst) * Size;
-        _ringMaterial.AlbedoColor = new Color(_ringMaterial.AlbedoColor, burst > 0f ? 0.7f * (1f - burst) : 0f);
 
         // ---------------------------------------------------------------------------
         // Settle

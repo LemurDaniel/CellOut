@@ -36,11 +36,11 @@ public enum Placement { Rim, Inner }
 public enum PartKind
 {
     // Herbivore
-    Chloroplast, FilterMouth, ArmorPlate,
+    Chloroplast, FilterMouth, ArmorPlate, Mitochondrion, StarchGranule, SlimeCoat,
     // Omnivore
-    Flagellum, Eyespot, Vacuole, Cilia,
+    Flagellum, Eyespot, Vacuole, Cilia, Pseudopod, Pili, Camouflage,
     // Carnivore
-    Spike, Jaw, Toxin,
+    Spike, Jaw, Toxin, Nematocyst, Sucker,
 }
 
 /// <summary>Rules of one part kind.</summary>
@@ -87,23 +87,31 @@ public static class PartCatalog
       The table holds what a part is (diet class, placement), data/balance.json what it
       costs and where on the diet bar (-1 herbivore .. 1 carnivore) it unlocks:
       - Basic parts of every class: always.
-      - Armor plate:                herbivore side.
-      - Cilia:                      the middle.
-      - Jaw:                        carnivore side.
-      - Toxin:                      clearly carnivore.
+      - Armor plate, slime coat:    herbivore side.
+      - Cilia, camouflage:          the middle.
+      - Jaw, sucker:                carnivore side.
+      - Toxin, nematocyst:          clearly carnivore.
     */
     private static readonly PartInfo[] PARTS =
     {
-        Part(PartKind.Chloroplast, DietClass.Herbivore, Placement.Inner),
-        Part(PartKind.FilterMouth, DietClass.Herbivore, Placement.Rim),
-        Part(PartKind.ArmorPlate,  DietClass.Herbivore, Placement.Rim),
-        Part(PartKind.Flagellum,   DietClass.Omnivore,  Placement.Rim),
-        Part(PartKind.Eyespot,     DietClass.Omnivore,  Placement.Rim),
-        Part(PartKind.Vacuole,     DietClass.Omnivore,  Placement.Inner),
-        Part(PartKind.Cilia,       DietClass.Omnivore,  Placement.Rim),
-        Part(PartKind.Spike,       DietClass.Carnivore, Placement.Rim),
-        Part(PartKind.Jaw,         DietClass.Carnivore, Placement.Rim),
-        Part(PartKind.Toxin,       DietClass.Carnivore, Placement.Inner),
+        Part(PartKind.Chloroplast,    DietClass.Herbivore, Placement.Inner),
+        Part(PartKind.FilterMouth,    DietClass.Herbivore, Placement.Rim),
+        Part(PartKind.ArmorPlate,     DietClass.Herbivore, Placement.Rim),
+        Part(PartKind.Mitochondrion,  DietClass.Herbivore, Placement.Inner),
+        Part(PartKind.StarchGranule,  DietClass.Herbivore, Placement.Inner),
+        Part(PartKind.SlimeCoat,      DietClass.Herbivore, Placement.Inner),
+        Part(PartKind.Flagellum,      DietClass.Omnivore,  Placement.Rim),
+        Part(PartKind.Eyespot,        DietClass.Omnivore,  Placement.Rim),
+        Part(PartKind.Vacuole,        DietClass.Omnivore,  Placement.Inner),
+        Part(PartKind.Cilia,          DietClass.Omnivore,  Placement.Rim),
+        Part(PartKind.Pseudopod,      DietClass.Omnivore,  Placement.Rim),
+        Part(PartKind.Pili,           DietClass.Omnivore,  Placement.Rim),
+        Part(PartKind.Camouflage,     DietClass.Omnivore,  Placement.Inner),
+        Part(PartKind.Spike,          DietClass.Carnivore, Placement.Rim),
+        Part(PartKind.Jaw,            DietClass.Carnivore, Placement.Rim),
+        Part(PartKind.Toxin,          DietClass.Carnivore, Placement.Inner),
+        Part(PartKind.Nematocyst,     DietClass.Carnivore, Placement.Rim),
+        Part(PartKind.Sucker,         DietClass.Carnivore, Placement.Rim),
     };
 
     /// <summary>One table row: cost and unlock range come from Balance.Current.Cell.Parts.</summary>

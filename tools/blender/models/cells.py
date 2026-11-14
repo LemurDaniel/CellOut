@@ -1,10 +1,10 @@
 # NOTE:
-#   The ten cell editor parts as micro monsters (assets/models/cell/).
+#   The eighteen cell editor parts as micro monsters (assets/models/cell/).
 #   Registered in build.models.py.
 
 #
 #   Chapters:
-#     CELL PARTS   The ten cell editor parts as micro monsters.
+#     CELL PARTS   The eighteen cell editor parts as micro monsters.
 #
 
 import math
@@ -40,6 +40,14 @@ from models.helpers import (
 #   build_chloroplast  A green bean with stacked thylakoid discs.
 #   build_vacuole      A translucent bubble with droplets inside.
 #   build_toxin        A glowing venom sac with bubbles and a stinger.
+#   build_mitochondrion  An orange bean with folded cristae inside.
+#   build_starch       Nested starch grains with growth rings and three small grains.
+#   build_slime        A wobbly slime gland of blobs with trapped bubbles.
+#   build_pseudopod    A soft arm that splits into two lobes and sways slowly.
+#   build_pili         A tuft of short, straight hairs with sticky knobs.
+#   build_camouflage   A chromatophore: a dark pigment star with light and dark rays.
+#   build_nematocyst   A stinging capsule: lid, coiled thread inside, trigger hair.
+#   build_sucker       A stalked cup: a ring of pads around a dark, grooved hollow.
 #
 #   Unit space of a cell (radius 1). Rim parts sit with their base at the origin on the
 #   membrane and point outwards along +X, inner parts are centered on the origin.
@@ -174,3 +182,98 @@ def build_toxin(scene):
     for i, (x, y, z, r) in enumerate(((0.05, 0.05, 0.04, 0.05), (-0.07, 0.0, 0.05, 0.045), (0.0, -0.06, -0.06, 0.05), (-0.04, 0.07, -0.05, 0.035), (0.08, -0.05, -0.03, 0.03), (-0.1, -0.06, 0.0, 0.03))):
         ellipsoid(scene, f'Bubble{i}', G(x, y, z), (r, r, r), 'Venom', subdivisions=2)
     cone(scene, 'Stinger', G(0.17, 0, 0), G(0.34, 0.02, 0), 0.05)
+
+
+def build_mitochondrion(scene):
+    ellipsoid(scene, 'Body', G(0, 0, 0), (0.23, 0.12, 0.12), 'Mito', subdivisions=4)
+    # Cristae: folded inner membranes across the bean, every other one from the other side
+    for i, x in enumerate((-0.14, -0.07, 0.0, 0.07, 0.14)):
+        side = 1 if i % 2 else -1
+        ellipsoid(scene, f'Crista{i}', G(x, side * 0.02, 0), (0.018, 0.085, 0.08), 'Cristae', subdivisions=2)
+    ellipsoid(scene, 'Glint', G(0.08, 0.1, -0.05), (0.03, 0.02, 0.03), 'Glint', subdivisions=1)
+
+
+def build_starch(scene):
+    # Growth rings: nested grains, each a little smaller and higher, like an onion
+    for i, (scale, y) in enumerate(((0.19, 0.0), (0.15, 0.05), (0.1, 0.09), (0.055, 0.125))):
+        ellipsoid(scene, f'Ring{i}', G(0, y, 0), (scale, scale * 0.75, scale), 'Starch' if i % 2 == 0 else 'StarchCore', subdivisions=3)
+    for i, (x, z, r) in enumerate(((0.17, 0.1, 0.07), (-0.15, 0.12, 0.06), (0.05, -0.18, 0.065))):
+        ellipsoid(scene, f'Grain{i}', G(x, -0.02, z), (r, r * 0.8, r), 'Starch', subdivisions=2)
+
+
+def build_slime(scene):
+    # A wobbly gland of overlapping blobs, bubbles trapped inside
+    for i, (x, y, z, r) in enumerate(((0.0, 0.0, 0.0, 0.2), (0.12, 0.02, 0.08, 0.12), (-0.11, -0.01, 0.09, 0.11), (0.02, 0.03, -0.13, 0.12))):
+        ellipsoid(scene, f'Blob{i}', G(x, y, z), (r, r * 0.8, r), 'Slime', subdivisions=3)
+    for i, (x, y, z, r) in enumerate(((0.05, 0.06, 0.03, 0.04), (-0.06, 0.02, -0.05, 0.03), (0.1, 0.0, -0.04, 0.025), (-0.08, 0.05, 0.08, 0.03))):
+        ellipsoid(scene, f'Bubble{i}', G(x, y, z), (r, r, r), 'SlimeBubble', subdivisions=2)
+
+
+def build_pseudopod(scene):
+    # A soft arm that flows outwards and splits into two blunt lobes
+    base, middle, fork = G(-0.04, 0, 0), G(0.18, 0.02, 0), G(0.34, 0.03, 0)
+    arm = tube(scene, 'Arm', [base, middle, fork], (0.11, 0.085, 0.07), [(0, 1), (1, 2)])
+    # Two round lobes at the end instead of a skin fork (forks pinch into spikes)
+    for i, (z, r) in enumerate(((0.06, 0.07), (-0.065, 0.065))):
+        ellipsoid(scene, f'Lobe{i}', G(0.42, 0.035, z), (r * 1.3, r, r), 'Skin', subdivisions=3)
+    lobes = [obj for obj in scene.objects if obj.name.startswith('Lobe')]
+    armature = rig(scene, 'Rig', [('Root', base, middle, None), ('Tip', middle, fork, 'Root')])
+    bind(armature, [arm, *lobes], rigid={lobe.name: 'Tip' for lobe in lobes})
+
+    # Ooze: a slow sway, the tip lags behind
+    animate(armature, 'Ooze', FPS * 2, {
+        'Root': (AXIS_UP, lambda share: 12.0 * wave(share)),
+        'Tip':  (AXIS_UP, lambda share: 18.0 * wave(share, -0.15)),
+    })
+
+
+def build_pili(scene):
+    # A tuft of short, straight hairs fanning out, every one with a sticky knob
+    count = 9
+    for i in range(count):
+        spread = (i / (count - 1) - 0.5) * 1.6
+        lift = 0.35 * math.sin(i * 2.3)
+        length = 0.32 + 0.08 * math.cos(i * 1.7)
+        direction = G(1, lift, spread).normalized()
+        base = G(0, lift * 0.06, spread * 0.06)
+        tip = base + direction * length
+        cone(scene, f'Pilus{i}', tip, base, 0.016, 'Claw')
+        ellipsoid(scene, f'Knob{i}', tip, (0.024, 0.024, 0.024), 'StarchCore', subdivisions=1)
+
+
+def build_camouflage(scene):
+    # A chromatophore: a dark pigment star, light and dark rays around it
+    ellipsoid(scene, 'Core', G(0, 0, 0), (0.12, 0.05, 0.12), 'Pigment', subdivisions=3)
+    rays = 8
+    for i in range(rays):
+        angle = i / rays * math.tau
+        center = G(math.cos(angle) * 0.15, 0, math.sin(angle) * 0.15)
+        material_name = 'PigmentLight' if i % 2 else 'Pigment'
+        ray = ellipsoid(scene, f'Ray{i}', Vector((0, 0, 0)), (0.08, 0.035, 0.035), material_name, subdivisions=2)
+        ray.data.transform(Matrix.Translation(center) @ Matrix.Rotation(-angle, 4, 'Z'))
+
+
+def build_nematocyst(scene):
+    # A capsule on the rim with a lid, a coiled thread inside and a trigger hair on top
+    ellipsoid(scene, 'Capsule', G(0.15, 0, 0), (0.15, 0.09, 0.09), 'Nettle', subdivisions=3)
+    turns, count = 3.0, 22
+    points = [G(0.04 + 0.2 * i / (count - 1), math.sin(i / (count - 1) * turns * math.tau) * 0.045,
+                math.cos(i / (count - 1) * turns * math.tau) * 0.045) for i in range(count)]
+    tube(scene, 'Thread', points, [0.012] * count, [(i, i + 1) for i in range(count - 1)], 'Venom', subdivisions=1)
+    cone(scene, 'Lid', G(0.27, 0, 0), G(0.33, 0, 0), 0.06, 'Chitin')
+    cone(scene, 'Trigger', G(0.32, 0, 0), G(0.48, 0.03, 0), 0.012, 'Claw')
+    tube(scene, 'Stalk', [G(-0.04, 0, 0), G(0.06, 0, 0)], (0.08, 0.07), [(0, 1)])
+
+
+def build_sucker(scene):
+    # A short fleshy stalk, then a cup: a raised ring of pads around a dark grooved hollow
+    tube(scene, 'Stalk', [G(-0.04, 0, 0), G(0.08, 0, 0), G(0.14, 0, 0)], (0.1, 0.09, 0.12), [(0, 1), (1, 2)])
+    ring = 14
+    for i in range(ring):
+        angle = i / ring * math.tau
+        ellipsoid(scene, f'Rim{i}', G(0.17, math.sin(angle) * 0.15, math.cos(angle) * 0.15), (0.05, 0.055, 0.055), 'Pad', subdivisions=2)
+    ellipsoid(scene, 'Hollow', G(0.15, 0, 0), (0.025, 0.13, 0.13), 'Dark', subdivisions=3)
+    for i in range(6):
+        angle = i / 6 * math.tau
+        groove = ellipsoid(scene, f'Groove{i}', Vector((0, 0, 0)), (0.01, 0.06, 0.012), 'Pad', subdivisions=1)
+        groove.data.transform(Matrix.Translation(G(0.16, math.sin(angle) * 0.07, math.cos(angle) * 0.07)) @ Matrix.Rotation(-angle, 4, 'X'))

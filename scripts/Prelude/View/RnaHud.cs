@@ -1,7 +1,8 @@
 // NOTE:
 //   The HUD of the RNA prelude (Prelude/RnaWorld.cs): the banner in the upper middle that
 //   fades out, the status top left with the goal, the wanted base with the next ones
-//   and one line per mutation, and the evolve button bottom center once the goal is reached.
+//   and one line per mutation, the warning of an error catastrophe and the evolve button
+//   bottom center once the goal is reached.
 //   A view: it only shows what Refresh hands in and reports the button through a signal,
 //   every text goes through Tr() (locale/translations.csv). Builds itself when it enters the tree.
 //
@@ -9,6 +10,7 @@
 //   AddChild(hud);
 //   hud.EvolvePressed += () => prelude.Evolve();
 //   hud.Refresh(new RnaHud.State(paired, goal, isGoalReached, isEvolving, wanted, upcoming, mutations));
+//   hud.ShowErrorCatastrophe();        // too many mutations broke the strand
 //   hud.FadeOut();                     // the strand evolves, the cutscene takes the screen
 
 //
@@ -30,7 +32,7 @@ public partial class RnaHud : CanvasLayer
     //
     //   EvolvePressed       The evolve button was pressed.
     //   UPCOMING_SHOWN      Template bases shown after the wanted one.
-    //   _Ready              Banner, goal, the wanted base, mutations and the evolve button.
+    //   _Ready              Banner, goal, the wanted base, mutations, the warning and the evolve button.
     //   BuildEvolveButton   Pill button bottom center like the stage buttons of the game HUD, hidden until offered.
     //   NewLabel            HUD label with outline, translated by hand.
     //
@@ -41,6 +43,9 @@ public partial class RnaHud : CanvasLayer
     private const float BANNER_HOLD = 3.5f;
     private const float BANNER_FADE = 1.2f;
     private const float FADE_OUT = 0.4f;
+    private const float WARNING_HOLD = 1.6f;
+    private const float WARNING_FADE = 0.8f;
+    private static readonly Color WARNING_COLOR = new(1f, 0.45f, 0.4f);
     private static readonly Color EVOLVE_ACCENT = new(0.95f, 0.65f, 0.45f);    // like the organism button of the game HUD
 
     private Label _banner;
@@ -52,6 +57,8 @@ public partial class RnaHud : CanvasLayer
     private Label _mutationLabel;
     private VBoxContainer _mutationList;
     private Button _evolveButton;
+    private Label _warning;
+    private Tween _warningFade;
     private Control _root;
 
     public override void _Ready()
@@ -104,6 +111,16 @@ public partial class RnaHud : CanvasLayer
         _mutationList = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
         _mutationList.AddThemeConstantOverride("separation", 0);
         status.AddChild(_mutationList);
+
+        // Warning in the middle, below the banner, hidden until a chain breaks
+        _warning = NewLabel(30);
+        _warning.HorizontalAlignment = HorizontalAlignment.Center;
+        _warning.AddThemeColorOverride("font_color", WARNING_COLOR);
+        _warning.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.CenterTop);
+        _warning.GrowHorizontal = Control.GrowDirection.Both;
+        _warning.OffsetTop      = 260;
+        _warning.Modulate       = new Color(1f, 1f, 1f, 0f);
+        _root.AddChild(_warning);
         BuildEvolveButton();
     }
 
@@ -143,9 +160,10 @@ public partial class RnaHud : CanvasLayer
     // ===============================   REFRESH   ===============================
     // ===========================================================================
     //
-    //   State     What the HUD shows: the goal, the wanted bases, the mutations and whether it evolves.
-    //   Refresh   Writes every text new, also after a language change, offers the evolve button.
-    //   FadeOut   Fades the whole HUD out when the strand evolves.
+    //   State                  What the HUD shows: the goal, the wanted bases, the mutations and whether it evolves.
+    //   Refresh                Writes every text new, also after a language change, offers the evolve button.
+    //   ShowErrorCatastrophe   Flashes the warning: too many mutations broke the strand.
+//   FadeOut                Fades the whole HUD out when the strand evolves.
     //
 
     /// <summary>The state of the player chain the HUD shows.</summary>
@@ -179,7 +197,7 @@ public partial class RnaHud : CanvasLayer
             _upcoming[i].AddThemeColorOverride("font_color", new Color(RnaPalette.ColorOf(next), 0.55f - 0.15f * i));
         }
         int mutationCount = state.Mutations.Count;
-        _mutationLabel.Text    = string.Format(Tr("PRELUDE_MUTATIONS"), mutationCount, mutationCount * Balance.Current.Prelude.EpPerMutation);
+        _mutationLabel.Text    = string.Format(Tr("PRELUDE_MUTATIONS"), mutationCount, Mutation.EvolutionPoints(state.Mutations));
         _mutationLabel.Visible = mutationCount > 0;
 
         // One line per mutation on the chain: name and effect, green helps, red hurts
@@ -195,6 +213,16 @@ public partial class RnaHud : CanvasLayer
             line.AddThemeColorOverride("font_color", mutation.IsGood ? new Color(0.6f, 1f, 0.65f) : new Color(1f, 0.5f, 0.5f));
             _mutationList.AddChild(line);
         }
+    }
+
+    /// <summary>Flashes the warning of an error catastrophe, a new one restarts the fade.</summary>
+    public void ShowErrorCatastrophe()
+    {
+        _warning.Text = Tr("PRELUDE_ERROR_CATASTROPHE");
+        _warningFade?.Kill();
+        _warning.Modulate = Colors.White;
+        _warningFade = CreateTween().SetPauseMode(Tween.TweenPauseMode.Process);
+        _warningFade.TweenProperty(_warning, "modulate:a", 0f, WARNING_FADE).SetDelay(WARNING_HOLD);
     }
 
     /// <summary>Fades the whole HUD out, the cutscene of the evolving strand takes the screen.</summary>

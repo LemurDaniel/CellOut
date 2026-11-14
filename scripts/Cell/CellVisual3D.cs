@@ -631,16 +631,24 @@ public partial class CellVisual3D : Node3D
     public static readonly IReadOnlyDictionary<PartKind, (string File, string Animation)> CELL_MODELS =
         new Dictionary<PartKind, (string File, string Animation)>
         {
-            [PartKind.Chloroplast] = ("cell.chloroplast.glb", null),
-            [PartKind.FilterMouth] = ("cell.filtermouth.glb", null),
-            [PartKind.ArmorPlate]  = ("cell.armorplate.glb", null),
-            [PartKind.Flagellum]   = ("cell.flagellum.glb", "Whip"),
-            [PartKind.Eyespot]     = ("cell.eyespot.glb", null),
-            [PartKind.Vacuole]     = ("cell.vacuole.glb", null),
-            [PartKind.Cilia]       = ("cell.cilium.glb", "Beat"),
-            [PartKind.Spike]       = ("cell.spike.glb", null),
-            [PartKind.Jaw]         = ("cell.jaw.glb", "Chomp"),
-            [PartKind.Toxin]       = ("cell.toxin.glb", null),
+            [PartKind.Chloroplast]   = ("cell.chloroplast.glb", null),
+            [PartKind.FilterMouth]   = ("cell.filtermouth.glb", null),
+            [PartKind.ArmorPlate]    = ("cell.armorplate.glb", null),
+            [PartKind.Flagellum]     = ("cell.flagellum.glb", "Whip"),
+            [PartKind.Eyespot]       = ("cell.eyespot.glb", null),
+            [PartKind.Vacuole]       = ("cell.vacuole.glb", null),
+            [PartKind.Cilia]         = ("cell.cilium.glb", "Beat"),
+            [PartKind.Spike]         = ("cell.spike.glb", null),
+            [PartKind.Jaw]           = ("cell.jaw.glb", "Chomp"),
+            [PartKind.Toxin]         = ("cell.toxin.glb", null),
+            [PartKind.Mitochondrion] = ("cell.mitochondrion.glb", null),
+            [PartKind.StarchGranule] = ("cell.starch.glb", null),
+            [PartKind.SlimeCoat]     = ("cell.slime.glb", null),
+            [PartKind.Pseudopod]     = ("cell.pseudopod.glb", "Ooze"),
+            [PartKind.Pili]          = ("cell.pili.glb", null),
+            [PartKind.Camouflage]    = ("cell.camouflage.glb", null),
+            [PartKind.Nematocyst]    = ("cell.nematocyst.glb", null),
+            [PartKind.Sucker]        = ("cell.sucker.glb", null),
         };
 
     private const float CELL_PART_SIZE = 1.25f;
@@ -648,6 +656,7 @@ public partial class CellVisual3D : Node3D
     private const int CILIA_PER_PART = 9;
     private const float BEAT_RATE = 1.6f;            // cilia beats per second
     private const float CHOMP_RATE = 0.9f;
+    private const float OOZE_RATE = 0.5f;            // pseudopod sways per second
 
     /// <summary>A new instance of a cell part model, recolored (Core/PartModels.cs).</summary>
     /// <param name="kind">(Required) An editor part.</param>
@@ -679,12 +688,19 @@ public partial class CellVisual3D : Node3D
             case PartKind.Chloroplast:
             case PartKind.Vacuole:
             case PartKind.Toxin:
+            case PartKind.Mitochondrion:
+            case PartKind.StarchGranule:
+            case PartKind.SlimeCoat:
+            case PartKind.Camouflage:
                 _spinners.Add(AttachPart(root, part.Kind, skin, inner, angle, CELL_PART_SIZE));
                 break;
 
             // Rim parts: base on the membrane, pointing outwards along its normal
             case PartKind.ArmorPlate:
             case PartKind.Spike:
+            case PartKind.Pili:
+            case PartKind.Nematocyst:
+            case PartKind.Sucker:
                 AttachPart(root, part.Kind, skin, RimPoint(angle, lift, 0.97f), angle, CELL_PART_SIZE, tilt);
                 break;
             case PartKind.Jaw:
@@ -698,6 +714,10 @@ public partial class CellVisual3D : Node3D
                 {
                     _whips.Add(whip);
                 }
+                break;
+            case PartKind.Pseudopod:
+                Node3D pseudopod = AttachPart(root, part.Kind, skin, RimPoint(angle, lift, 0.93f), angle, CELL_PART_SIZE, tilt);
+                PartModels.PlayLoop(pseudopod, CELL_MODELS[part.Kind].Animation, Body.AnimSeed + angle / Mathf.Tau, OOZE_RATE);
                 break;
             case PartKind.FilterMouth:
                 AttachPart(root, part.Kind, skin, RimPoint(angle, lift, 0.95f), angle, CELL_PART_SIZE, tilt);
