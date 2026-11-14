@@ -2,24 +2,25 @@
 //   The HUD of pack and tribe: the pack size top center, the hint of what is missing or
 //   the F hint, the offered action as a button bottom center (call, build the nest, found
 //   the tribe, like the divide and organism buttons of the Hud) and from the tribe on the
-//   stock line (villagers, food, wood, buildings, picked), on the right one build button
-//   per building function and the design button, and the rival tribes on the left with
-//   their relation and a gift button each. Every text is
+//   count of picked units, on the right one build tile per building function (a live icon
+//   of its blueprint with the cost below) and the rival tribes on the left with their
+//   relation and a gift button each. Population, stock and the builder button are in the
+//   TribeHub. Every text is
 //   a key in locale/translations.csv. Created by Main, which wires the buttons. Reads the
 //   state of pack, tribe and rivals every frame, so it needs no signals from them.
 //
 //   var panel = new TribePanel();
 //   panel.Watch(pack, tribe, rivals);
 //   panel.ActionPressed   += () => pack.Act();
-//   panel.BuildPressed    += kind => tribe.TryBuild(kind);
-//   panel.DesignPressed   += OpenBuildingEditor;
+//   panel.BuildPressed    += kind => placer.Begin(kind);
+//   panel.Placing          = placer.Pending;          // every frame: the pressed tile and the hint
 //   panel.GiftPressed     += rival => rivals.Gift(rival);
 //   AddChild(panel);
 
 //
 //   Chapters:
 //     PANEL    Widgets, texts and the refresh per frame.
-//     BUILD    One build button per building function and the design button.
+//     BUILD    One build tile per building function.
 //     RIVALS   One row per rival tribe: name, relation, gift.
 //
 
@@ -35,7 +36,6 @@ public partial class TribePanel : CanvasLayer
     // ===========================================================================
     //
     //   ActionPressed     The offered action was pressed, Main lets the pack act.
-    //   DesignPressed     The design button was pressed, Main opens the village builder.
     //   GiftPressed       A gift button was pressed, Main lets the rivals take it.
     //   Watch             The pack, the tribe and the rivals whose state the panel shows.
     //   _Ready            Status line top center, the action button bottom center, build column right, rivals left.
@@ -44,7 +44,6 @@ public partial class TribePanel : CanvasLayer
     //
 
     [Signal] public delegate void ActionPressedEventHandler();
-    [Signal] public delegate void DesignPressedEventHandler();
     [Signal] public delegate void GiftPressedEventHandler(RivalTribe rival);
 
     private static readonly Color ACTION_ACCENT = new(0.95f, 0.8f, 0.4f);
@@ -109,8 +108,8 @@ public partial class TribePanel : CanvasLayer
       > Before the land animal: everything hidden
       > Land animal and pack: pack size, the hint of what is missing (else the F hint from the
         pack on), the offered action
-      > Tribe: stock line (villagers, food, wood, buildings, picked), a build button per
-        function (grey without stock) and the design button, one row per rival tribe
+      > Tribe: the count of picked units, a build tile per function (grey without stock),
+        one row per rival tribe
     */
     public override void _Process(double delta)
     {
@@ -126,8 +125,8 @@ public partial class TribePanel : CanvasLayer
         _hint.Visible   = isTribe || null != missing || (hasPack && null != _pack.Nest);
         if (isTribe)
         {
-            _status.Text = string.Format(Tr("TRIBE_STATUS"), _tribe.Units().Count, _tribe.Economy.Food, _tribe.Economy.Wood, _tribe.Economy.Huts, _tribe.Selected.Count);
-            _hint.Text   = Tr("TRIBE_HINT");
+            _status.Text = string.Format(Tr("TRIBE_STATUS"), _tribe.Selected.Count, _tribe.Units().Count);
+            _hint.Text   = Tr(null != Placing ? "TRIBE_PLACE_HINT" : "TRIBE_HINT");
         }
         else
         {
@@ -203,19 +202,24 @@ public partial class TribePanel : CanvasLayer
     // ================================   BUILD   ================================
     // ===========================================================================
     //
-    //   BuildPressed         A build button was pressed, Main lets the tribe build that function (a C# event: an enum is no Variant).
-    //   BuildBuildColumn     A column on the right: the design button, then one build button per function.
-    //   RefreshBuildColumn   Name and cost per button, grey without stock.
+    //   BuildPressed         A build tile was pressed, Main lets the tribe build that function (a C# event: an enum is no Variant).
+    //   BuildBuildColumn     A column on the right: one tile per function with the icon of its blueprint and its cost.
+    //   RefreshBuildColumn   Icon, cost and tooltip per tile, grey without stock.
     //
 
     public event System.Action<BuildingKind> BuildPressed;
 
-    private static readonly Color BUILD_ACCENT = new(0.8f, 0.6f, 0.4f);
-    private static readonly Color DESIGN_ACCENT = new(0.6f, 0.7f, 0.9f);
+    /// <summary>(Optional) The function whose building hangs at the mouse (BuildingPlacer), its tile stays pressed. Defaults to none.</summary>
+    public BuildingKind? Placing { get; set; }
 
-    private readonly Dictionary<BuildingKind, Button> _buildButtons = new();
+    private const int BUILD_ICON_PIXELS = 60;
+    private static readonly Vector2 BUILD_TILE_SIZE = new(170, 68);
+    private static readonly Color BUILD_ACCENT = new(0.8f, 0.6f, 0.4f);
+    private static readonly Color FOOD_COLOR = new(1f, 0.6f, 0.55f);
+    private static readonly Color WOOD_COLOR = new(0.9f, 0.72f, 0.5f);
+
+    private readonly Dictionary<BuildingKind, (Button Tile, BuildingIcon Icon, Label Food, Label Wood)> _buildTiles = new();
     private VBoxContainer _buildColumn;
-    private Button _design;
 
     private void BuildBuildColumn()
     {
@@ -227,17 +231,37 @@ public partial class TribePanel : CanvasLayer
         _buildColumn.AddThemeConstantOverride("separation", 8);
         AddChild(_buildColumn);
 
-        _design = NewColumnButton(DESIGN_ACCENT);
-        _design.Pressed += () => EmitSignal(SignalName.DesignPressed);
-        _buildColumn.AddChild(_design);
         foreach (BuildingKind kind in System.Enum.GetValues<BuildingKind>())
         {
-            Button       button = NewColumnButton(BUILD_ACCENT);
-            BuildingKind built  = kind;
-            button.Pressed += () => BuildPressed?.Invoke(built);
-            _buildColumn.AddChild(button);
-            _buildButtons[kind] = button;
+            var tile = new Button
+            {
+                CustomMinimumSize = BUILD_TILE_SIZE,
+                FocusMode         = Control.FocusModeEnum.None,
+                ToggleMode        = true,
+                AutoTranslateMode = AutoTranslateModeEnum.Disabled,
+            };
+            EditorStyle.ApplyTile(tile, BUILD_ACCENT);
+            var icon = new BuildingIcon(BUILD_ICON_PIXELS) { Position = new Vector2(4, 4) };
+            tile.AddChild(icon);
+            Label food = NewCostLabel(tile, FOOD_COLOR, 12f);
+            Label wood = NewCostLabel(tile, WOOD_COLOR, 36f);
+
+            BuildingKind built = kind;
+            tile.Pressed += () => BuildPressed?.Invoke(built);
+            _buildColumn.AddChild(tile);
+            _buildTiles[kind] = (tile, icon, food, wood);
         }
+    }
+
+    /// <summary>A cost number right of the icon of a build tile, in the color of its resource.</summary>
+    private static Label NewCostLabel(Button tile, Color color, float top)
+    {
+        Label label = NewLabel(16);
+        label.Visible  = true;
+        label.Position = new Vector2(BUILD_ICON_PIXELS + 12, top);
+        label.AddThemeColorOverride("font_color", color);
+        tile.AddChild(label);
+        return label;
     }
 
     private void RefreshBuildColumn(bool isTribe)
@@ -247,28 +271,17 @@ public partial class TribePanel : CanvasLayer
         {
             return;
         }
-        _design.Text = Tr("TRIBE_DESIGN");
-        foreach ((BuildingKind kind, Button button) in _buildButtons)
+        foreach ((BuildingKind kind, (Button tile, BuildingIcon icon, Label food, Label wood)) in _buildTiles)
         {
             BuildingDesign design = _tribe.DesignOf(kind);
-            button.Text     = string.Format(Tr("TRIBE_BUILD"), Tr($"BUILDING_{kind}".ToUpperInvariant()), design.FoodCost, design.WoodCost);
-            button.Disabled = !_tribe.Economy.CanAfford(design);
+            icon.Display(design);
+            food.Text        = string.Format(Tr("TRIBE_COST_FOOD"), design.FoodCost);
+            wood.Text        = string.Format(Tr("TRIBE_COST_WOOD"), design.WoodCost);
+            tile.Disabled    = !_tribe.Economy.CanAfford(design);
+            tile.SetPressedNoSignal(kind == Placing);
+            tile.TooltipText = string.Format(Tr("TRIBE_BUILD"), Tr($"BUILDING_{kind}".ToUpperInvariant()), design.FoodCost, design.WoodCost);
         }
     }
-
-    private static Button NewColumnButton(Color accent)
-    {
-        var button = new Button
-        {
-            CustomMinimumSize = new Vector2(300, 40),
-            FocusMode         = Control.FocusModeEnum.None,
-            AutoTranslateMode = AutoTranslateModeEnum.Disabled,
-        };
-        button.AddThemeFontSizeOverride("font_size", 16);
-        EditorStyle.ApplyButton(button, accent);
-        return button;
-    }
-
     // ===========================================================================
     // ===============================   RIVALS   ================================
     // ===========================================================================
@@ -335,9 +348,10 @@ public partial class TribePanel : CanvasLayer
                 continue;
             }
             RivalTribe rival = rivals[i];
-            string mood = rival.IsFriendly ? Tr("RIVAL_FRIENDLY") : rival.IsHostile ? Tr("RIVAL_HOSTILE") : Tr("RIVAL_NEUTRAL");
+            string mood = rival.IsDefeated ? Tr("RIVAL_DEFEATED") : rival.IsFriendly ? Tr("RIVAL_FRIENDLY") : rival.IsHostile ? Tr("RIVAL_HOSTILE") : Tr("RIVAL_NEUTRAL");
             label.Text    = string.Format(Tr("RIVAL_ROW"), Tr(rival.NameKey), mood, (int)Mathf.Round(rival.Relation * 100f));
             gift.Text     = string.Format(Tr("RIVAL_GIFT"), giftFood);
+            gift.Visible  = !rival.IsDefeated;
             gift.Disabled = _tribe.Economy.Food < giftFood;
         }
     }

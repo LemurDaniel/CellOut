@@ -4,11 +4,13 @@
 #   - assets/models/cell/      the eighteen cell editor parts (flagellum, cilium, jaw, spike, ...)
 #   - assets/models/tree/      primeval trees of the islands (fern, cycad, horsetail, broadleaf, giant)
 #   - assets/models/village/   the nest of the pack and the fire pit of the tribe
+#   - assets/models/building/  the eighteen blocks of the building designer (walls, roofs, frames, ...)
 #   Everything is generated: skin modifier tubes, displaced spheres, an armature per
 #   moving part with one looping animation (Walk, Grab, Flap, Flutter, Sway, Whip, Beat, Chomp).
 #   Materials only carry names (Skin, Claw, Pad, Feather, Membrane, Fin, FinRay, Brain, EyeWhite,
 #   Pupil, Glint, Chitin, Armor, Chloro, Grana, Vacuole, Droplet, Toxin, Venom, Iris, Dark, Bark,
-#   Leaf, LeafDark, Frond, Horsetail, Needle, Cone, Twig, Moss, Earth, Down, Stone, Log, Ember), the
+#   Leaf, LeafDark, Frond, Horsetail, Needle, Cone, Twig, Moss, Earth, Down, Stone, Log, Ember,
+#   Paint, PaintDark, Wood, Bone, Door, Flame, Rope, FruitRed, FruitGold, FruitGreen), the
 #   game recolors them (Core/PartModels.cs, Core/TreeModels.cs).
 #   The builders live in models/ (one module per family, see README.md), this file
 #   registers them and exports. Requires: Blender 5.2. Usually run through Build-Models.ps1.
@@ -40,11 +42,32 @@ import models.fins
 import models.cells
 import models.trees
 import models.village
+import models.buildings
 
 # Inside a running Blender the modules stay loaded between runs: reload, helpers first
-for module in (models.helpers, models.limbs, models.organs, models.fins, models.cells, models.trees, models.village):
+for module in (models.helpers, models.limbs, models.organs, models.fins, models.cells, models.trees, models.village, models.buildings):
     importlib.reload(module)
 
+from models.buildings import (
+    build_awning,
+    build_banner,
+    build_cone_roof,
+    build_crate,
+    build_door,
+    build_gable_roof,
+    build_horns,
+    build_ladder,
+    build_palisade,
+    build_platform,
+    build_round_room,
+    build_round_tower,
+    build_small_cone_roof,
+    build_square_room,
+    build_stall,
+    build_stilts,
+    build_torch,
+    build_totem,
+)
 from models.cells import (
     build_armor,
     build_camouflage,
@@ -147,6 +170,24 @@ PARTS = {
     'tree/tree.giant.glb':                 build_tree_giant,
     'village/village.nest.glb':            build_nest,
     'village/village.fire.glb':            build_fire,
+    'building/building.roundroom.glb':     build_round_room,
+    'building/building.squareroom.glb':    build_square_room,
+    'building/building.roundtower.glb':    build_round_tower,
+    'building/building.coneroof.glb':      build_cone_roof,
+    'building/building.gableroof.glb':     build_gable_roof,
+    'building/building.smallconeroof.glb': build_small_cone_roof,
+    'building/building.stilts.glb':        build_stilts,
+    'building/building.platform.glb':      build_platform,
+    'building/building.ladder.glb':        build_ladder,
+    'building/building.palisade.glb':      build_palisade,
+    'building/building.torch.glb':         build_torch,
+    'building/building.banner.glb':        build_banner,
+    'building/building.stall.glb':         build_stall,
+    'building/building.awning.glb':        build_awning,
+    'building/building.crate.glb':         build_crate,
+    'building/building.door.glb':          build_door,
+    'building/building.totem.glb':         build_totem,
+    'building/building.horns.glb':         build_horns,
 }
 
 

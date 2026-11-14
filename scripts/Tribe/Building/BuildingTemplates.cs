@@ -3,7 +3,9 @@
 //   design: the editor offers them as buttons, a new game starts with the first one of
 //   each function and the rival tribes pick theirs at random. A template is a list of
 //   drops (block, cell, turns, paint) replayed onto an empty BuildingDesign, in order:
-//   a block listed later lands on the ones listed before. Pure data without the engine.
+//   a block listed later lands on the ones listed before. The cells of a template are
+//   written for a plot of TEMPLATE_SIZE cells and moved to the middle of the grid. Pure
+//   data without the engine.
 //
 //   BuildingDesign hut = BuildingTemplates.Default(BuildingKind.Dwelling);
 //   BuildingDesign tower = BuildingTemplates.Build(BuildingKind.Watchtower, 1);
@@ -24,11 +26,14 @@ public static class BuildingTemplates
     // ==============================   TEMPLATES   ==============================
     // ===========================================================================
     //
+    //   TEMPLATE_SIZE   Cells along X and Z the drops below are written for.
     //   Count     Templates of a function.
     //   NameKey   Translation key of a template.
     //   Build     A new design from a template.
     //   Default   The first template of a function.
     //
+
+    public const int TEMPLATE_SIZE = 8;
 
     private readonly record struct Drop(BlockKind Kind, int X, int Z, int Turns = 0, int Paint = BlockCatalog.DEFAULT_PAINT);
 
@@ -36,6 +41,7 @@ public static class BuildingTemplates
 
     // Paint indices of BlockCatalog.PAINTS used below
     private const int STONE = 2;
+    private const int SHINGLE = 6;
     private const int RED = 7;
     private const int BLUE = 8;
     private const int BONE = 9;
@@ -81,10 +87,10 @@ public static class BuildingTemplates
                 new Drop(BlockKind.Stilts, 4, 4),
                 new Drop(BlockKind.Platform, 2, 2),
                 new Drop(BlockKind.SquareRoom, 2, 2),
-                new Drop(BlockKind.PyramidRoof, 2, 2),
+                new Drop(BlockKind.GableRoof, 2, 2),
                 new Drop(BlockKind.Ladder, 6, 3),
                 new Drop(BlockKind.Crate, 1, 6),
-                new Drop(BlockKind.Basket, 0, 6),
+                new Drop(BlockKind.Crate, 0, 6),
             }),
             new Template("TEMPLATE_SILO", new[]
             {
@@ -92,7 +98,7 @@ public static class BuildingTemplates
                 new Drop(BlockKind.RoundRoom, 2, 2),
                 new Drop(BlockKind.ConeRoof, 2, 2),
                 new Drop(BlockKind.Door, 6, 3),
-                new Drop(BlockKind.Basket, 6, 1),
+                new Drop(BlockKind.Crate, 6, 1),
                 new Drop(BlockKind.Crate, 6, 6),
                 new Drop(BlockKind.Crate, 7, 6),
             }),
@@ -108,7 +114,7 @@ public static class BuildingTemplates
                 new Drop(BlockKind.Stall, 3, 5),
                 new Drop(BlockKind.Awning, 3, 5, Paint: OCHRE),
                 new Drop(BlockKind.Crate, 0, 5),
-                new Drop(BlockKind.Basket, 6, 5),
+                new Drop(BlockKind.Crate, 6, 5),
                 new Drop(BlockKind.Banner, 3, 3),
             }),
             new Template("TEMPLATE_HALL", new[]
@@ -143,8 +149,34 @@ public static class BuildingTemplates
                 new Drop(BlockKind.Horns, 3, 3),
                 new Drop(BlockKind.Torch, 2, 2),
                 new Drop(BlockKind.Torch, 5, 5),
-                new Drop(BlockKind.Basket, 2, 5),
-                new Drop(BlockKind.Basket, 5, 2),
+                new Drop(BlockKind.Crate, 2, 5),
+                new Drop(BlockKind.Crate, 5, 2),
+            }),
+        },
+        [BuildingKind.Barracks] = new[]
+        {
+            new Template("TEMPLATE_WAR_HUT", new[]
+            {
+                new Drop(BlockKind.SquareRoom, 2, 2, Paint: SHINGLE),
+                new Drop(BlockKind.GableRoof, 2, 2, Paint: RED),
+                new Drop(BlockKind.Horns, 3, 3),
+                new Drop(BlockKind.Door, 6, 3),
+                new Drop(BlockKind.Palisade, 2, 0),
+                new Drop(BlockKind.Palisade, 2, 7),
+                new Drop(BlockKind.Banner, 7, 1, Paint: RED),
+                new Drop(BlockKind.Torch, 7, 6),
+            }),
+            new Template("TEMPLATE_WAR_CAMP", new[]
+            {
+                new Drop(BlockKind.RoundRoom, 2, 2),
+                new Drop(BlockKind.ConeRoof, 2, 2),
+                new Drop(BlockKind.Horns, 3, 3),
+                new Drop(BlockKind.Door, 6, 3),
+                new Drop(BlockKind.Palisade, 0, 2, Turns: 1),
+                new Drop(BlockKind.Palisade, 2, 0),
+                new Drop(BlockKind.Palisade, 2, 7),
+                new Drop(BlockKind.Banner, 7, 0, Paint: RED),
+                new Drop(BlockKind.Banner, 7, 7, Paint: RED),
             }),
         },
         [BuildingKind.Watchtower] = new[]
@@ -174,7 +206,7 @@ public static class BuildingTemplates
                 new Drop(BlockKind.Door, 5, 3),
                 new Drop(BlockKind.Platform, 2, 2, Paint: STONE),
                 new Drop(BlockKind.Stilts, 3, 3),
-                new Drop(BlockKind.SmallPyramidRoof, 3, 3),
+                new Drop(BlockKind.SmallConeRoof, 3, 3, Paint: STONE),
                 new Drop(BlockKind.Torch, 2, 6),
                 new Drop(BlockKind.Crate, 6, 1),
             }),
@@ -207,9 +239,10 @@ public static class BuildingTemplates
             throw new System.ArgumentOutOfRangeException(nameof(index), $"index must be 0..{templates.Length - 1} for {kind}, got '{index}'.");
         }
         var design = new BuildingDesign(kind);
+        int toMiddle = (BuildingDesign.GRID_SIZE - TEMPLATE_SIZE) / 2;
         foreach (Drop drop in templates[index].Drops)
         {
-            if (!design.TryPlace(drop.Kind, drop.X, drop.Z, drop.Turns, drop.Paint))
+            if (!design.TryPlace(drop.Kind, drop.X + toMiddle, drop.Z + toMiddle, drop.Turns, drop.Paint))
             {
                 throw new System.InvalidOperationException($"Template '{templates[index].NameKey}' must fit the grid, {drop.Kind} at ({drop.X}, {drop.Z}) does not.");
             }

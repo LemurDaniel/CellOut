@@ -163,7 +163,7 @@ public partial class FollowCamera : Node
     private const float RTS_PAN_SPEED = 0.9f;        // strategy view: camera distances per second the keys pan
     private const float RTS_VIEW_SHARE = 1.1f;       // strategy view: spawning reaches a little past the view
     private const float RTS_MIN_ZOOM = 0.35f;        // strategy view: closer than the chase camera allows, not into the ground
-    private const float RTS_MAX_ZOOM = 1.6f;         // strategy view: the island stays in reach, no empty sky
+    public const float RTS_MAX_ZOOM = 1.6f;          // strategy view: the island stays in reach, no empty sky
 
     /// <summary>Wheel zoom on top of the automatic distance, 1 = default, bigger = farther away.</summary>
     public float ZoomFactor { get; private set; } = 1f;

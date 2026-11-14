@@ -2,7 +2,7 @@
 //   The strategy layer of the tribe: from the tribe stage on the player commands the
 //   villagers (every Kin of the pack and the own body) from the strategy view of the
 //   camera. Left click or a drag box selects, right click orders the selection: onto a
-//   tree it chops wood, onto an enemy it attacks, else it walks there. Idle villagers
+//   tree it chops wood, onto an enemy it attacks, onto an enemy building it tears it down, else it walks there. Idle villagers
 //   gather the fruit nearby, gathered fruit and chopped wood fill the stock
 //   (TribeEconomy), the stock pays for buildings next to the fire: one blueprint per
 //   function (DesignOf, edited in the BuildingEditor), dwellings raise villagers, the
@@ -15,7 +15,7 @@
 //   AddChild(tribe);
 //   tribe.Update(dt);                       // in _PhysicsProcess
 //   if (tribe.HandleInput(@event)) GetViewport().SetInputAsHandled();
-//   tribe.TryBuild(BuildingKind.Dwelling);  // HUD button
+//   tribe.TryBuildAt(BuildingKind.Dwelling, spot);   // the BuildingPlacer, where the player clicked
 
 //
 //   Chapters:
@@ -151,7 +151,7 @@ public partial class TribeCommander : Node3D
     //   HandleInput   Left press starts a box, release selects (click: the nearest unit), right click orders, Tab selects all.
     //   SelectAt      The unit under the cursor, Shift adds to the selection.
     //   SelectBox     Every unit whose screen position lies in the box.
-    //   Order         The selection chops a tree, attacks an enemy or walks to the point (spread on a ring).
+    //   Order         The selection attacks an enemy, razes an enemy building, chops a tree or walks to the point (spread on a ring).
     //   TreeAt        The tree whose trunk lies under a plane point, null when none.
     //   DrawRings     A ring under every selected unit and a white one under the player, once per frame.
     //
@@ -286,6 +286,7 @@ public partial class TribeCommander : Node3D
     /*
       A right click on the plane, for the selection:
       > An enemy kin under the cursor: every selected kin attacks it (the player walks there).
+      > An enemy building under the cursor: every selected kin tears it down.
       > A trunk under the cursor: every selected kin chops it.
       > Otherwise: everyone walks there, several units spread on a ring, never into the sea.
     */
@@ -314,6 +315,22 @@ public partial class TribeCommander : Node3D
                 }
             }
             Log.Verbose("TribeCommander", $"{_selected.Count} unit(s) attack a kin of faction {enemy.Faction}.");
+            return;
+        }
+        if (_rivals?.HutAt(point) is Hut building)
+        {
+            foreach (CellBody unit in _selected)
+            {
+                if (unit is Kin kin)
+                {
+                    kin.OrderRaze(building);
+                }
+                else
+                {
+                    unit.OrderTarget = building.Position;
+                }
+            }
+            Log.Verbose("TribeCommander", $"{_selected.Count} unit(s) raze a {building.Design.Kind} of faction {building.Faction}.");
             return;
         }
         if (TreeAt(point) is Coast.Tree tree)
@@ -422,7 +439,9 @@ public partial class TribeCommander : Node3D
     //   Update        Idle villagers gather, choppers chop, huts raise villagers and stay on the
     //                 ground, the fire shows the stock, rings follow.
     //   Gather        An idle villager walks to the nearest fruit within GatherRange.
-    //   TryBuild      Pays a building of a function and places it next to the fire on land.
+    //   CanBuildAt    Whether a building may stand at a spot.
+    //   TryBuildAt    Pays a building of a function and places it where the player chose.
+    //   TryBuild      The same without a chosen spot: the next free slot around the fire.
     //
 
     private readonly List<Hut> _huts = new();
@@ -462,7 +481,7 @@ public partial class TribeCommander : Node3D
             hut.GroundHeight = Coast.GroundHeight(hut.Position) * size;
             if (hut.Raise(dt))
             {
-                _pack.SpawnVillager(hut.Position);
+                _pack.SpawnVillager(hut.Position, isWarrior: hut.Design.Warriors > 0);
                 EmitSignal(SignalName.Changed);
             }
         }
@@ -500,42 +519,83 @@ public partial class TribeCommander : Node3D
     }
 
     private const int HUT_TRIES = 12;
-    private const int HUTS_PER_RING = 6;             // huts around the fire before the next ring starts
+    private const int HUTS_PER_RING = 6;             // slots around the fire before the next ring starts
     private static readonly float HUT_ANGLE = Mathf.Tau / HUTS_PER_RING;
 
-    /// <summary>Pays a building from the stock and places it HutDistance from the fire, on land and clear of trunks.</summary>
-    /// <param name="kind">(Required) The function, built from its blueprint (DesignOf).</param>
-    /// <returns>True when it was built.</returns>
-    /// <example><code>if (!tribe.TryBuild(BuildingKind.Market)) ...   // not enough food or wood</code></example>
-    public bool TryBuild(BuildingKind kind)
+    /*
+      A building may stand where all of this holds:
+      > The tribe exists and the spot is on land.
+      > It lies within BuildRadius of the fire, but not on the fire itself.
+      > It keeps BuildSpacing to every standing building.
+    */
+    /// <summary>Whether a building may stand at a spot: on land, within BuildRadius of the fire, BuildSpacing clear of the fire and of other buildings.</summary>
+    /// <param name="spot">(Required) Plane point of its center.</param>
+    public bool CanBuildAt(Vector2 spot)
     {
-        BuildingDesign design = DesignOf(kind);
-        if (!IsActive || !Economy.CanAfford(design))
+        if (!IsActive || !Coast.IsOnLand(spot))
         {
             return false;
         }
-        float   unit = Coast.Unit;
+        float unit     = Coast.Unit;
+        float fromFire = spot.DistanceTo(_pack.Nest.Position);
+        if (fromFire > Tune.BuildRadius * unit || fromFire < Tune.BuildSpacing * unit)
+        {
+            return false;
+        }
+        foreach (Hut hut in _huts)
+        {
+            if (!hut.IsQueuedForDeletion() && hut.Position.DistanceTo(spot) < Tune.BuildSpacing * unit)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /// <summary>Pays a building from the stock and places it where the player chose.</summary>
+    /// <param name="kind">(Required) The function, built from its blueprint (DesignOf).</param>
+    /// <param name="spot">(Required) Plane point of its center, see CanBuildAt.</param>
+    /// <param name="turn">(Optional) Turn around the vertical axis in radians. Defaults to a random one.</param>
+    /// <returns>True when it was built: the spot is allowed and the stock pays for it.</returns>
+    /// <example><code>if (tribe.CanBuildAt(spot)) tribe.TryBuildAt(BuildingKind.Market, spot);</code></example>
+    public bool TryBuildAt(BuildingKind kind, Vector2 spot, float? turn = null)
+    {
+        BuildingDesign design = DesignOf(kind);
+        if (!CanBuildAt(spot) || !Economy.BuildHut(design))
+        {
+            return false;
+        }
+        var hut = new Hut { Position = spot, Size = Coast.Unit * Hut.SCALE, GroundHeight = Coast.GroundHeight(spot) * Player.BodySize(), Turn = turn };
+        hut.Setup(design, faction: 0);
+        hut.Destroyed += () => EmitSignal(SignalName.Changed);
+        _huts.Add(hut);
+        AddChild(hut);
+        EmitSignal(SignalName.Changed);
+        Log.Verbose("TribeCommander", $"{kind} built at {spot} (building {Economy.Huts}), {Economy.Food} food and {Economy.Wood} wood left.");
+        return true;
+    }
+
+    /// <summary>Builds without a chosen spot: the next free slot on a ring HutDistance around the fire (tests, the graphics reel).</summary>
+    /// <param name="kind">(Required) The function, built from its blueprint (DesignOf).</param>
+    /// <returns>True when it was built.</returns>
+    /// <example><code>if (!tribe.TryBuild(BuildingKind.Market)) ...   // not enough food or wood, or no free slot</code></example>
+    public bool TryBuild(BuildingKind kind)
+    {
+        if (!IsActive || !Economy.CanAfford(DesignOf(kind)))
+        {
+            return false;
+        }
         Vector2 fire = _pack.Nest.Position;
         for (int i = 0; i < HUT_TRIES; i++)
         {
-            // Hut n takes slot n around the fire, every HUTS_PER_RING a ring further out, a try skips to the next slot
+            // Building n takes slot n around the fire, every HUTS_PER_RING a ring further out, a try skips to the next slot
             int     slot  = Economy.Huts + i;
             float   angle = HUT_ANGLE * slot + 0.5f * HUT_ANGLE * (slot / HUTS_PER_RING);
-            Vector2 spot  = fire + Vector2.FromAngle(angle) * Tune.HutDistance * unit * (1f + 0.6f * (slot / HUTS_PER_RING));
-            if (!Coast.IsOnLand(spot))
+            Vector2 spot  = fire + Vector2.FromAngle(angle) * Tune.HutDistance * Coast.Unit * (1f + 0.6f * (slot / HUTS_PER_RING));
+            if (TryBuildAt(kind, Coast.PushOutOfTrees(spot, Coast.Unit * Hut.SCALE)))
             {
-                continue;
+                return true;
             }
-            spot = Coast.PushOutOfTrees(spot, unit * Hut.SCALE);
-            Economy.BuildHut(design);
-            var hut = new Hut { Position = spot, Size = unit * Hut.SCALE, GroundHeight = Coast.GroundHeight(spot) * Player.BodySize() };
-            hut.Setup(design, faction: 0);
-            hut.Destroyed += () => EmitSignal(SignalName.Changed);
-            _huts.Add(hut);
-            AddChild(hut);
-            EmitSignal(SignalName.Changed);
-            Log.Verbose("TribeCommander", $"{kind} built (building {Economy.Huts}), {Economy.Food} food and {Economy.Wood} wood left.");
-            return true;
         }
         return false;
     }

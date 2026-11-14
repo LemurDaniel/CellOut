@@ -147,6 +147,11 @@ public partial class GraphicsReel : Node
             case DESIGN_FRAME:
                 _main.OpenBuildingEditor();
                 _main.BuildingEditor.Session.ShowKind(BuildingKind.Watchtower);
+                _main.BuildingEditor.Session.ShowKind(BuildingKind.Dwelling);
+                _main.BuildingEditor.Session.PickPattern(3);
+                _main.BuildingEditor.Session.Repaint(0);
+                _main.BuildingEditor.Session.PickPattern(1);
+                _main.BuildingEditor.Session.Repaint(1);
                 _main.BuildingEditor.Session.Select(BlockKind.Totem);
                 break;
             case QUIT_FRAME:

@@ -20,6 +20,8 @@ namespace CellOut.Tests;
 
 public class TribeTests
 {
+    private const int GRID = BuildingDesign.GRID_SIZE;
+
     // ===========================================================================
     // ===========================   KEEP THE STOCK   ============================
     // ===========================================================================
@@ -114,6 +116,8 @@ public class TribeTests
         Assert.Equal(20f, new BuildingDesign(BuildingKind.Watchtower).Defense);
         Assert.Equal(8, new BuildingDesign(BuildingKind.Watchtower).WoodCost);
         Assert.Equal(0, new BuildingDesign(BuildingKind.Watchtower).Villagers);
+        Assert.Equal(2, new BuildingDesign(BuildingKind.Barracks).Warriors);
+        Assert.Equal(0, new BuildingDesign(BuildingKind.Dwelling).Warriors);
     }
 
     [Fact]
@@ -133,7 +137,7 @@ public class TribeTests
         Assert.Equal(0, design.BlockAt(3, 1, 3));
         Assert.Equal(1, design.BlockAt(5, 3, 5));
         Assert.Equal(2, design.BlockAt(0, 0, 0));
-        Assert.Equal(-1, design.BlockAt(7, 0, 7));
+        Assert.Equal(-1, design.BlockAt(GRID - 1, 0, GRID - 1));
         Assert.Equal(-1, design.BlockAt(3, 4, 3));
     }
 
@@ -142,18 +146,18 @@ public class TribeTests
     {
         var design = new BuildingDesign(BuildingKind.Watchtower);
 
-        Assert.False(design.TryPlace(BlockKind.RoundRoom, 5, 5));
+        Assert.False(design.TryPlace(BlockKind.RoundRoom, GRID - 3, GRID - 3));
         Assert.False(design.TryPlace(BlockKind.Crate, -1, 0));
-        Assert.Null(design.RestHeight(BlockKind.Crate, 0, 8));
+        Assert.Null(design.RestHeight(BlockKind.Crate, 0, GRID));
 
         // The palisade is four cells along X, a quarter turn lays it along Z
-        Assert.True(design.TryPlace(BlockKind.Palisade, 4, 7));
-        Assert.False(design.TryPlace(BlockKind.Palisade, 5, 7));
-        Assert.True(design.TryPlace(BlockKind.Palisade, 7, 0, turns: 1));
-        Assert.False(design.TryPlace(BlockKind.Palisade, 7, 5, turns: 1));
+        Assert.True(design.TryPlace(BlockKind.Palisade, GRID - 4, GRID - 1));
+        Assert.False(design.TryPlace(BlockKind.Palisade, GRID - 3, GRID - 1));
+        Assert.True(design.TryPlace(BlockKind.Palisade, GRID - 1, 0, turns: 1));
+        Assert.False(design.TryPlace(BlockKind.Palisade, GRID - 1, GRID - 3, turns: 1));
 
-        // Six towers of two cells fill the twelve cells of height, the seventh sticks out
-        for (int i = 0; i < 6; i++)
+        // Towers of two cells fill the height of the grid, one more sticks out
+        for (int i = 0; i < BuildingDesign.GRID_HEIGHT / 2; i++)
         {
             Assert.True(design.TryPlace(BlockKind.RoundTower, 3, 3));
         }
@@ -215,7 +219,7 @@ public class TribeTests
     //
     //   SittingCopiesTheDesigns       Drafts are copies, the tribe's designs stay untouched until the result is taken.
     //   PickedBlockCentersOnTheCell   A four cell block centers on the pointed cell and stays inside the grid.
-    //   TurnAndPaintGoWithTheBlock    R turns the next block, the paint is stored, a wrong paint falls back.
+    //   TurnAndPaintGoWithTheBlock    R turns the next block, paint and pattern are stored and repaint a placed block, a wrong paint falls back.
     //   EmptyDraftFallsBackToTemplate A cleared draft results in the first template of its function.
     //
 
@@ -254,10 +258,10 @@ public class TribeTests
 
         session.Select(BlockKind.RoundRoom);
         Assert.Equal((3, 3), session.AnchorFor(4, 4));
-        Assert.Equal((0, 4), session.AnchorFor(0, 7));
+        Assert.Equal((0, GRID - 4), session.AnchorFor(0, GRID - 1));
 
         session.Select(BlockKind.Crate);
-        Assert.Equal((7, 0), session.AnchorFor(7, 0));
+        Assert.Equal((GRID - 1, 0), session.AnchorFor(GRID - 1, 0));
 
         session.Select(BlockKind.Crate);
         Assert.Null(session.Selected);
@@ -271,11 +275,19 @@ public class TribeTests
         session.Select(BlockKind.Palisade);
         session.Rotate();
         session.PickPaint(2);
+        session.PickPattern(3);
 
         Assert.Equal(1, session.Turns);
         Assert.Equal((7, 3), session.AnchorFor(7, 4));
         Assert.True(session.PlaceAt(7, 4));
-        Assert.Equal(new PlacedBlock(BlockKind.Palisade, 7, 0, 3, 1, 2), session.Draft.Blocks[0]);
+        Assert.Equal(new PlacedBlock(BlockKind.Palisade, 7, 0, 3, 1, 2, 3), session.Draft.Blocks[0]);
+
+        // Another paint and pattern repaint the placed block, a pattern outside the list is clamped
+        session.PickPaint(8);
+        session.PickPattern(99);
+        Assert.True(session.Repaint(0));
+        Assert.Equal(new PlacedBlock(BlockKind.Palisade, 7, 0, 3, 1, 8, BlockCatalog.PATTERN_COUNT - 1), session.Draft.Blocks[0]);
+        Assert.False(session.Repaint(5));
 
         session.PickPaint(99);
         Assert.Equal(BlockCatalog.DEFAULT_PAINT, session.Paint);

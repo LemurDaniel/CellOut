@@ -429,16 +429,21 @@ public partial class PackKeeper : Node2D
         Log.Verbose("PackKeeper", IsStaying ? "The pack stays." : "The pack follows.");
     }
 
-    /// <summary>A grown villager next to a hut, the tribe raised it.</summary>
-    /// <param name="spot">(Required) Plane point of the hut.</param>
-    public void SpawnVillager(Vector2 spot)
+    /// <summary>A grown villager next to a building, the tribe raised it.</summary>
+    /// <param name="spot">(Required) Plane point of the building.</param>
+    /// <param name="isWarrior">(Optional) Trained in a warrior hut: a warrior. Defaults to false.</param>
+    public void SpawnVillager(Vector2 spot, bool isWarrior = false)
     {
         if (null == Nest)
         {
             throw new System.InvalidOperationException("A villager needs the nest with the fire, build the nest first.");
         }
         float size = Player.BodySize();
-        SpawnKin(spot + Vector2.FromAngle(Rand.Angle()) * size * 2f, size, KinMode.Villager);
+        Kin villager = SpawnKin(spot + Vector2.FromAngle(Rand.Angle()) * size * 2f, size, KinMode.Villager);
+        if (isWarrior)
+        {
+            villager.MakeWarrior();
+        }
     }
 
     /// <summary>The dead leader lives on in the body of the biggest grown member, which leaves the pack.</summary>

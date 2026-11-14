@@ -30,10 +30,11 @@ public partial class Hut : Node2D
     //   RADIUS          Model units from the center that count as "at the building": half a room block.
     //   Size            (Required) World units per model unit (coast unit times SCALE).
     //   GroundHeight    (Required) Ground below in world units, kept up to date by its keeper.
+    //   Turn            (Optional) Turn around the vertical axis in radians, a random one when not set.
     //   Design          The blueprint it was built from.
     //   Faction         0 the player's, else the rival tribe it belongs to.
     //   Hp / MaxHp      Hit points, from the function of the design.
-    //   VillagersLeft   Villagers this hut still raises.
+    //   VillagersLeft   Villagers (or warriors, in a warrior hut) this building still raises.
     //   Progress        0..1 of the next villager, 0 once the hut raised them all.
     //   Destroyed       Zero health: the hut is gone, its keeper forgets it.
     //   Setup           Blueprint and faction, before AddChild.
@@ -52,6 +53,7 @@ public partial class Hut : Node2D
 
     public float Size { get; set; } = 14f;
     public float GroundHeight { get; set; }
+    public float? Turn { get; set; }
     public BuildingDesign Design { get; } = new(BuildingKind.Dwelling);
     public int Faction { get; private set; }
     public float Hp { get; private set; }
@@ -79,12 +81,12 @@ public partial class Hut : Node2D
         Faction       = faction;
         MaxHp         = Design.Health;
         Hp            = MaxHp;
-        VillagersLeft = Design.Villagers;
+        VillagersLeft = Design.Villagers + Design.Warriors;
     }
 
     public override void _Ready()
     {
-        _visual = new Node3D { Basis = new Basis(Vector3.Up, Rand.Angle()) };
+        _visual = new Node3D { Basis = new Basis(Vector3.Up, Turn ?? Rand.Angle()) };
         AddChild(_visual);
         var look = new BuildingVisual3D();
         look.Build(Design);

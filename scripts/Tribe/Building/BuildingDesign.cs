@@ -28,13 +28,13 @@ namespace CellOut;
 // ===========================================================================
 //
 //   BuildingKind   The function: dwelling (villagers), storehouse (food per fruit), market
-//                  (trade), totem (relation), watchtower (defense).
-//   PlacedBlock    A block on the grid: the cell of its lowest corner, quarter turns, paint.
+//                  (trade), totem (relation), watchtower (defense), barracks (the warrior hut: warriors).
+//   PlacedBlock    A block on the grid: the cell of its lowest corner, quarter turns, paint and pattern.
 //
 
-public enum BuildingKind { Dwelling, Storehouse, Market, Totem, Watchtower }
+public enum BuildingKind { Dwelling, Storehouse, Market, Totem, Watchtower, Barracks }
 
-public readonly record struct PlacedBlock(BlockKind Kind, int X, int Y, int Z, int Turns, int Paint);
+public readonly record struct PlacedBlock(BlockKind Kind, int X, int Y, int Z, int Turns, int Paint, int Pattern = 0);
 
 public sealed class BuildingDesign
 {
@@ -51,14 +51,15 @@ public sealed class BuildingDesign
     //   RestHeight    Where a block would land, null when it does not fit.
     //   TryPlace      Drops a block onto the grid.
     //   BlockAt       The block that fills a cell, -1 for none.
+    //   Repaint       Gives a placed block another paint and pattern.
     //   RemoveAt      Removes a block, the ones above fall.
     //   Clear         Removes every block.
     //   CopyFrom      Takes over function and blocks of another design.
     //
 
-    public const int GRID_SIZE = 8;
-    public const int GRID_HEIGHT = 12;
-    public const int MAX_BLOCKS = 64;
+    public const int GRID_SIZE = 12;
+    public const int GRID_HEIGHT = 16;
+    public const int MAX_BLOCKS = 120;
 
     private readonly List<PlacedBlock> _blocks = new();
 
@@ -124,15 +125,31 @@ public sealed class BuildingDesign
     /// <param name="z">(Required) Cell of its lowest corner along Z, 0..GRID_SIZE.</param>
     /// <param name="turns">(Optional) Quarter turns around the vertical axis. Defaults to 0.</param>
     /// <param name="paint">(Optional) Index in BlockCatalog.PAINTS. Defaults to the paint of the block.</param>
+    /// <param name="pattern">(Optional) 0..BlockCatalog.PATTERN_COUNT, 0 is plain. Defaults to 0.</param>
     /// <returns>False when it leaves the grid, sticks out on top or the design is full.</returns>
     /// <example><code>design.TryPlace(BlockKind.Palisade, 2, 0, turns: 1, paint: 3);</code></example>
-    public bool TryPlace(BlockKind kind, int x, int z, int turns = 0, int paint = BlockCatalog.DEFAULT_PAINT)
+    public bool TryPlace(BlockKind kind, int x, int z, int turns = 0, int paint = BlockCatalog.DEFAULT_PAINT, int pattern = 0)
     {
         if (_blocks.Count >= MAX_BLOCKS || RestHeight(kind, x, z, turns) is not int y)
         {
             return false;
         }
-        _blocks.Add(new PlacedBlock(kind, x, y, z, turns & 3, paint));
+        _blocks.Add(new PlacedBlock(kind, x, y, z, turns & 3, paint, System.Math.Clamp(pattern, 0, BlockCatalog.PATTERN_COUNT - 1)));
+        return true;
+    }
+
+    /// <summary>Gives a placed block another paint and pattern.</summary>
+    /// <param name="index">(Required) Index in Blocks.</param>
+    /// <param name="paint">(Required) Index in BlockCatalog.PAINTS or BlockCatalog.DEFAULT_PAINT.</param>
+    /// <param name="pattern">(Required) 0..BlockCatalog.PATTERN_COUNT, 0 is plain.</param>
+    /// <returns>False for an index outside Blocks.</returns>
+    public bool Repaint(int index, int paint, int pattern)
+    {
+        if (index < 0 || index >= _blocks.Count)
+        {
+            return false;
+        }
+        _blocks[index] = _blocks[index] with { Paint = paint, Pattern = System.Math.Clamp(pattern, 0, BlockCatalog.PATTERN_COUNT - 1) };
         return true;
     }
 
@@ -212,6 +229,7 @@ public sealed class BuildingDesign
     //   WoodCost        Wood the building costs.
     //   Health          Hit points against raids.
     //   Villagers       Villagers it raises (dwelling).
+    //   Warriors        Warriors it trains (warrior hut).
     //   Defense         Defense it adds to the village (watchtower).
     //   TradeBonus      Share more a trader brings (market).
     //   RelationBonus   Extra relation per trade (totem).
@@ -228,6 +246,8 @@ public sealed class BuildingDesign
     public float Health => Tune.Health;
 
     public int Villagers => Tune.Villagers;
+
+    public int Warriors => Tune.Warriors;
 
     public float Defense => Tune.Defense;
 

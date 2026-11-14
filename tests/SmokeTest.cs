@@ -123,7 +123,7 @@ public partial class SmokeTest : Node
             player.Died         += () => _hasDied = true;
         }
 
-        // Points wait instead of opening the editor, E / the button opens it
+        // Points wait instead of opening the editor, Z / the button opens it
         if (MANUAL_EDITOR_FRAME == _frame)
         {
             // Neither a level up nor the stage advance before opened it
@@ -509,7 +509,7 @@ public partial class SmokeTest : Node
     //   Hirn                    A big brain adds 2 EP per level (4 instead of 2).
     //   Rudel                   Nest, three followers and two pups after the cheat (enough for the tribe offer), a deadly hit is survived in a member's body.
     //   Stamm                   Fire lit, villagers commanded, the stock pays a dwelling, the village builder pauses and changes
-    //                           the watchtower blueprint, a chopper yields wood, rivals settle, a gift and a forced raid, the camera rises.
+    //                           the watchtower blueprint, a chopper yields wood, rivals settle, a gift and a forced raid, warriors raze a rival village, the camera rises.
     //   Teil-Modelle            Every Blender part model (creature and cell) loads with meshes and its looping animation.
     //   Grafikstufen            The tier cycles Low, Medium, High, owners hear the change, depth blur only above Low.
     //   Wasserfarben            The water follows the stage: primordial, pond, sea; the lens and the depth fog are set.
@@ -714,20 +714,52 @@ public partial class SmokeTest : Node
             && pack.Members >= Balance.Current.Tribe.Pack.FoundTribeAt
             && tribe.Units().Count == pack.Members + 1;
 
-        // Select the player by a click on it and order it two sizes to the right: the order sticks until it arrives
+        // Select the player by a click on it and order it two sizes away: the order sticks until it arrives.
+        // A trunk may stand right there (the click would mean chopping), so the next direction is tried then
         tribe.SelectAt(player.GlobalPosition, isAdding: false);
-        Vector2 target = player.GlobalPosition + Vector2.Right * player.BodySize() * 2f;
-        tribe.Order(target);
-        bool isOrdered = 1 == tribe.Selected.Count && tribe.Selected[0] == player && target == player.OrderTarget
-            && player.OrderDirection().IsEqualApprox(Vector2.Right);
+        bool isOrdered = false;
+        foreach (Vector2 direction in new[] { Vector2.Right, Vector2.Up, Vector2.Left, Vector2.Down })
+        {
+            Vector2 target = player.GlobalPosition + direction * player.BodySize() * 2f;
+            player.OrderTarget = null;
+            tribe.Order(target);
+            isOrdered = 1 == tribe.Selected.Count && tribe.Selected[0] == player && target == player.OrderTarget
+                && player.OrderDirection().IsEqualApprox(direction);
+            if (isOrdered)
+            {
+                break;
+            }
+        }
 
         // A full stock pays a dwelling of the blueprint, an empty one does not
         BuildingDesign dwelling = tribe.DesignOf(BuildingKind.Dwelling);
+        VillageBalance village0 = Balance.Current.Tribe.Village;
         bool isPoor = !tribe.TryBuild(BuildingKind.Dwelling);
         tribe.Economy.AddFood(dwelling.FoodCost);
         tribe.Economy.AddWood(dwelling.WoodCost);
         bool isBuilt = tribe.TryBuild(BuildingKind.Dwelling) && 1 == tribe.Huts.Count && 0 == tribe.Economy.Food && 0 == tribe.Economy.Wood && 1 == tribe.Economy.Huts
             && Mathf.IsEqualApprox(tribe.Huts[0].MaxHp, Balance.Current.Tribe.Buildings[BuildingKind.Dwelling].Health);
+
+        // Placing by hand: a tile hangs the building at the mouse, R turns it (two steps of a sixteenth turn here), a spot right at the fire or beyond the build radius
+        // is refused, a spot in between takes it
+        BuildingPlacer placer = _main.Placer;
+        float          unit   = _main.Coast.Unit;
+        Vector2        fire   = pack.Nest.Position;
+        tribe.Economy.AddFood(dwelling.FoodCost);
+        tribe.Economy.AddWood(dwelling.WoodCost);
+        placer.Begin(BuildingKind.Dwelling);
+        placer.Rotate(3);
+        placer.Rotate(-1);
+        float turned = placer.Turn;
+        bool isHanging = placer.IsPlacing && !placer.PlaceAt(fire) && !placer.PlaceAt(fire + Vector2.Right * village0.BuildRadius * unit * 1.5f) && placer.IsPlacing;
+        bool isPlaced  = false;
+        for (int i = 0; i < 16 && !isPlaced; i++)
+        {
+            Vector2 spot = fire + Vector2.FromAngle(Mathf.Tau * i / 16f + 0.3f) * village0.BuildRadius * unit * 0.8f;
+            isPlaced = tribe.CanBuildAt(spot) && placer.PlaceAt(spot) && tribe.Huts[^1].Position == spot
+                && Mathf.IsEqualApprox(turned, Mathf.Tau / 8f) && tribe.Huts[^1].Turn == turned;
+        }
+        bool isHandPlaced = isHanging && isPlaced && !placer.IsPlacing && 2 == tribe.Huts.Count && 0 == tribe.Economy.Food;
 
         // The village builder pauses the game; a watchtower from its second template plus a dropped torch becomes the
         // blueprint of the tribe, the next watchtower defends the village and the game runs on
@@ -744,7 +776,7 @@ public partial class SmokeTest : Node
         tribe.Economy.AddWood(tower.WoodCost);
         bool isDesigned = isOpened && isDropped && !editor.IsOpen && !GetTree().Paused
             && templateBlocks + 1 == tower.Blocks.Count && BlockKind.Torch == tower.Blocks[^1].Kind
-            && tribe.TryBuild(BuildingKind.Watchtower) && 2 == tribe.Huts.Count
+            && isHandPlaced && tribe.TryBuild(BuildingKind.Watchtower) && 3 == tribe.Huts.Count
             && Mathf.IsEqualApprox(tribe.Defense, Balance.Current.Tribe.Buildings[BuildingKind.Watchtower].Defense);
 
         // Wood: a villager ordered onto a trunk chops a load every ChopSeconds once it stands there
@@ -785,7 +817,59 @@ public partial class SmokeTest : Node
             rivals.ForceRaid(enemy);
             isRaided = enemy.Kin.Count == kinBefore + Balance.Current.Tribe.Rivals.Raiders;
         }
-        return isTribe && isOrdered && isPoor && isBuilt && isDesigned && isChopped && hasRivals && isGifted && isRaided;
+
+        // War: warriors (twice the health) tear down every building of the hostile tribe, the first one costs
+        // relation, the last one defeats it and its stock is looted
+        bool isConquered = false;
+        if (hasRivals)
+        {
+            RivalTribe      enemy    = rivals.Rivals[1];
+            RivalsBalance   war      = Balance.Current.Tribe.Rivals;
+            VillageBalance  village  = Balance.Current.Tribe.Village;
+            var             warriors = new System.Collections.Generic.List<Kin>();
+            for (int i = 0; i < 6; i++)
+            {
+                pack.SpawnVillager(pack.Nest.Position, isWarrior: true);
+                warriors.Add(pack.Kin[^1]);
+            }
+            // The raiders of the forced raid above would fight the player meanwhile: the probe is about the buildings
+            foreach (Kin kin in enemy.Kin)
+            {
+                if (KinRole.Raider == kin.Role)
+                {
+                    kin.QueueFree();
+                }
+            }
+            bool isTrained = warriors[0].IsWarrior && Mathf.IsEqualApprox(warriors[0].MaxHp, village.KinHealth * village.WarriorHealth)
+                && Mathf.IsEqualApprox(warriors[0].DamageScale, village.WarriorDamage);
+            int   buildings      = enemy.Huts.Count;
+            float relationBefore = enemy.Relation;
+            int   foodBefore     = tribe.Economy.Food;
+            bool  isPicked       = buildings > 0 && rivals.HutAt(enemy.Huts[0].Position) == enemy.Huts[0];
+            for (int step = 0; step < 40 && enemy.Huts.Count > 0; step++)
+            {
+                Hut razed = enemy.Huts[0];
+                foreach (Kin warrior in warriors)
+                {
+                    if (IsInstanceValid(warrior) && !warrior.IsQueuedForDeletion() && warrior.RazeTarget != razed)
+                    {
+                        warrior.OrderRaze(razed);
+                        warrior.Position    = razed.Position + Vector2.Right * razed.Size * Hut.RADIUS;
+                        warrior.OrderTarget = null;     // as if it arrived
+                    }
+                }
+                rivals.Update(0.5f);
+            }
+            isConquered = isTrained && isPicked && 0 == enemy.Huts.Count && enemy.IsDefeated
+                && enemy.Relation < relationBefore
+                && tribe.Economy.Food == foodBefore + war.DefeatFood;
+        }
+        bool isOk = isTribe && isOrdered && isPoor && isBuilt && isDesigned && isChopped && hasRivals && isGifted && isRaided && isConquered;
+        if (!isOk)
+        {
+            GD.Print($"  tribe {isTribe}, ordered {isOrdered}, poor {isPoor}, built {isBuilt}, designed {isDesigned}, chopped {isChopped}, rivals {hasRivals}, gifted {isGifted}, raided {isRaided}, conquered {isConquered}");
+        }
+        return isOk;
     }
 
     private bool ProbeZoom()
@@ -796,9 +880,16 @@ public partial class SmokeTest : Node
         {
             _main._UnhandledInput(wheelDown);
         }
-        bool isCapped = Mathf.IsEqualApprox(_main.ZoomFactor, Main.MAX_ZOOM);
+        // The probe runs in the tribe stage: once the camera has risen into the strategy view its own, lower cap applies
+        float zoomedOut = _main.ZoomFactor;
+        bool  isCapped  = Mathf.IsEqualApprox(zoomedOut, Main.MAX_ZOOM) || Mathf.IsEqualApprox(zoomedOut, FollowCamera.RTS_MAX_ZOOM);
         _main._UnhandledInput(wheelUp);
-        return isCapped && _main.ZoomFactor < Main.MAX_ZOOM;
+        bool isOk = isCapped && _main.ZoomFactor < zoomedOut;
+        if (!isOk)
+        {
+            GD.Print($"  zoom after 20 notches out {zoomedOut} (caps {Main.MAX_ZOOM} and {FollowCamera.RTS_MAX_ZOOM}), one notch in {_main.ZoomFactor}");
+        }
+        return isOk;
     }
 
     private bool ProbeTexts(string locale, string expectedStage)
@@ -1562,6 +1653,19 @@ public partial class SmokeTest : Node
             model.Free();
         }
         bool isEveryPartModeled = System.Enum.GetValues<PartKind>().All(kind => CellVisual3D.CELL_MODELS.ContainsKey(kind));
+
+        // Every building block has its generated model
+        foreach (BlockKind kind in System.Enum.GetValues<BlockKind>())
+        {
+            Node3D block     = BuildingVisual3D.NewBlock(kind, BlockCatalog.DEFAULT_PAINT);
+            bool   hasMeshes = block.FindChildren("*", nameof(MeshInstance3D), true, false).Count > 0;
+            if (!hasMeshes)
+            {
+                GD.Print($"  block model {BuildingVisual3D.ModelPath(kind)}: no meshes");
+                isOk = false;
+            }
+            block.Free();
+        }
         return isOk && isEveryPartModeled;
     }
 

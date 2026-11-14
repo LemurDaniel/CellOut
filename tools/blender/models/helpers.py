@@ -77,6 +77,17 @@ MATERIAL_COLORS = {
     'Stone':       (0.5, 0.5, 0.52, 1.0),
     'Log':         (0.35, 0.22, 0.12, 1.0),
     'Ember':       (1.0, 0.4, 0.1, 1.0),
+    # Building blocks, recolored by the game: Paint is the paint of the player, PaintDark its trim
+    'Paint':       (0.78, 0.66, 0.48, 1.0),
+    'PaintDark':   (0.5, 0.4, 0.28, 1.0),
+    'Wood':        (0.36, 0.25, 0.15, 1.0),
+    'Bone':        (0.9, 0.88, 0.8, 1.0),
+    'Door':        (0.2, 0.14, 0.08, 1.0),
+    'Flame':       (1.0, 0.65, 0.2, 1.0),
+    'Rope':        (0.72, 0.6, 0.38, 1.0),
+    'FruitRed':    (0.85, 0.3, 0.25, 1.0),
+    'FruitGold':   (0.95, 0.75, 0.25, 1.0),
+    'FruitGreen':  (0.5, 0.7, 0.3, 1.0),
 }
 
 

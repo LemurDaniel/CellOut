@@ -1,7 +1,7 @@
 // NOTE:
 //   One sitting in the village builder as plain state and rules: a draft per building
-//   function, the function shown, the block picked from the palette with its turn and
-//   paint. Dropping centers the block on the pointed cell, an emptied draft falls back to
+//   function, the function shown, the block group shown in the palette and the block
+//   picked from it with its turn and paint. Dropping centers the block on the pointed cell, an emptied draft falls back to
 //   the first template when the sitting ends. The BuildingEditor creates it and hands it
 //   to stage and views, they follow Changed (drafts, function) and SelectionChanged
 //   (picked block, turn, paint). Pure logic without the engine, tested in tests/unit.
@@ -32,6 +32,7 @@ public sealed class BuildingEditorSession
     //   Changed         A draft or the function shown changed.
     //   Kind            The function shown.
     //   Draft           The draft of the function shown.
+    //   DraftOf         The draft of any function (the icons of the tabs).
     //   Begin           Copies the designs of the tribe into fresh drafts.
     //   ShowKind        Switches the function shown.
     //   ApplyTemplate   Replaces the draft with a template of its function.
@@ -46,6 +47,11 @@ public sealed class BuildingEditorSession
     public BuildingKind Kind { get; private set; } = BuildingKind.Dwelling;
 
     public BuildingDesign Draft => _drafts[Kind];
+
+    public BuildingDesign DraftOf(BuildingKind kind)
+    {
+        return _drafts[kind];
+    }
 
     public BuildingEditorSession()
     {
@@ -64,8 +70,10 @@ public sealed class BuildingEditorSession
             _drafts[kind].CopyFrom(designOf(kind));
         }
         Selected = null;
+        Group    = BlockGroup.Wall;
         Turns    = 0;
         Paint    = BlockCatalog.DEFAULT_PAINT;
+        Pattern  = 0;
         Changed?.Invoke();
         SelectionChanged?.Invoke();
     }
@@ -105,13 +113,18 @@ public sealed class BuildingEditorSession
     // ===============================   BLOCKS   ================================
     // ===========================================================================
     //
-    //   SelectionChanged   The picked block, its turn or the paint changed.
+    //   SelectionChanged   The group shown, the picked block, its turn or the paint changed.
+    //   Group              The block group the palette shows.
+    //   ShowGroup          Switches the group shown.
     //   Selected           The block picked from the palette, null for none.
     //   Turns              Quarter turns of the next block.
     //   Paint              Paint of the next block, BlockCatalog.DEFAULT_PAINT for its own.
     //   Select             Picks a block, the same block again lets go.
     //   Rotate             A quarter turn more.
+    //   Pattern            Pattern of the next block, 0 for plain.
     //   PickPaint          Sets the paint.
+    //   PickPattern        Sets the pattern.
+    //   Repaint            Gives a placed block the current paint and pattern.
     //   AnchorFor          The lowest corner that centers the picked block on a cell, kept inside the grid.
     //   PlaceAt            Drops the picked block centered on a cell.
     //   Remove             Removes a placed block.
@@ -119,17 +132,31 @@ public sealed class BuildingEditorSession
 
     public event Action SelectionChanged;
 
+    public BlockGroup Group { get; private set; } = BlockGroup.Wall;
+
     public BlockKind? Selected { get; private set; }
+
+    public void ShowGroup(BlockGroup group)
+    {
+        Group = group;
+        SelectionChanged?.Invoke();
+    }
 
     public int Turns { get; private set; }
 
     public int Paint { get; private set; } = BlockCatalog.DEFAULT_PAINT;
 
-    /// <summary>Picks a block from the palette.</summary>
+    public int Pattern { get; private set; }
+
+    /// <summary>Picks a block from the palette, the palette shows its group.</summary>
     /// <param name="kind">(Required) The block, null or the picked one again for none.</param>
     public void Select(BlockKind? kind)
     {
         Selected = kind == Selected ? null : kind;
+        if (Selected is BlockKind picked)
+        {
+            Group = BlockCatalog.Get(picked).Group;
+        }
         SelectionChanged?.Invoke();
     }
 
@@ -145,6 +172,27 @@ public sealed class BuildingEditorSession
     {
         Paint = paint >= 0 && paint < BlockCatalog.PAINTS.Count ? paint : BlockCatalog.DEFAULT_PAINT;
         SelectionChanged?.Invoke();
+    }
+
+    /// <summary>Sets the pattern of the next blocks.</summary>
+    /// <param name="pattern">(Required) 0..BlockCatalog.PATTERN_COUNT, 0 is plain.</param>
+    public void PickPattern(int pattern)
+    {
+        Pattern = Math.Clamp(pattern, 0, BlockCatalog.PATTERN_COUNT - 1);
+        SelectionChanged?.Invoke();
+    }
+
+    /// <summary>Gives a placed block of the draft the current paint and pattern.</summary>
+    /// <param name="index">(Required) Index in Draft.Blocks.</param>
+    /// <returns>False for an index outside Draft.Blocks.</returns>
+    public bool Repaint(int index)
+    {
+        if (!Draft.Repaint(index, Paint, Pattern))
+        {
+            return false;
+        }
+        Changed?.Invoke();
+        return true;
     }
 
     /// <summary>The lowest corner that puts the picked block centered on a cell, pushed back into the grid at its edges.</summary>
@@ -171,7 +219,7 @@ public sealed class BuildingEditorSession
         {
             return false;
         }
-        if (!Draft.TryPlace(kind, x, z, Turns, Paint))
+        if (!Draft.TryPlace(kind, x, z, Turns, Paint, Pattern))
         {
             return false;
         }

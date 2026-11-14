@@ -1,6 +1,7 @@
 // NOTE:
-//   The building blocks of the village designer: what a block is (its tab in the palette,
-//   the cells it fills on the grid, its default paint) and the paints a block can take.
+//   The building blocks of the village builder: six groups of three blocks each, what a
+//   block is (its group in the palette, the cells it fills on the grid, its default paint)
+//   and the paints a block can take.
 //   Blocks are looks only, a building gets its costs and effects from its function
 //   (BuildingKind, data/balance.json tribe.buildings). Pure data without the engine.
 //
@@ -23,24 +24,24 @@ namespace CellOut;
 // ================================   TYPES   ================================
 // ===========================================================================
 //
-//   BlockKind       Every block of the designer.
-//   BlockCategory   Tab of the palette: rooms and frames, roofs, decoration.
-//   BlockInfo       One block: tab, cells it fills (width along X, height, depth along Z), default paint.
+//   BlockKind    Every block of the builder, three per group.
+//   BlockGroup   Group of the palette: walls, roofs, frames, defense, trade, decoration.
+//   BlockInfo    One block: group, cells it fills (width along X, height, depth along Z), default paint.
 //
 
 public enum BlockKind
 {
-    // Rooms and frames
-    RoundRoom, SquareRoom, RoundTower, SquareTower, Stilts, Platform, Palisade,
-    // Roofs
-    ConeRoof, PyramidRoof, GableRoof, SmallConeRoof, SmallPyramidRoof, Awning,
-    // Decoration
-    Door, Totem, Horns, Stall, Crate, Basket, Banner, Torch, Ladder,
+    RoundRoom, SquareRoom, RoundTower,      // walls
+    ConeRoof, GableRoof, SmallConeRoof,     // roofs
+    Stilts, Platform, Ladder,               // frames
+    Palisade, Torch, Banner,                // defense
+    Stall, Awning, Crate,                   // trade
+    Door, Totem, Horns,                     // decoration
 }
 
-public enum BlockCategory { Frame, Roof, Decor }
+public enum BlockGroup { Wall, Roof, Frame, Defense, Trade, Decor }
 
-public readonly record struct BlockInfo(BlockKind Kind, BlockCategory Category, int Width, int Height, int Depth, int Paint);
+public readonly record struct BlockInfo(BlockKind Kind, BlockGroup Group, int Width, int Height, int Depth, int Paint);
 
 public static class BlockCatalog
 {
@@ -49,22 +50,23 @@ public static class BlockCatalog
     // ===========================================================================
     //
     //   DEFAULT_PAINT   Paint index that means "the block's own default".
+    //   PATTERN_COUNT   Patterns a block can carry: 0 plain, then bands, stripes, zigzag, dots, checks.
     //   PAINTS          The paints a block can take, by index.
     //   BLOCKS          Every block in palette order.
     //   Get             The entry of a block.
+    //   In              The blocks of a group.
     //   Footprint       Width and depth of a block after quarter turns.
     //   PaintOf         The color of a block with a paint index.
     //
 
     public const int DEFAULT_PAINT = -1;
+    public const int PATTERN_COUNT = 6;
 
     // Paint indices, used as defaults in BLOCKS
     private const int CLAY = 0;
-    private const int WATTLE = 1;
     private const int STONE = 2;
     private const int WOOD = 3;
     private const int GRASS = 4;
-    private const int REED = 5;
     private const int SHINGLE = 6;
     private const int RED = 7;
     private const int BLUE = 8;
@@ -88,34 +90,42 @@ public static class BlockCatalog
 
     public static readonly IReadOnlyList<BlockInfo> BLOCKS = new[]
     {
-        new BlockInfo(BlockKind.RoundRoom,        BlockCategory.Frame, 4, 2, 4, CLAY),
-        new BlockInfo(BlockKind.SquareRoom,       BlockCategory.Frame, 4, 2, 4, CLAY),
-        new BlockInfo(BlockKind.RoundTower,       BlockCategory.Frame, 2, 2, 2, STONE),
-        new BlockInfo(BlockKind.SquareTower,      BlockCategory.Frame, 2, 2, 2, WATTLE),
-        new BlockInfo(BlockKind.Stilts,           BlockCategory.Frame, 2, 2, 2, WOOD),
-        new BlockInfo(BlockKind.Platform,         BlockCategory.Frame, 4, 1, 4, WOOD),
-        new BlockInfo(BlockKind.Palisade,         BlockCategory.Frame, 4, 2, 1, WOOD),
-        new BlockInfo(BlockKind.ConeRoof,         BlockCategory.Roof,  4, 2, 4, GRASS),
-        new BlockInfo(BlockKind.PyramidRoof,      BlockCategory.Roof,  4, 2, 4, REED),
-        new BlockInfo(BlockKind.GableRoof,        BlockCategory.Roof,  4, 2, 4, SHINGLE),
-        new BlockInfo(BlockKind.SmallConeRoof,    BlockCategory.Roof,  2, 2, 2, GRASS),
-        new BlockInfo(BlockKind.SmallPyramidRoof, BlockCategory.Roof,  2, 2, 2, SHINGLE),
-        new BlockInfo(BlockKind.Awning,           BlockCategory.Roof,  2, 2, 2, RED),
-        new BlockInfo(BlockKind.Door,             BlockCategory.Decor, 1, 2, 2, WOOD),
-        new BlockInfo(BlockKind.Totem,            BlockCategory.Decor, 2, 2, 2, OCHRE),
-        new BlockInfo(BlockKind.Horns,            BlockCategory.Decor, 2, 1, 2, BONE),
-        new BlockInfo(BlockKind.Stall,            BlockCategory.Decor, 2, 1, 2, WOOD),
-        new BlockInfo(BlockKind.Crate,            BlockCategory.Decor, 1, 1, 1, WOOD),
-        new BlockInfo(BlockKind.Basket,           BlockCategory.Decor, 1, 1, 1, REED),
-        new BlockInfo(BlockKind.Banner,           BlockCategory.Decor, 1, 3, 1, BLUE),
-        new BlockInfo(BlockKind.Torch,            BlockCategory.Decor, 1, 2, 1, WOOD),
-        new BlockInfo(BlockKind.Ladder,           BlockCategory.Decor, 1, 2, 1, WOOD),
+        new BlockInfo(BlockKind.RoundRoom,     BlockGroup.Wall,    4, 2, 4, CLAY),
+        new BlockInfo(BlockKind.SquareRoom,    BlockGroup.Wall,    4, 2, 4, CLAY),
+        new BlockInfo(BlockKind.RoundTower,    BlockGroup.Wall,    2, 2, 2, STONE),
+        new BlockInfo(BlockKind.ConeRoof,      BlockGroup.Roof,    4, 2, 4, GRASS),
+        new BlockInfo(BlockKind.GableRoof,     BlockGroup.Roof,    4, 2, 4, SHINGLE),
+        new BlockInfo(BlockKind.SmallConeRoof, BlockGroup.Roof,    2, 2, 2, GRASS),
+        new BlockInfo(BlockKind.Stilts,        BlockGroup.Frame,   2, 2, 2, WOOD),
+        new BlockInfo(BlockKind.Platform,      BlockGroup.Frame,   4, 1, 4, WOOD),
+        new BlockInfo(BlockKind.Ladder,        BlockGroup.Frame,   1, 2, 1, WOOD),
+        new BlockInfo(BlockKind.Palisade,      BlockGroup.Defense, 4, 2, 1, WOOD),
+        new BlockInfo(BlockKind.Torch,         BlockGroup.Defense, 1, 2, 1, WOOD),
+        new BlockInfo(BlockKind.Banner,        BlockGroup.Defense, 1, 3, 1, BLUE),
+        new BlockInfo(BlockKind.Stall,         BlockGroup.Trade,   2, 1, 2, WOOD),
+        new BlockInfo(BlockKind.Awning,        BlockGroup.Trade,   2, 2, 2, RED),
+        new BlockInfo(BlockKind.Crate,         BlockGroup.Trade,   1, 1, 1, WOOD),
+        new BlockInfo(BlockKind.Door,          BlockGroup.Decor,   1, 2, 2, WOOD),
+        new BlockInfo(BlockKind.Totem,         BlockGroup.Decor,   2, 2, 2, OCHRE),
+        new BlockInfo(BlockKind.Horns,         BlockGroup.Decor,   2, 1, 2, BONE),
     };
 
     /// <summary>The entry of a block. BLOCKS lists the kinds in enum order.</summary>
     public static BlockInfo Get(BlockKind kind)
     {
         return BLOCKS[(int)kind];
+    }
+
+    /// <summary>The blocks of a group in palette order.</summary>
+    public static IEnumerable<BlockInfo> In(BlockGroup group)
+    {
+        foreach (BlockInfo info in BLOCKS)
+        {
+            if (group == info.Group)
+            {
+                yield return info;
+            }
+        }
     }
 
     /// <summary>Cells a block covers on the ground after quarter turns: an odd turn swaps width and depth.</summary>

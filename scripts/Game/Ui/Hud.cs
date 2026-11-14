@@ -371,7 +371,7 @@ public partial class Hud : CanvasLayer
 
     private void BuildEditorIcon()
     {
-        // No focus: E opens the editor through Main, a focused button would fire twice
+        // No focus: Z opens the editor through Main, a focused button would fire twice
         _editorIcon = new Button
         {
             CustomMinimumSize = Vector2.One * EDITOR_ICON_SIZE,
@@ -436,7 +436,7 @@ public partial class Hud : CanvasLayer
         _editorIcon.DrawPolyline(right, color, 3f, true);
     }
 
-    /// <summary>Pill button without focus: Space and E act through the game, a focused button would fire twice.</summary>
+    /// <summary>Pill button without focus: Space and Z act through the game, a focused button would fire twice.</summary>
     private static Button NewActionButton(Color accent)
     {
         var button = new Button

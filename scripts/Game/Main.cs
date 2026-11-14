@@ -54,6 +54,9 @@ public partial class Main : Node2D
     private TribeCommander _tribe;
     private RivalKeeper _rivals;
     private BuildingEditor _buildingEditor;
+    private BuildingPlacer _placer;
+    private TribePanel _tribePanel;
+    private readonly System.Collections.Generic.List<CanvasLayer> _tribeHud = new();     // TribePanel and TribeHub
     private CutsceneDirector _cutscenes;
     private StartFlow _startFlow;
     private Node2D _fxLayer;
@@ -143,21 +146,33 @@ public partial class Main : Node2D
         _rivals.Setup(_session, _pack, _tribe);
         _rivals.RaidStarted  += nameKey => Hud.ShowBanner("BANNER_RAID_TITLE", "BANNER_RAID_TEXT", Tr(nameKey));
         _rivals.TradeArrived += (nameKey, food, wood) => Hud.ShowBanner("BANNER_TRADE_TITLE", "BANNER_TRADE_TEXT", Tr(nameKey), food, wood);
+        _rivals.TribeDefeated += (nameKey, food, wood) => Hud.ShowBanner("BANNER_DEFEAT_TITLE", "BANNER_DEFEAT_TEXT", Tr(nameKey), food, wood);
         AddChild(_rivals);
         _tribe.AttachRivals(_rivals);
 
+        _placer = new BuildingPlacer();
+        _placer.Setup(_session, _tribe);
+        AddChild(_placer);
+
         _buildingEditor = new BuildingEditor();
         _buildingEditor.Applied += session => _tribe.TakeDesigns(session.Result);
-        _buildingEditor.Closed  += OnEditorClosed;
+        _buildingEditor.Closed  += OnBuildingEditorClosed;
         AddChild(_buildingEditor);
 
         var tribePanel = new TribePanel();
+        _tribePanel    = tribePanel;
+        _tribeHud.Add(tribePanel);
         tribePanel.Watch(_pack, _tribe, _rivals);
         tribePanel.ActionPressed   += () => _pack.Act();
-        tribePanel.BuildPressed    += kind => _tribe.TryBuild(kind);
-        tribePanel.DesignPressed   += () => OpenBuildingEditor();
+        tribePanel.BuildPressed    += kind => _placer.Begin(kind);
         tribePanel.GiftPressed     += rival => _rivals.Gift(rival);
         AddChild(tribePanel);
+
+        var hub = new TribeHub();
+        _tribeHud.Add(hub);
+        hub.Watch(_session, _pack, _tribe, _rivals);
+        hub.BuilderPressed += () => OpenBuildingEditor();
+        AddChild(hub);
 
         _cutscenes = new CutsceneDirector();
         _cutscenes.Setup(_session, _followCamera.Camera);
@@ -232,8 +247,9 @@ public partial class Main : Node2D
     // =======================   ROUTE INPUT AND FRAMES   ========================
     // ===========================================================================
     //
-    //   _UnhandledInput   E opens the editor, B the village builder, the tribe takes the mouse, the pack Space and F, the rest goes to the camera.
-    //   OpenBuildingEditor   Pauses and opens the village builder of the tribe.
+    //   _UnhandledInput   Z opens the editor, B the village builder, the tribe takes the mouse, the pack Space and F, the rest goes to the camera.
+    //   OpenBuildingEditor   Pauses, hides the HUD and opens the village builder of the tribe.
+    //   ShowHud              Hides or shows every HUD layer.
     //   ZoomFactor        Wheel zoom of the camera.
     //   ThirdPerson       0 top view .. 1 third person.
     //   ZoomBy            Changes the zoom factor by steps, clamped.
@@ -243,8 +259,8 @@ public partial class Main : Node2D
 
     public override void _UnhandledInput(InputEvent @event)
     {
-        // E opens the cell editor with the points collected so far
-        if (@event is InputEventKey { Pressed: true, Echo: false, Keycode: Key.E } && OpenEditor())
+        // Z opens the editor of the stage (cell or creature) with the points collected so far
+        if (@event is InputEventKey { Pressed: true, Echo: false, Keycode: Key.Z } && OpenEditor())
         {
             GetViewport().SetInputAsHandled();
             return;
@@ -254,7 +270,7 @@ public partial class Main : Node2D
             GetViewport().SetInputAsHandled();
             return;
         }
-        if (_tribe.HandleInput(@event) || _pack.HandleInput(@event) || _followCamera.HandleInput(@event))
+        if (_placer.HandleInput(@event) || _tribe.HandleInput(@event) || _pack.HandleInput(@event) || _followCamera.HandleInput(@event))
         {
             GetViewport().SetInputAsHandled();
         }
@@ -270,9 +286,27 @@ public partial class Main : Node2D
         {
             return false;
         }
+        _placer.Cancel();
         GetTree().Paused = true;
+        ShowHud(false);
         _buildingEditor.Open(_tribe.DesignOf);
         return true;
+    }
+
+    private void OnBuildingEditorClosed()
+    {
+        ShowHud(true);
+        GetTree().Paused = false;
+    }
+
+    /// <summary>Hides or shows every HUD layer: the builder shows the game behind it as its backdrop, without texts on it.</summary>
+    private void ShowHud(bool isShown)
+    {
+        Hud.Visible = isShown;
+        foreach (CanvasLayer layer in _tribeHud)
+        {
+            layer.Visible = isShown;
+        }
     }
 
     /// <summary>Wheel zoom on top of the automatic distance, 1 = default, bigger = farther away.</summary>
@@ -316,6 +350,8 @@ public partial class Main : Node2D
         _coast.Update(isSpawnAllowed: !IsEvolving);
         _pack.Update(dt);
         _tribe.Update(dt);
+        _placer.Update();
+        _tribePanel.Placing = _placer.Pending;
         _rivals.Update(dt);
         _contacts.Resolve(dt, playerSize, playerPosition, viewRadius);
         _spawner.Refill(dt);
@@ -352,7 +388,7 @@ public partial class Main : Node2D
     /// An organism gets the creature editor instead.
     /// </summary>
     /// <returns>True when an editor opens, right away with IsAnimationSkipped, else after the transition.</returns>
-    /// <example><code>main.OpenEditor();   // what E and the HUD button do</code></example>
+    /// <example><code>main.OpenEditor();   // what Z and the HUD button do</code></example>
     public bool OpenEditor()
     {
         bool isBusy = IsInMenu || IsEvolving || _cutscenes.IsShortPlaying || Editor.IsOpen || CreatureEditor.IsOpen || _buildingEditor.IsOpen;
@@ -625,6 +661,8 @@ public partial class Main : Node2D
     public RivalKeeper Rivals => _rivals;
 
     public BuildingEditor BuildingEditor => _buildingEditor;
+
+    public BuildingPlacer Placer => _placer;
 
     /// <summary>An archipelago ahead of the player (its facing), the landing island first.</summary>
     /// <param name="isNear">(Required) Right in front (cheat) instead of just outside the view.</param>

@@ -49,6 +49,9 @@ public partial class RivalTribe : Node2D
     public Vector2 Entry { get; private set; }
     public float Relation { get; private set; }
 
+    /// <summary>Color of its kin, also its color on the map.</summary>
+    public Color Tint => _tint;
+
     public bool IsFriendly => Relation >= Tune.FriendlyAt;
     public bool IsHostile => Relation <= Tune.HostileAt;
 
@@ -88,18 +91,33 @@ public partial class RivalTribe : Node2D
     // ===============================   VILLAGE   ===============================
     // ===========================================================================
     //
-    //   Nest     Its fire.
-    //   Huts     Its huts.
+    //   Nest         Its fire.
+    //   Huts         Its buildings still standing.
+    //   IsDefeated   It lost its last building: no trades, no raids, its people left.
+    //   Defeat       Marks it defeated and sends everyone away.
     //   _Ready   Fire, huts on a ring and the villagers around it.
     //
 
     public Nest Nest { get; private set; }
 
-    private static readonly BuildingKind[] SIGNATURE_KINDS = { BuildingKind.Totem, BuildingKind.Watchtower, BuildingKind.Market };
+    private static readonly BuildingKind[] SIGNATURE_KINDS = { BuildingKind.Totem, BuildingKind.Watchtower, BuildingKind.Market, BuildingKind.Barracks };
 
     private readonly List<Hut> _huts = new();
 
     public IReadOnlyList<Hut> Huts => _huts;
+
+    public bool IsDefeated { get; private set; }
+
+    /// <summary>The tribe gives up: every kin walks home and leaves, nothing sets out any more.</summary>
+    public void Defeat()
+    {
+        IsDefeated = true;
+        foreach (Kin kin in _kin)
+        {
+            kin.GoHome();
+        }
+        Log.Verbose("RivalTribe", $"Faction {Faction} is defeated.");
+    }
 
     private Coast _coast;
 

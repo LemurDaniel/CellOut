@@ -91,6 +91,27 @@ public partial class Kin : CellBody
         _acceleration = stats.Acceleration;
     }
 
+    private const float WARRIOR_SIZE = 1.12f;        // a warrior is a little bigger
+    private const float WARRIOR_SHADE = 0.25f;       // and darker than a gatherer
+
+    /// <summary>Whether the kin was trained in a warrior hut: more health, harder blows.</summary>
+    public bool IsWarrior { get; private set; }
+
+    /// <summary>Multiplier of the damage it deals in a fight or to a building.</summary>
+    public float DamageScale => IsWarrior ? Village.WarriorDamage : 1f;
+
+    /// <summary>Turns the kin into a warrior: WarriorHealth times the health, WarriorDamage times the damage, bigger and darker.</summary>
+    public void MakeWarrior()
+    {
+        IsWarrior = true;
+        MaxHp     = Village.KinHealth * Village.WarriorHealth;
+        Hp        = MaxHp;
+        AdultSize = AdultSize * WARRIOR_SIZE;
+        Radius    = AdultSize;
+        BodyColor = BodyColor.Darkened(WARRIOR_SHADE);
+        Creature.SetColor(BodyColor);
+    }
+
     /// <summary>A newborn: PupSize of the adult size, it grows up over PupGrowSeconds.</summary>
     public void BornSmall()
     {
@@ -132,6 +153,8 @@ public partial class Kin : CellBody
     //   OrderChop      Walk to a trunk and chop there (IsChopping once arrived, ChopTick per load).
     //   OrderAttack    Pursue an enemy body until it is gone.
     //   AttackTarget   The enemy pursued, null when none.
+    //   OrderRaze      Walk to an enemy building and tear it down (the RivalKeeper counts the damage).
+    //   RazeTarget     The building torn down, null when none.
     //   IsIdle         No order, no chopping, no target: free for gathering or fighting.
     //   IsLeaving      A trader or raider on its way home, freed once it arrives.
     //   GoHome         Walks home and leaves (traders, raiders).
@@ -146,7 +169,9 @@ public partial class Kin : CellBody
 
     public bool IsChopping => null != _chopTrunk && null == OrderTarget;
 
-    public bool IsIdle => null == OrderTarget && null == _chopTrunk && !IsInstanceValid(AttackTarget);
+    public Hut RazeTarget { get; private set; }
+
+    public bool IsIdle => null == OrderTarget && null == _chopTrunk && !IsInstanceValid(AttackTarget) && !IsInstanceValid(RazeTarget);
 
     public bool IsLeaving { get; private set; }
 
@@ -159,6 +184,7 @@ public partial class Kin : CellBody
     {
         _chopTrunk   = null;
         AttackTarget = null;
+        RazeTarget   = null;
         OrderTarget  = point;
     }
 
@@ -169,6 +195,7 @@ public partial class Kin : CellBody
     {
         Vector2 away = (GlobalPosition - trunk).LengthSquared() > 0.001f ? (GlobalPosition - trunk).Normalized() : Vector2.Right;
         AttackTarget = null;
+        RazeTarget   = null;
         _chopTrunk   = trunk;
         _chopTimer   = Village.ChopSeconds;
         OrderTarget  = trunk + away * (trunkRadius + Radius * 0.9f);
@@ -198,7 +225,19 @@ public partial class Kin : CellBody
     {
         _chopTrunk   = null;
         OrderTarget  = null;
+        RazeTarget   = null;
         AttackTarget = target;
+    }
+
+    /// <summary>Walks to an enemy building and tears it down, the damage is counted by the RivalKeeper while it stands there.</summary>
+    /// <param name="building">(Required) A building of another faction.</param>
+    public void OrderRaze(Hut building)
+    {
+        Vector2 away = (GlobalPosition - building.Position).LengthSquared() > 0.001f ? (GlobalPosition - building.Position).Normalized() : Vector2.Right;
+        _chopTrunk   = null;
+        AttackTarget = null;
+        RazeTarget   = building;
+        OrderTarget  = building.Position + away * (building.Size * Hut.RADIUS + Radius * 0.9f);
     }
 
     /// <summary>Walks home and leaves the island once it arrives (traders and raiders).</summary>
@@ -303,11 +342,16 @@ public partial class Kin : CellBody
         {
             desired = OrderDirection();
         }
-        bool isFree = Vector2.Zero == desired && null == AttackTarget && null == OrderTarget;
-        if (isFree && null != _chopTrunk)
+        if (null != RazeTarget && (!IsInstanceValid(RazeTarget) || RazeTarget.IsQueuedForDeletion()))
         {
-            // Chopping: faces the trunk, the TribeCommander counts the loads (ChopTick)
-            Facing = Mathf.LerpAngle(Facing, (_chopTrunk.Value - GlobalPosition).Angle(), Mathf.Clamp(dt * 4f, 0f, 1f));
+            RazeTarget = null;
+        }
+        bool     isFree = Vector2.Zero == desired && null == AttackTarget && null == OrderTarget;
+        Vector2? work   = _chopTrunk ?? RazeTarget?.Position;
+        if (isFree && work is Vector2 workplace)
+        {
+            // Chopping or razing: faces its work, the TribeCommander counts the loads (ChopTick), the RivalKeeper the blows
+            Facing = Mathf.LerpAngle(Facing, (workplace - GlobalPosition).Angle(), Mathf.Clamp(dt * 4f, 0f, 1f));
         }
         else if (isFree && KinMode.Following == Mode && hasLeader)
         {

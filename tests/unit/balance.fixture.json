@@ -236,6 +236,8 @@
     },
     "village": {
       "hutDistance": 9,
+      "buildRadius": 26,
+      "buildSpacing": 6,
       "villagerSeconds": 20,
       "gatherRange": 12,
       "foodPerFruit": 1,
@@ -244,14 +246,17 @@
       "kinHealth": 30,
       "kinDamage": 6,
       "engageRange": 6,
-      "giftFood": 5
+      "giftFood": 5,
+      "warriorHealth": 2,
+      "warriorDamage": 2
     },
     "buildings": {
       "Dwelling":   { "food": 6, "wood": 3, "health": 30, "villagers": 2 },
       "Storehouse": { "food": 4, "wood": 6, "health": 30, "foodPerFruit": 1 },
       "Market":     { "food": 6, "wood": 6, "health": 25, "tradeBonus": 0.5 },
       "Totem":      { "food": 3, "wood": 6, "health": 20, "relationBonus": 0.1 },
-      "Watchtower": { "food": 4, "wood": 8, "health": 40, "defense": 20 }
+      "Watchtower": { "food": 4, "wood": 8, "health": 40, "defense": 20 },
+      "Barracks":   { "food": 6, "wood": 8, "health": 35, "warriors": 2 }
     },
     "rivals": {
       "count": 3,
@@ -271,7 +276,11 @@
       "relationPerTrade": 0.08,
       "relationPerGift": 0.2,
       "relationPerKill": 0.15,
-      "relationDrift": 0.004
+      "relationDrift": 0.004,
+      "razeDamage": 4,
+      "relationPerRaze": 0.5,
+      "defeatFood": 15,
+      "defeatWood": 15
     }
   },
 

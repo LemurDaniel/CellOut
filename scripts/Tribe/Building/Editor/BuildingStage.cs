@@ -1,6 +1,8 @@
 // NOTE:
-//   The 3D stage of the village builder: a SubViewport with an orbit camera, a patch of
-//   ground with the grid on it and the draft of the session built from its blocks. It
+//   The 3D stage of the village builder, the whole screen behind its panels and see-through
+//   around its content (the editor shows the blurred game behind it): a round patch of
+//   grass on sand with the grid on it, an orbit camera, and on it the draft of the session
+//   built from its blocks. It
 //   answers which cell lies under a pixel (the first block the ray meets, else the
 //   ground) and shows the picked block as a ghost where it would land. The stage reads
 //   no input on its own: the BuildingEditor connects GuiInput and calls Press, Release,
@@ -13,7 +15,7 @@
 
 //
 //   Chapters:
-//     BUILD STAGE      Viewport, camera, ground, grid and the draft.
+//     BUILD STAGE      Viewport, camera, the patch of ground with its grid and the draft.
 //     ORBIT CAMERA     Press, drag and wheel turn and zoom the view.
 //     PICK ON SCREEN   The cell and block under a pixel.
 //     GHOST            The picked block where it would land.
@@ -34,7 +36,8 @@ public partial class BuildingStage : SubViewportContainer
     //
 
     private const float CAMERA_FOV = 40f;
-    private const float GROUND_RADIUS = 3.3f;
+    private const float GROUND_RADIUS = BuildingDesign.GRID_SIZE * BuildingVisual3D.CELL * 0.82f;     // the corners of the grid just fit
+    private static readonly Color SAND_COLOR = new(0.88f, 0.8f, 0.55f);
     private static readonly Color GROUND_COLOR = new(0.36f, 0.46f, 0.26f);
     private static readonly Color GRID_COLOR = new(0.9f, 0.95f, 0.8f, 0.22f);
 
@@ -53,14 +56,18 @@ public partial class BuildingStage : SubViewportContainer
         SizeFlagsVertical   = SizeFlags.ExpandFill;
         MouseFilter         = MouseFilterEnum.Stop;
 
-        SubViewport viewport = PartIcon.NewStudio(new Vector2I(640, 640));
+        SubViewport viewport = PartIcon.NewStudio(new Vector2I(1280, 720));
         AddChild(viewport);
         _camera = new Camera3D { Fov = CAMERA_FOV, Current = true };
         viewport.AddChild(_camera);
         _scene = new Node3D();
         viewport.AddChild(_scene);
 
-        // A round patch of grass, the grid of the cells drawn on it
+        // A round patch of grass on a wider slab of sand, the grid of the cells drawn on the grass
+        CellVisual3D.AddMesh(_scene,
+            new CylinderMesh { TopRadius = GROUND_RADIUS * 1.12f, BottomRadius = GROUND_RADIUS * 1.2f, Height = 0.22f, RadialSegments = 48, Rings = 1 },
+            CellVisual3D.Material(SAND_COLOR, 0f, 1f), new Vector3(0f, -0.19f, 0f), Vector3.One)
+            .CastShadow = GeometryInstance3D.ShadowCastingSetting.Off;
         MeshInstance3D ground = CellVisual3D.AddMesh(_scene,
             new CylinderMesh { TopRadius = GROUND_RADIUS, BottomRadius = GROUND_RADIUS * 1.03f, Height = 0.16f, RadialSegments = 48, Rings = 1 },
             CellVisual3D.Material(GROUND_COLOR, 0f, 1f), new Vector3(0f, -0.08f, 0f), Vector3.One);
@@ -109,17 +116,17 @@ public partial class BuildingStage : SubViewportContainer
     //   UpdateCamera  Orbit position from yaw, pitch and zoom.
     //
 
-    private const float CAMERA_DISTANCE = 10.5f;
+    private const float CAMERA_DISTANCE = 15f;
     private const float START_YAW = 0.7f;
-    private const float START_PITCH = 0.5f;
+    private const float START_PITCH = 0.42f;
     private const float MIN_PITCH = 0.08f;           // never below the ground
     private const float MAX_PITCH = 1.45f;
     private const float ORBIT_SPEED = 0.008f;
     private const float DRAG_THRESHOLD = 5f;
     private const float ZOOM_STEP = 1.1f;
-    private const float MIN_ZOOM = 0.45f;
+    private const float MIN_ZOOM = 0.35f;
     private const float MAX_ZOOM = 1.6f;
-    private static readonly Vector3 CAMERA_TARGET = new(0f, 1.4f, 0f);
+    private static readonly Vector3 CAMERA_TARGET = new(0f, 1.8f, 0f);
 
     private float _yaw;
     private float _pitch;
@@ -282,7 +289,7 @@ public partial class BuildingStage : SubViewportContainer
         }
         if (_session.Selected is BlockKind kind)
         {
-            _ghost.AddChild(BuildingVisual3D.NewBlock(kind, _session.Paint));
+            _ghost.AddChild(BuildingVisual3D.NewBlock(kind, _session.Paint, _session.Pattern));
         }
         if (_hoverPixel is Vector2 pixel)
         {

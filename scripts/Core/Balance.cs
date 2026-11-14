@@ -411,7 +411,9 @@ public sealed record FruitBalance
 
 public sealed record VillageBalance
 {
-    public required float HutDistance { get; init; }             // Units from the fire to a hut
+    public required float HutDistance { get; init; }             // Units from the fire to a building placed without a chosen spot
+    public required float BuildRadius { get; init; }             // Units around the fire the player may place buildings in
+    public required float BuildSpacing { get; init; }            // Units a building keeps to the fire and to other buildings
     public required float VillagerSeconds { get; init; }         // seconds a hut needs to raise a villager
     public required float GatherRange { get; init; }             // body sizes an idle villager looks for fruit
     public required int FoodPerFruit { get; init; }              // food stock one gathered fruit brings
@@ -421,6 +423,8 @@ public sealed record VillageBalance
     public required float KinDamage { get; init; }               // damage per second a kin deals in a fight
     public required float EngageRange { get; init; }             // body sizes an idle villager runs to fight an enemy
     public required int GiftFood { get; init; }                  // food a gift to a rival tribe costs
+    public required float WarriorHealth { get; init; }           // a warrior has this many times the health of a kin
+    public required float WarriorDamage { get; init; }           // and deals this many times its damage
 }
 
 public sealed record BuildingBalance
@@ -429,6 +433,7 @@ public sealed record BuildingBalance
     public required int Wood { get; init; }
     public required float Health { get; init; }                  // hit points of the building against raids
     public int Villagers { get; init; }                          // villagers it raises in all (dwelling)
+    public int Warriors { get; init; }                           // warriors it trains in all (warrior hut)
     public float Defense { get; init; }                          // raid damage is divided by 1 + defense / DefenseScale (watchtower)
     public float TradeBonus { get; init; }                       // share more a trader brings (market)
     public float RelationBonus { get; init; }                    // extra relation per trade (totem)
@@ -455,6 +460,10 @@ public sealed record RivalsBalance
     public required float RelationPerGift { get; init; }         // relation gain per gift
     public required float RelationPerKill { get; init; }         // relation loss when the player's tribe kills a rival
     public required float RelationDrift { get; init; }           // relation moves this much per second towards neutral
+    public required float RazeDamage { get; init; }              // damage per second a kin of the player deals to a rival building
+    public required float RelationPerRaze { get; init; }         // relation loss per rival building torn down
+    public required int DefeatFood { get; init; }                // food looted from a tribe that lost its last building
+    public required int DefeatWood { get; init; }                // and wood
 }
 
 // ===========================================================================

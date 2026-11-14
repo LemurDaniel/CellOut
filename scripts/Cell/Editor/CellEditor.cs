@@ -1,5 +1,5 @@
 // NOTE:
-//   Cell editor, opened by Main on E or the HUD button (never by itself) while the game
+//   Cell editor, opened by Main on Z or the HUD button (never by itself) while the game
 //   is paused. The panel slides in from the left (background: shaders/editor_panel.gdshader,
 //   a wobbling membrane edge), the paused game on the right is greyed out
 //   (shaders/greyout.gdshader). The palette shows one live 3D icon tile per part

@@ -1,6 +1,6 @@
 // NOTE:
 //   Creature editor of the organism stage, opened by Main after the evolve cutscene
-//   (first shaping) and later with E. Full screen, so there is room for every part
+//   (first shaping) and later with Z. Full screen, so there is room for every part
 //   category: the panel slides in from the left and covers the paused game.
 //   First shaping: two cards ask what the clay becomes, fish or marine mammal (the
 //   type stays for good), the clay turns into its streamlined starter body. It sits on a

@@ -20,9 +20,9 @@ Tunable numbers of the game. The code holds the formulas, this folder holds the 
 | `creature.body`, `creature.land`, `creature.effects` | `Creature/CreatureStats.cs` | Health, speed and weight of the body, walking on land, what every creature part does. |
 | `tribe.pack` | `Tribe/Pack/PackKeeper.cs`, `Tribe/Pack/Kin.cs` | Wild conspecifics, the call, the nest, pups and when the pack may become a tribe. |
 | `tribe.fruit` | `Game/World/Spawner.cs` | How often fruit drops from the trees and how much lies around. |
-| `tribe.village` | `Tribe/Village/TribeCommander.cs`, `Tribe/Pack/Kin.cs` | Hut distance, villager time, gathering, chopping, kin health and damage, gifts. |
-| `tribe.buildings` | `Tribe/Building/BuildingDesign.cs` | Food, wood, health and the one effect of every building function (dwelling, storehouse, market, totem, watchtower). Blocks are looks only and cost nothing. |
-| `tribe.rivals` | `Tribe/Rivals/RivalKeeper.cs`, `Tribe/Rivals/RivalTribe.cs` | Neighbor tribes: where they live, trades, raids, relations. |
+| `tribe.village` | `Tribe/Village/TribeCommander.cs`, `Tribe/Pack/Kin.cs` | Hut distance, the radius around the fire buildings may be placed in and their spacing, villager time, gathering, chopping, kin health and damage, gifts, how much stronger a warrior is. |
+| `tribe.buildings` | `Tribe/Building/BuildingDesign.cs` | Food, wood, health and the one effect of every building function (dwelling, storehouse, market, totem, watchtower, warrior hut). Blocks are looks only and cost nothing. |
+| `tribe.rivals` | `Tribe/Rivals/RivalKeeper.cs`, `Tribe/Rivals/RivalTribe.cs` | Neighbor tribes: where they live, trades, raids, relations, razing their buildings and the loot of a defeated tribe. |
 | `prelude` | `Prelude/Mutation.cs` | Evolution points and multipliers of the RNA world mutations. |
 
 What a single value means is the comment next to its property in `Balance.cs`.

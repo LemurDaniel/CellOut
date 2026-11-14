@@ -36,6 +36,7 @@ public partial class RivalKeeper : Node2D
     //   Changed        A relation or the stock changed, the panel refreshes.
     //   RaidStarted    Raiders of a tribe set out, Main shows the banner.
     //   TradeArrived   A trader delivered food and wood, Main shows the banner.
+    //   TribeDefeated  A tribe lost its last building, its stock is looted, Main shows the banner.
     //   Rivals         The neighbor tribes, empty before the player's tribe.
     //   Setup          The session, the pack and the tribe, before AddChild.
     //
@@ -43,6 +44,7 @@ public partial class RivalKeeper : Node2D
     [Signal] public delegate void ChangedEventHandler();
     [Signal] public delegate void RaidStartedEventHandler(string nameKey);
     [Signal] public delegate void TradeArrivedEventHandler(string nameKey, int food, int wood);
+    [Signal] public delegate void TribeDefeatedEventHandler(string nameKey, int food, int wood);
 
     /// <summary>Every tunable number of the rivals from data/balance.json (tribe.rivals).</summary>
     private static RivalsBalance Tune => Balance.Current.Tribe.Rivals;
@@ -189,6 +191,10 @@ public partial class RivalKeeper : Node2D
         foreach (RivalTribe rival in _rivals)
         {
             rival.Update(dt, size);
+            if (rival.IsDefeated)
+            {
+                continue;
+            }
 
             // Relations drift towards neutral, so no war and no friendship lasts without deeds
             float drift = Mathf.Min(Mathf.Abs(rival.Relation), Tune.RelationDrift * dt);
@@ -226,6 +232,7 @@ public partial class RivalKeeper : Node2D
             }
         }
         ResolveFights(dt, size);
+        ResolveRazing(dt, size);
     }
 
     /// <summary>Raiders set out towards the nearest hut of the player, or its fire.</summary>
@@ -289,6 +296,9 @@ public partial class RivalKeeper : Node2D
     //
     //   ResolveFights   Idle villagers engage enemies near the village, hostile bodies in contact
     //                   hurt each other, raiders at a hut hurt it, kills cost relation.
+    //   ResolveRazing   Kin of the player at an enemy building tear it down, its villagers defend,
+    //                   a tribe without buildings is defeated and looted.
+    //   HutAt           The rival building under a plane point (right click orders).
     //   IsHostile       Whether two kin fight: different factions and one of them is a raider or attacks the other.
     //   EnemyAt         The enemy kin nearest to a plane point within a radius (right click orders).
     //
@@ -354,8 +364,8 @@ public partial class RivalKeeper : Node2D
                 }
                 if (villager.Position.DistanceTo(enemy.Position) <= (villager.Radius + enemy.Radius) * CONTACT_SHARE)
                 {
-                    villager.Hurt(damage);
-                    if (enemy.Hurt(damage))
+                    villager.Hurt(damage * enemy.DamageScale);
+                    if (enemy.Hurt(damage * villager.DamageScale))
                     {
                         OnEnemyKilled(enemy);
                         break;
@@ -403,6 +413,66 @@ public partial class RivalKeeper : Node2D
                 }
             }
         }
+    }
+
+    /*
+      For every kin of the player that stands at the rival building it was ordered to raze:
+      > The building takes RazeDamage per second, more from a warrior.
+      > Idle villagers of that tribe within EngageRange run to defend it.
+      > A building torn down costs RelationPerRaze, the last one defeats the tribe: its
+        people leave and its stock is looted.
+    */
+    private void ResolveRazing(float dt, float size)
+    {
+        foreach (Kin kin in _pack.Kin)
+        {
+            if (kin.RazeTarget is not Hut building || !IsInstanceValid(building) || building.IsQueuedForDeletion())
+            {
+                continue;
+            }
+            RivalTribe rival = _rivals.Find(tribe => tribe.Faction == building.Faction);
+            if (null == rival || kin.Position.DistanceTo(building.Position) > building.Size * Hut.RADIUS * HUT_REACH + kin.Radius)
+            {
+                continue;
+            }
+            foreach (Kin defender in rival.Kin)
+            {
+                if (KinRole.Villager == defender.Role && defender.IsIdle && defender.Position.DistanceTo(kin.Position) <= size * Village.EngageRange)
+                {
+                    defender.OrderAttack(kin);
+                }
+            }
+            if (!building.Hurt(Tune.RazeDamage * kin.DamageScale * dt))
+            {
+                continue;
+            }
+            rival.Shift(-Tune.RelationPerRaze);
+            if (0 == rival.Huts.Count && !rival.IsDefeated)
+            {
+                rival.Defeat();
+                _tribe.Economy.AddFood(Tune.DefeatFood);
+                _tribe.Economy.AddWood(Tune.DefeatWood);
+                EmitSignal(SignalName.TribeDefeated, rival.NameKey, Tune.DefeatFood, Tune.DefeatWood);
+            }
+            EmitSignal(SignalName.Changed);
+        }
+    }
+
+    /// <summary>The rival building whose footprint lies under a plane point, null when none.</summary>
+    /// <param name="point">(Required) Plane point under the cursor.</param>
+    public Hut HutAt(Vector2 point)
+    {
+        foreach (RivalTribe rival in _rivals)
+        {
+            foreach (Hut hut in rival.Huts)
+            {
+                if (!hut.IsQueuedForDeletion() && hut.Position.DistanceTo(point) <= hut.Size * Hut.RADIUS * HUT_REACH)
+                {
+                    return hut;
+                }
+            }
+        }
+        return null;
     }
 
     /// <summary>Two kin fight when their factions differ and one is a raider or attacks the other.</summary>

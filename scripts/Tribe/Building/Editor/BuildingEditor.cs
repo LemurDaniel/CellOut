@@ -1,12 +1,15 @@
 // NOTE:
-//   The village builder of the tribe, opened by Main with B or the panel button. Full
-//   screen over the paused game, like the creature editor. Tabs on top pick the building
-//   function (dwelling, storehouse, market, totem, watchtower), each has its own draft.
-//   Left: the block palette. Middle: the draft on a patch of ground, a picked block
+//   The village builder of the tribe, opened by Main with B or the hub button. Full
+//   screen over the paused game, which stays visible behind it out of focus (the own
+//   island with the village, Main hides the HUD meanwhile). Icon tabs on top pick the building
+//   function (dwelling, storehouse, market, totem, watchtower, warrior hut), each shows
+//   its own draft as a live icon.
+//   Left: the block palette, six group icons with three blocks each. Middle: the draft on a patch of ground, a picked block
 //   follows the pointer as a ghost and a click drops it: it lands on the ground or on
 //   the block pointed at. Right click removes a block (the ones above fall), left drag
 //   turns the view, the wheel zooms, R turns the picked block. Right: what the function
-//   costs and does, its templates and the paints. Below: rotate, clear, cancel and done.
+//   costs and does, the templates menu and the paint menu (patterns and paints: they go with the next block
+//   and repaint a block clicked while none is picked). Below: rotate, clear, cancel and done.
 //   Blocks are looks only. "Done" hands every draft to the tribe (Applied), "Cancel"
 //   drops the sitting.
 //
@@ -127,11 +130,18 @@ public partial class BuildingEditor : CanvasLayer
                 _stage.Press(left.Position);
                 break;
 
-            // Left release: a click without rotation drops the picked block
+            // Left release: a click without rotation drops the picked block, without one it repaints the block clicked
             case InputEventMouseButton { ButtonIndex: MouseButton.Left } left:
                 if (_stage.Release() && _stage.CellAt(left.Position) is BuildingStage.Hit hit)
                 {
-                    Session.PlaceAt(hit.X, hit.Z);
+                    if (null != Session.Selected)
+                    {
+                        Session.PlaceAt(hit.X, hit.Z);
+                    }
+                    else
+                    {
+                        Session.Repaint(hit.Block);
+                    }
                     _stage.Hover(left.Position);
                 }
                 break;
@@ -184,10 +194,11 @@ public partial class BuildingEditor : CanvasLayer
         _cancel.Text = Tr("BUILDING_CANCEL");
         _rotate.Text = string.Format(Tr("BUILDING_ROTATE"), Session.Turns * 90);
         _clear.Text  = Tr("BUILDING_CLEAR");
-        foreach ((BuildingKind kind, Button tab) in _tabs)
+        foreach ((BuildingKind kind, (Button tab, BuildingIcon icon)) in _tabs)
         {
-            tab.Text = Tr($"BUILDING_{kind}".ToUpperInvariant());
+            tab.TooltipText = Tr($"BUILDING_{kind}".ToUpperInvariant());
             tab.SetPressedNoSignal(kind == Session.Kind);
+            icon.Display(Session.DraftOf(kind));
         }
         _palette.Refresh();
         _sidebar.Refresh();
@@ -214,17 +225,23 @@ public partial class BuildingEditor : CanvasLayer
     // ============================   BUILD EDITOR   =============================
     // ===========================================================================
     //
-    //   _Ready      Keeps running while paused, builds everything hidden, follows the session.
-    //   BuildTop    Title and the function tabs.
+    //   _Ready      Keeps running while paused, builds everything hidden, follows the session:
+    //               the blurred game is the backdrop, the stage fills the screen on it, the panels lie on top
+    //               and let the mouse through between them.
+    //   InPanel     A view on a dark, see-through card, so it reads in front of the island.
+    //   BuildTop    Title and the function tabs, each the live icon of its draft.
     //   BuildFoot   Info line, rotate, clear, cancel and done.
     //
 
     private const int MARGIN = 24;
+    private const int TAB_ICON_PIXELS = 60;
+    private static readonly Vector2 TAB_SIZE = new(88, 68);
     private static readonly Color ACCENT = new(0.8f, 0.6f, 0.4f);
     private static readonly Color TOOL_ACCENT = new(0.6f, 0.7f, 0.9f);
-    private static readonly Color BACKGROUND = new(0.05f, 0.09f, 0.12f);
+    private static readonly Color BACKGROUND = new(0.05f, 0.09f, 0.12f, 0.84f);
+    private static readonly Shader BACKDROP_SHADER = GD.Load<Shader>("res://shaders/editor_blur.gdshader");
 
-    private readonly Dictionary<BuildingKind, Button> _tabs = new();
+    private readonly Dictionary<BuildingKind, (Button Tab, BuildingIcon Icon)> _tabs = new();
     private Control _root;
     private Label _title;
     private Label _info;
@@ -245,45 +262,50 @@ public partial class BuildingEditor : CanvasLayer
         _root = new Control { Visible = false, MouseFilter = Control.MouseFilterEnum.Stop };
         _root.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
         AddChild(_root);
-        var background = new ColorRect { Color = BACKGROUND, MouseFilter = Control.MouseFilterEnum.Ignore };
-        background.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
-        _root.AddChild(background);
+        // Backdrop: the paused game, out of focus and dimmed
+        var backdrop = new ColorRect { Material = new ShaderMaterial { Shader = BACKDROP_SHADER }, MouseFilter = Control.MouseFilterEnum.Ignore };
+        backdrop.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+        _root.AddChild(backdrop);
 
-        var margin = new MarginContainer();
+        _stage = new BuildingStage();
+        _stage.Setup(Session);
+        _stage.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+        _stage.GuiInput    += OnStageInput;
+        _stage.MouseExited += _stage.HideGhost;
+        _root.AddChild(_stage);
+
+        var margin = new MarginContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
         margin.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
         foreach (string side in new[] { "margin_left", "margin_top", "margin_right", "margin_bottom" })
         {
             margin.AddThemeConstantOverride(side, MARGIN);
         }
         _root.AddChild(margin);
-        var rows = new VBoxContainer();
+        var rows = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
         rows.AddThemeConstantOverride("separation", 12);
         margin.AddChild(rows);
 
         rows.AddChild(BuildTop());
 
-        // Workbench: palette, stage, sidebar
-        var workbench = new HBoxContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill };
+        // Workbench: palette, the free view onto the stage, sidebar
+        var workbench = new HBoxContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill, MouseFilter = Control.MouseFilterEnum.Ignore };
         workbench.AddThemeConstantOverride("separation", 16);
         rows.AddChild(workbench);
 
         _palette = new BuildingPalette();
         _palette.Setup(Session);
+        _palette.GroupPicked  += Session.ShowGroup;
         _palette.BlockPicked  += kind => Session.Select(kind);
         _palette.HoverChanged += RefreshInfo;
-        workbench.AddChild(_palette);
-
-        _stage = new BuildingStage();
-        _stage.Setup(Session);
-        _stage.GuiInput    += OnStageInput;
-        _stage.MouseExited += _stage.HideGhost;
-        workbench.AddChild(_stage);
+        workbench.AddChild(InPanel(_palette));
+        workbench.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, MouseFilter = Control.MouseFilterEnum.Ignore });
 
         _sidebar = new BuildingSidebar();
         _sidebar.Setup(Session);
-        _sidebar.TemplatePressed += Session.ApplyTemplate;
-        _sidebar.PaintPicked     += Session.PickPaint;
-        workbench.AddChild(_sidebar);
+        _sidebar.PatternPicked += Session.PickPattern;
+        _sidebar.PaintPicked   += Session.PickPaint;
+        _sidebar.TemplatePicked += Session.ApplyTemplate;
+        workbench.AddChild(InPanel(_sidebar));
 
         rows.AddChild(BuildFoot());
 
@@ -291,9 +313,20 @@ public partial class BuildingEditor : CanvasLayer
         Session.SelectionChanged += Refresh;
     }
 
+    private static Control InPanel(Control view)
+    {
+        var panel = new PanelContainer { SizeFlagsVertical = Control.SizeFlags.ShrinkBegin };
+        StyleBoxFlat card = EditorStyle.Pill(BACKGROUND, new Color(EditorStyle.RIM_COLOR, 0.35f));
+        card.SetCornerRadiusAll(14);
+        card.SetContentMarginAll(12);
+        panel.AddThemeStyleboxOverride("panel", card);
+        panel.AddChild(view);
+        return panel;
+    }
+
     private Control BuildTop()
     {
-        var top = new HBoxContainer();
+        var top = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
         top.AddThemeConstantOverride("separation", 8);
         _title = CreatureEditorUi.NewLabel(36);
         GameFonts.UseDisplay(_title);
@@ -303,14 +336,15 @@ public partial class BuildingEditor : CanvasLayer
         {
             var tab = new Button
             {
-                CustomMinimumSize = new Vector2(150, 44),
+                CustomMinimumSize = TAB_SIZE,
                 FocusMode         = Control.FocusModeEnum.None,
                 ToggleMode        = true,
                 AutoTranslateMode = AutoTranslateModeEnum.Disabled,
                 SizeFlagsVertical = Control.SizeFlags.ShrinkEnd,
             };
-            tab.AddThemeFontSizeOverride("font_size", 18);
             EditorStyle.ApplyTab(tab, ACCENT);
+            var icon = new BuildingIcon(TAB_ICON_PIXELS) { Position = new Vector2((TAB_SIZE.X - TAB_ICON_PIXELS) * 0.5f, 4f) };
+            tab.AddChild(icon);
             BuildingKind shown = kind;
             tab.Pressed += () =>
             {
@@ -318,14 +352,14 @@ public partial class BuildingEditor : CanvasLayer
                 Refresh();     // also re-presses the tab when the function did not change
             };
             top.AddChild(tab);
-            _tabs[kind] = tab;
+            _tabs[kind] = (tab, icon);
         }
         return top;
     }
 
     private Control BuildFoot()
     {
-        var foot = new HBoxContainer();
+        var foot = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
         foot.AddThemeConstantOverride("separation", 14);
         _info = CreatureEditorUi.NewLabel(16);
         _info.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
