@@ -110,4 +110,23 @@ Danach: Landleben (Futterquellen wie Früchte an Bäumen, Landtiere), Stamm und 
 - Teile je Achse streckbar (`CreaturePart.Stretch`, Gizmo-Würfel, goldener Ring = Gesamtgröße, `"stretch"` in Vorlagen).
 - 19 neue Teile: Augen (BeadEye, GhostEye, BulgeEye, PatchEye, SquidEye, PegEye, LidEye, TurretEye, FrogEye), Mäuler (SharkMaw, OrcaMaw, GapeMaw, SquidBeak, CrabMouth, Smile), Flossen (SickleFin, RoundFlipper, HindPaddle, FinRibbon).
 - Wirbelsäule: Minimum 3 Wirbel, Höhenstufe 0,38, Abstand ab 0,09.
+- Runde 3b: Zähne prozedural auf den Lippen (`MouthTeeth`), Tentakel laufen spitz zu, Rachen ohne Rim-Licht, Editor-Studios mit MSAA 4x + FXAA, Krabbe wieder mit vier Beinpaaren (16 EP). Damit erledigt aus der Liste unten: Zahn-Kopplung bei Hai/Orca/Angler/Aal, Tentakel-Arme, Beinpaare der Krabbe.
 - Offen: Gizmo-Würfel nur per Logik getestet, nicht von Hand gezogen. Zahn-Modelle (Hai, Orca, Angler, Aal) wiederholen ihre `mouths.json`-Werte als Konstanten im Builder und passen nur auf den Kopf ihrer Vorlage. Tintenfisch-Arme laufen nicht spitz zu (prozedurale Röhre). Delfin hat nur einen kurzen Mundstrich. Krabbe hat drei statt vier Beinpaare (Kosten). Iris der Augen nutzt das Material `Beak`, eigenes `Iris`-Material fehlt. Krabbe im Hero-Bild angeschnitten. Animationen der neuen Teile nur als Standbild gesehen. Renders nur auf Standard-Grafikstufe.
+- Teile an Gliedern (2026-11-15): jedes Teil lässt sich an ein Glied-Gelenk hängen (Knospe, `CreatureParts3D.BuildOnLimb`), Glieder verzweigen wie bisher. Offen: das Gizmo verschiebt ein Teil auf einer Knospe in den Achsen der Knospe, nicht des Bildschirms; ein Paar-Teil erscheint an jedem Gelenk als Paar; Werte von Teilen an Gliedern zählen voll (mehrere Mäuler möglich). Nicht von Hand im Editor ausprobiert.
+- Landtier (2026-11-15): Stufe Landtier beim ersten Betreten des Lands, ohne Bedingung an Beine oder Lunge.
+- Gliederarten (2026-11-15): Fühler, Gliederbein, Hals (`CreatureLimbs3D.LOOKS`). Füße zählen immer als Beine (die Krabben-Vorlage kroch an Land nur). Krabbe nutzt Gliederbeine bis zum Boden. Offen: Smoke-Check "Stamm" schlug in 1 von 4 Läufen fehl (Ursache nicht untersucht), Krabbenbeine sind von oben unter dem Panzer verborgen.
+
+## TODO: Animationen der Kreatur-Teile (2026-11-15)
+Reihenfolge wie mit dem User besprochen, erst nach Abschluss der Vorlagen-Runde 4 (Schnecke, Nautilus, Frosch, Krokodil, Qualle, Krake):
+- [ ] Glieder bewegen: Beine, Tentakel, Fühler, Hals und Gliederbeine sind starre Röhren (`CreatureLimbs3D`). Laufzyklus an Land, Paddeln und Wiegen im Wasser, Tentakel schlängeln. Größte Lücke, seit Schwimmen ohne Flossen steif ist (`CreatureDesign.SwimsWithWave`).
+- [ ] Maul auf und zu: die geschnittene Öffnung (`CreatureClay.CarveMouth`, `data/mouths.json`) ist starr. Leicht atmen, beim Fressen schnappen, die Zähne (`MouthTeeth`) gehen mit. Betrifft Hai-, Orca-, Klaff-, Nadel- und Krokodilmaul.
+- [ ] Flossensaum des Aals (`FinRibbon`) wellen lassen, Kiemen (`Gills`) atmen lassen.
+- [ ] Neue Teile aus Runde 4 prüfen: Quallenschirm pulsiert (beim Agenten angefragt), Mundarme, Schwimmfüße.
+- [ ] Alle Teil-Animationen einmal in Bewegung ansehen (Reel oder Spiel): bisher nur als Standbild gesehen, der Smoke-Test prüft nur, dass die Animation im Modell existiert.
+
+## Runde 4: neue Tiere und Aussehen (2026-11-15)
+- Sechs neue Vorlagen: Schnecke (7 EP), Nautilus (12), Frosch (8), Krokodil (11), Qualle (8), Krake (9). Neue Teile: Schneckenhaus, Nautilusschale, Rückenplatten, Quallenschirm, Mundarme, Schwimmfüße, Krokodilmaul, -schwanz, -füße, -augen.
+- Hauttypen (Glatt, Schuppen, Warzen) als Relief, Haltung des ganzen Körpers (`pitch`), Punktsymmetrie (`radial`), Editor-Leiste mit Icons für Farbe, Haut und die zwei Symmetrien.
+- Körperwelle nur noch mit Schwanzflosse oder Flossensaum; Muster zählt von der Wirbelsäule aus.
+- Offen: Qualle im Vier-Ansichten- und Hero-Bild unten angeschnitten, ihre Fäden noch als vier Paare statt als Ring. Krokodil-Schnauze rund statt flach. Ring-Kopien eines Glieds tragen keine Äste. Ein Auge am Glied kommt als Paar (Schnecke trickst). Haltung im Editor nur beim Halten des Reglers sichtbar. Neue Editor-Leiste nur auf einem Standbild gesehen, nicht bedient. Nichts davon in Bewegung oder an Land im Spiel geprüft, Renders nur auf Standard-Grafikstufe.
+- Land und Höhe (2026-11-15): Luft/Ersticken an Land entfernt (Lunge +10 % Lebenspunkte). An Land ruht das unterste Teil auf dem Boden, Schwebehöhe (`hover`) hebt darüber; im Editor steht das Tier auf dem Drehteller, die Haltung bleibt sichtbar (Kamera und Umgebung kippen). Offen: an Land im Spiel nicht angesehen (das Reel kommt mit Vorlage nicht an Land), der Luft-Bogen im `VitalsDial` ist jetzt toter Code, Regler nicht von Hand bedient.

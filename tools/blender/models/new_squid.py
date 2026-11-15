@@ -48,7 +48,7 @@ BEAK_LIP_X = 0.98                    # where the lip ring lies around the beak, 
 BEAK_LIP_RADIUS = 0.3
 BEAK_FORWARD = 3.0                   # stretch of the beak along the snout
 BEAK_ACROSS = 2.2                    # growth of the beak across the snout
-IRIS_RADIUS = 0.74                   # golden iris, share of the eyeball
+IRIS_RADIUS = 0.74                   # pale golden iris, share of the eyeball
 IRIS_CENTER_OUT = 0.48               # the iris dome is a flat ball pushed out of the eyeball
 IRIS_BULGE = 0.42
 
@@ -63,7 +63,7 @@ IRIS_BULGE = 0.42
 #   build_siphon        Squid funnel: a short hose under the head with a dark opening, the nozzle nods.
 #   build_squidbeak     Dark hooked beak in a pink lip ring, at the nose tip between the arms.
 #   pupil_height        How far the iris dome stands out at a spot of the eye.
-#   build_squideye      Flat eye in a skin socket: golden iris, W pupil, heavy upper lid.
+#   build_squideye      Flat eye in a skin socket: pale golden iris, a wide bar pupil with W dips.
 #
 
 def fin_edge(share):
@@ -196,21 +196,18 @@ def build_squideye(scene):
     """
     The eye of a squid (model space Eye: eyeball of radius 1 at the origin on the right
     flank, +Z out of the head, +X forward): a flat silvery ball in a soft socket ring,
-    a big golden iris, the pupil a lying W, a heavy upper lid that makes it look calm,
-    one highlight. No rig, the game blinks it.
+    a big pale golden iris, the pupil a wide dark bar with soft W dips, one highlight. No rig, the game blinks it.
     """
     ellipsoid(scene, 'Ball', G(0, 0, 0), (1.0, 0.8, 1.0), 'EyeWhite', subdivisions=3)
-    ellipsoid(scene, 'Iris', G(0, 0, IRIS_CENTER_OUT), (IRIS_RADIUS, IRIS_BULGE, IRIS_RADIUS), 'Beak', subdivisions=3)
+    ellipsoid(scene, 'Iris', G(0, 0, IRIS_CENTER_OUT), (IRIS_RADIUS, IRIS_BULGE, IRIS_RADIUS), 'StarchCore', subdivisions=3)
 
-    # Pupil: a lying W on the iris dome, built from its middle so both ends get a round cap
-    stroke = [(0.0, 0.07), (-0.2, -0.13), (-0.42, 0.1), (0.2, -0.13), (0.42, 0.1)]
-    points = [G(x, y - 0.04, pupil_height(x, y) - 0.03) for x, y in stroke]
-    tube(scene, 'PupilW', points, (0.1, 0.11, 0.09, 0.11, 0.09), [(0, 1), (1, 2), (0, 3), (3, 4)], 'Pupil')
-    ellipsoid(scene, 'Glint', G(0.3, 0.26, pupil_height(0.3, 0.26) + 0.02), (0.13, 0.07, 0.13), 'Glint', subdivisions=2)
+    # Pupil: a wide bar with soft W dips across the middle of the iris dome, built from its middle so both ends get a round cap
+    stroke = [(0.0, 0.07), (-0.24, -0.03), (-0.48, 0.08), (0.24, -0.03), (0.48, 0.08)]
+    points = [G(x, y, pupil_height(x, y) - 0.01) for x, y in stroke]
+    tube(scene, 'PupilW', points, (0.15, 0.16, 0.12, 0.16, 0.12), [(0, 1), (1, 2), (0, 3), (3, 4)], 'Pupil')
+    ellipsoid(scene, 'Glint', G(0.3, 0.32, pupil_height(0.3, 0.32) + 0.02), (0.13, 0.07, 0.13), 'Glint', subdivisions=2)
 
     # Socket: a soft ring of skin the eye sits in
     count = 18
     ring = [G(1.04 * math.cos(i / count * math.tau), 1.04 * math.sin(i / count * math.tau), 0.02) for i in range(count)]
     tube(scene, 'Socket', ring, [0.14] * count, [(i, (i + 1) % count) for i in range(count)], 'Skin')
-    # Upper lid: a cap of skin over the top quarter
-    ellipsoid(scene, 'Lid', G(0, 0.8, -0.05), (0.98, 0.8, 0.44), 'Skin', subdivisions=3)

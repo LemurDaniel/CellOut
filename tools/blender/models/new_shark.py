@@ -1,7 +1,7 @@
 # NOTE:
 #   New parts for the shark of the template library: a solid triangular back fin, a
 #   crescent tail with a bigger upper lobe, a sickle pectoral fin (fleshy blades without
-#   rays, unlike the ray fins of fins.py), the tooth rows of its grin and its bead eye. Not registered in build.models.py yet (the coordinator wires them).
+#   rays, unlike the ray fins of fins.py), the stand-in of its carved grin and its bead eye. Not registered in build.models.py yet (the coordinator wires them).
 #   Requires: Blender 5.2 (bpy, bmesh, mathutils).
 #
 #   ./tools/blender/Show-Model.ps1 -Module new_shark -Call 'build_sharkfin(scene)' -Name sharkfin
@@ -16,7 +16,6 @@ import math
 
 import bmesh
 import bpy
-from mathutils import Matrix
 
 from models.helpers import (
     AXIS_FORWARD,
@@ -27,7 +26,6 @@ from models.helpers import (
     animate,
     apply_modifiers,
     bind,
-    cone,
     ellipsoid,
     link_mesh,
     rig,
@@ -48,7 +46,7 @@ BLADE_ROUNDNESS = 0.55               # below 1 the blade is plump with blunt edg
 #   build_sharkfin    Back fin of a shark (model space Top): a tall swept triangle.
 #   build_sharktail   Tail of a shark (model space Tail): a crescent, the upper lobe bigger.
 #   build_sicklefin   Pectoral fin of a shark (model space FlankPair): a smooth swept sickle.
-#   build_sharkmaw    Teeth of a shark (model space Snout): two rows in the carved grin under the snout.
+#   build_sharkmaw    Mouth of a shark (model space Snout): a hidden lump, the game carves the grin and sets the teeth.
 #   build_beadeye     Eye of a shark (model space Eye): a black bead under a grim brow.
 #
 #   Both fins stand upright in the XY plane and sway in one second ("Flutter"), like
@@ -215,60 +213,13 @@ def build_sicklefin(scene):
 
 def build_sharkmaw(scene):
     """
-    The teeth of a great white in the grin the body carves under its snout (data/mouths.json,
-    SharkMaw). Model space Snout: x 0 at the mouth corners .. 1 at the nose tip, the mouth
-    line at y 0, z -1 and 1 the flanks at the corners.
-    The mouth line sits low on a pointed head, so seen from below the opening is a U that
-    closes well behind the nose tip (MAW_FRONT). The teeth follow that U:
-    > Upper row:  flat triangles hanging from the upper edge, big at the front, small at the corners
-    > Lower row:  smaller ones standing on the lower edge, in the gaps of the upper row
-    Right at the front of the U the opening touches the belly line, teeth would hang out
-    of the head there: the upper ones shrink towards it, the lower row leaves a gap.
-    The numbers of the U fit a pointed head like the shark template with the SharkMaw line
-    of mouths.json (length 5, level -0.38); a rounder head closes the U further forward.
+    The mouth of a great white needs no model any more: the body carves the grin under
+    the snout and the game stands the teeth on its lips (data/mouths.json, SharkMaw:
+    teeth, toothLength, toothWidth, toothFlat, toothRagged). Model space Snout. What is
+    left is one small dark lump deep in the throat, hidden in the head: the kind is
+    listed with a model, so the file must export a mesh.
     """
-    MAW_FRONT = 0.6                  # x where the U closes under the snout
-    MAW_WIDTH = 0.94                 # half the width of the U at the corners
-    MAW_ROUND = 0.6                  # shape of the U: 0.5 a parabola, higher is more pointed
-    MAW_INSET = 0.93                 # the teeth stand a little inside the lips
-    SMILE_RISE = 0.187               # the mouth line climbs this far towards the corners (smile 0.14 / 0.75)
-    EDGE = 0.267                     # the edges of the opening above and below the mouth line at the front (gape 0.2 / 0.75)
-    TOOTH_FLATNESS = 0.45            # thickness of a tooth, share of its width
-    UPPER_COUNT = 11
-    APEX_GAP = 0.2                   # no lower teeth this close to the front of the U: there the opening lies on the belly line
-
-    def on_lip(across, height):
-        """A point of the U at a share across the mouth (-1 left corner .. 1 right corner), height above the mouth line."""
-        z = across * MAW_WIDTH
-        x = MAW_FRONT * (1.0 - abs(across) ** (1.0 / MAW_ROUND))
-        line_y = SMILE_RISE * (1.0 - x * 1.03) ** 2
-        # The opening is full only in the front part and closes towards the corners (CreatureClay.CarveMouth)
-        share = min(1.0, max(0.0, x * 1.03 / 0.3))
-        opening = max(0.22, share * share * (3.0 - 2.0 * share))
-        return G(x * MAW_INSET, line_y + height * opening, z * MAW_INSET)
-
-    def tooth(name, across, base_height, tip_height, radius):
-        """A flat triangular tooth, its flat side facing out of the mouth."""
-        base = on_lip(across, base_height)
-        tip = on_lip(across * 0.96, tip_height)
-        obj = cone(scene, name, base, tip, radius)
-        # Flattened along the body (x): from below the row reads as a saw blade
-        flatten = Matrix.Diagonal((TOOTH_FLATNESS, 1.0, 1.0, 1.0))
-        obj.data.transform(Matrix.Translation(base) @ flatten @ Matrix.Translation(-base))
-
-    spread = 0.86
-    step = 2.0 * spread / (UPPER_COUNT - 1)
-    for i in range(UPPER_COUNT):
-        across = -spread + i * step
-        size = min(1.0 - 0.5 * abs(across), 0.15 + 1.7 * abs(across))
-        tooth(f'UpperTooth{i}', across, EDGE * 0.9, EDGE * 0.9 - EDGE * 1.25 * size, 0.1 * (0.55 + 0.45 * size))
-    for i in range(UPPER_COUNT - 1):
-        across = -spread + (i + 0.5) * step
-        if abs(across) < APEX_GAP:
-            continue
-        size = min(1.0 - 0.5 * abs(across), 0.3 + 2.4 * abs(across))
-        tooth(f'LowerTooth{i}', across, -EDGE * 0.9, -EDGE * 0.9 + EDGE * 0.95 * size, 0.085 * (0.55 + 0.45 * size))
-
+    ellipsoid(scene, 'Throat', G(0.15, 0, 0), (0.04, 0.04, 0.04), 'Dark', subdivisions=1)
 
 def build_beadeye(scene):
     """

@@ -44,8 +44,11 @@ import models.defense
 import models.cells
 import models.new_angler
 import models.new_crab
+import models.new_frog
+import models.new_jelly
 import models.new_newt
 import models.new_puffer
+import models.new_snail
 import models.new_seahorse
 import models.new_shark
 import models.new_squid
@@ -182,6 +185,16 @@ PARTS = {
     'creature/creature.paddle.glb':        models.new_turtle.build_flipper,
     'creature/creature.needlemaw.glb':     models.new_angler.build_needlemaw,
     'creature/creature.carapace.glb':      models.new_crab.build_carapace,
+    'creature/creature.croctail.glb':      models.new_frog.build_croctail,
+    'creature/creature.crocfoot.glb':      models.new_frog.build_crocfoot,
+    'creature/creature.croceye.glb':       models.new_frog.build_croceye,
+    'creature/creature.spiralshell.glb':   models.new_snail.build_spiralshell,
+    'creature/creature.nautilusshell.glb': models.new_snail.build_nautilusshell,
+    'creature/creature.backplates.glb':    models.new_frog.build_backplates,
+    'creature/creature.webbedfoot.glb':    models.new_frog.build_webbedfoot,
+    'creature/creature.crocmaw.glb':       models.new_frog.build_crocmaw,
+    'creature/creature.jellybell.glb':     models.new_jelly.build_jellybell,
+    'creature/creature.oralarms.glb':      models.new_jelly.build_oralarms,
     'creature/creature.sicklefin.glb':     models.new_shark.build_sicklefin,
     'creature/creature.roundflipper.glb':  models.new_whale.build_roundflipper,
     'creature/creature.hindpaddle.glb':    models.new_turtle.build_hindpaddle,

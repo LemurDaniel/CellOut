@@ -25,11 +25,15 @@ namespace CellOut;
 // ===========================================================================
 //
 //   CreaturePattern   How the second color lies on the back and flanks (shaders/clay.gdshaderinc).
+//   CreatureSkin      The surface of the skin: smooth, scales or warts.
 //   PaintSplat        One dot of spray paint, stored relative to the spine so it follows reshaping.
 //
 
 /// <summary>Paint of the second color: none, stripes across, round spots, big patches or a dark saddle.</summary>
 public enum CreaturePattern { None, Stripes, Spots, Patches, Saddle }
+
+/// <summary>Surface of the skin: smooth clay, the scales of a reptile or the warts of a toad (shaders/clay.gdshaderinc). Looks only.</summary>
+public enum CreatureSkin { Smooth, Scales, Warts }
 
 /// <summary>One dot of spray paint on the body.</summary>
 /// <param name="T">Spine share of its center, 0 tail .. 1 nose (outside on the caps).</param>
@@ -63,6 +67,37 @@ public sealed class CreatureLook
 
     /// <summary>Second color of the paint, null for a darker shade of the body color.</summary>
     public Color? PatternColor { get; private set; }
+
+    public const float MAX_PITCH = Mathf.Pi * 0.5f;
+
+    /// <summary>Posture of the whole body in radians: 0 lies level, MAX_PITCH stands upright with the nose up (a jellyfish, a seahorse), negative hangs nose down. Looks only.</summary>
+    public float Pitch { get; private set; }
+
+    /// <summary>Sets the posture, clamped to -MAX_PITCH..MAX_PITCH.</summary>
+    public void SetPitch(float pitch)
+    {
+        Pitch = Mathf.Clamp(pitch, -MAX_PITCH, MAX_PITCH);
+    }
+
+    public const float MAX_HOVER = 1.5f;
+
+    /// <summary>How high the body floats above the ground on land, in body sizes: 0 rests its lowest part on the ground. Looks only.</summary>
+    public float Hover { get; private set; }
+
+    /// <summary>Sets the hover height, clamped to 0..MAX_HOVER.</summary>
+    public void SetHover(float hover)
+    {
+        Hover = Mathf.Clamp(hover, 0f, MAX_HOVER);
+    }
+
+    /// <summary>Surface of the skin, CreatureSkin.Smooth for plain clay.</summary>
+    public CreatureSkin Skin { get; private set; }
+
+    /// <summary>Picks the surface of the skin, free of charge, looks only.</summary>
+    public void SetSkin(CreatureSkin skin)
+    {
+        Skin = skin;
+    }
 
     /// <summary>Picks the body color, null goes back to the default.</summary>
     /// <param name="color">(Required) The clay color, null for the default.</param>
@@ -160,6 +195,9 @@ public sealed class CreatureLook
     {
         Color        = other.Color;
         Pattern      = other.Pattern;
+        Skin         = other.Skin;
+        Pitch        = other.Pitch;
+        Hover        = other.Hover;
         PatternColor = other.PatternColor;
         _splats.Clear();
         _splats.AddRange(other._splats);

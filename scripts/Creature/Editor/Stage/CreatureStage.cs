@@ -22,6 +22,7 @@
 //
 
 using System.Collections.Generic;
+using System.Linq;
 using Godot;
 
 namespace CellOut;
@@ -41,16 +42,22 @@ public partial class CreatureStage : SubViewportContainer
     //   ShowDraft     Shows the draft of a new sitting in its color.
     //   Recolor       Takes over the color of the draft.
     //   Advance       Runs the clock and turns the turntable.
+    //   TiltSurroundings  Shows the posture of the draft by tilting camera, turntable and light.
     //
 
     private const float CAMERA_FOV = 40f;
     private const float TURNTABLE_RADIUS = 1.7f;
     private const float TURNTABLE_SPEED = 0.15f;
+    private const float TURNTABLE_TOP = 0.08f;       // from the middle of the slab up to the top of its rim
+    private const float TILT_EASE = 6f;              // how fast the view follows the posture slider (per second)
 
     private CreatureEditorSession _session;
     private Camera3D _camera;
     private Node3D _scene;
     private Node3D _turntable;
+    private Node3D _surroundings;                    // turntable and light, tilted against the posture of the draft
+    private DirectionalLight3D _light;
+    private float _tilt;                             // the posture shown, eases towards CreatureDesign.Pitch
     private CreatureVisual3D _clay;
     private readonly StandardMaterial3D _glowMaterial = new()
     {
@@ -62,6 +69,8 @@ public partial class CreatureStage : SubViewportContainer
 
     public Camera3D Camera => _camera;
     public CreatureVisual3D Clay => _clay;
+
+
     public StandardMaterial3D GlowMaterial => _glowMaterial;
     public float Clock { get; private set; }
 
@@ -83,8 +92,13 @@ public partial class CreatureStage : SubViewportContainer
         viewport.AddChild(_scene);
 
         // Sculptor's turntable: a slowly turning slab with a lighter rim and a few studs
+        // The surroundings (turntable, light) hang on one node: it turns against the posture of the draft, see TiltSurroundings
+        _surroundings = new Node3D();
+        _scene.AddChild(_surroundings);
+        _light = viewport.GetChildren().OfType<DirectionalLight3D>().First();
+        _light.Reparent(_surroundings, false);
         _turntable = new Node3D { Position = new Vector3(0f, -0.95f, 0f) };
-        _scene.AddChild(_turntable);
+        _surroundings.AddChild(_turntable);
         MeshInstance3D slab = CellVisual3D.AddMesh(_turntable,
             new CylinderMesh { TopRadius = TURNTABLE_RADIUS, BottomRadius = TURNTABLE_RADIUS * 1.04f, Height = 0.12f, RadialSegments = 48, Rings = 1 },
             CellVisual3D.Material(new Color(0.16f, 0.2f, 0.3f), 0f, 0.7f), Vector3.Zero, Vector3.One);
@@ -98,8 +112,9 @@ public partial class CreatureStage : SubViewportContainer
                 new Vector3(Mathf.Cos(angle), 0.07f, Mathf.Sin(angle)) * (TURNTABLE_RADIUS * 0.82f), Vector3.One * 0.03f);
         }
 
-        // The clay, nearly still so the handles stay on the back
-        _clay = new CreatureVisual3D { Design = _session.Draft, Knead = CreatureVisual3D.EDITOR_KNEAD, SwimScale = 0.3f, Seed = 7f };
+        // The clay, nearly still so the handles stay on the back. It always lies level in its unit space, where
+        // handles, gizmo and rays work: its posture is shown by tilting camera and surroundings the other way
+        _clay = new CreatureVisual3D { Design = _session.Draft, Knead = CreatureVisual3D.EDITOR_KNEAD, SwimScale = 0.3f, Seed = 7f, ShowsPosture = false };
         _scene.AddChild(_clay);
 
         // Marker where a selected part would land
@@ -134,6 +149,29 @@ public partial class CreatureStage : SubViewportContainer
     {
         Clock += delta;
         _turntable.RotateY(delta * TURNTABLE_SPEED);
+        TiltSurroundings(delta);
+
+        // The body stands on the turntable with its lowest part, or floats above it by its hover height
+        float top = _clay.Lowest - _session.Draft.Hover - TURNTABLE_TOP;
+        _turntable.Position = new Vector3(0f, Mathf.Lerp(_turntable.Position.Y, top, Mathf.Clamp(delta * TILT_EASE, 0f, 1f)), 0f);
+    }
+
+    /*
+      The posture of the draft (CreatureDesign.Pitch) without turning the clay: the body
+      keeps lying level in unit space, so every handle, the gizmo and the rays stay as they
+      are. Instead camera, turntable and light turn the other way around the same axis.
+      On screen that is the same picture as an upright body on a level turntable.
+    */
+    private void TiltSurroundings(float delta)
+    {
+        float goal = _session.Draft.Pitch;
+        if (Mathf.IsEqualApprox(_tilt, goal))
+        {
+            return;
+        }
+        _tilt = Mathf.Abs(goal - _tilt) < 0.002f ? goal : Mathf.Lerp(_tilt, goal, Mathf.Clamp(delta * TILT_EASE, 0f, 1f));
+        _surroundings.Basis = new Basis(Vector3.Back, -_tilt);
+        UpdateCamera();
     }
 
     // ===========================================================================
@@ -228,7 +266,8 @@ public partial class CreatureStage : SubViewportContainer
             Mathf.Sin(_yaw) * Mathf.Cos(_pitch),
             Mathf.Sin(_pitch),
             Mathf.Cos(_yaw) * Mathf.Cos(_pitch)) * distance;
-        _camera.Transform = new Transform3D(Basis.LookingAt(-offset, Vector3.Up), offset);
+        // Tilted against the posture of the draft, like the surroundings (TiltSurroundings)
+        _camera.Transform = new Transform3D(new Basis(Vector3.Back, -_tilt), Vector3.Zero) * new Transform3D(Basis.LookingAt(-offset, Vector3.Up), offset);
     }
 
     // ===========================================================================

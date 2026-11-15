@@ -5,6 +5,7 @@
 //   dotnet test tests/unit/CellOut.Tests.csproj --filter MouthShapeTests
 
 using System;
+using System.Linq;
 using Xunit;
 
 namespace CellOut.Tests;
@@ -43,5 +44,30 @@ public class MouthShapeTests
         MouthShape     shape = MouthShapes.For(shark);
         Assert.NotNull(shape);
         Assert.InRange(shape.CornerX(shark), (shark.TailTipX + shark.NoseTipX) * 0.5f, shark.NoseTipX);
+    }
+
+    [Fact]
+    public void TeethStandOnBothLipsAndFlanks()
+    {
+        CreatureDesign body  = CreatureTemplates.Plain(CreatureType.Fish).Build();
+        var            shape = new MouthShape { Gape = 0.2f, Teeth = 5, ToothLength = 0.1f };
+
+        var teeth = MouthTeeth.Place(body, shape);
+
+        Assert.Equal(5 * 2 * 2, teeth.Count);                                   // per row and flank
+        Assert.Equal(teeth.Count / 2, teeth.Count(tooth => tooth.Root.Z > 0f));
+        Assert.All(teeth, tooth => Assert.InRange(tooth.Root.X, shape.CornerX(body), body.NoseTipX));
+        Assert.All(teeth, tooth => Assert.True(tooth.Length > 0f && tooth.Length <= 0.1f * body.TopAt(shape.CornerX(body)) + 0.0001f));
+        Assert.Empty(MouthTeeth.Place(body, shape with { Teeth = 0 }));
+        Assert.Equal(teeth.Count / 2, MouthTeeth.Place(body, shape with { TeethRows = TeethRows.Upper }).Count);
+    }
+
+    [Fact]
+    public void NoToothWhereTheLipLeavesTheBody()
+    {
+        CreatureDesign body = CreatureTemplates.Plain(CreatureType.Fish).Build();
+
+        // A mouth line cut below the belly has no skin to stand on
+        Assert.Empty(MouthTeeth.Place(body, new MouthShape { Level = -3f, Gape = 0.1f, Teeth = 4 }));
     }
 }

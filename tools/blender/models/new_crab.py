@@ -103,18 +103,20 @@ def build_carapace(scene):
 
 def build_crabmouth(scene):
     """
-    The mouth of a crab (model space Snout): two pale plates that close the mouth like
-    double doors, a dark seam between them, two feelers above. The opening behind them
-    is carved by the game (data/mouths.json).
+    The mouth of a crab (model space Snout): small cream plates set into the carved
+    opening (data/mouths.json), overlapping like shutters. Two door plates of two
+    pieces each in the middle, a narrow plate behind them on each side, a dark seam,
+    two palps and two feelers above.
     """
-    ellipsoid(scene, 'Seam', G(0.86, 0.0, 0), (0.08, 0.1, 0.4), 'Dark', subdivisions=2)
+    ellipsoid(scene, 'Seam', G(0.8, -0.02, 0), (0.08, 0.2, 0.3), 'Dark', subdivisions=2)
     for side in (-1, 1):
-        # Plate: flat, taller than wide, the lower end a little wider
-        ellipsoid(scene, f'Plate{side}', G(0.9, 0.0, side * 0.27), (0.1, 0.25, 0.4), 'Claw', subdivisions=3)
-        ellipsoid(scene, f'PlateFoot{side}', G(0.86, -0.3, side * 0.32), (0.1, 0.27, 0.17), 'Claw', subdivisions=2)
-        ellipsoid(scene, f'Palp{side}', G(0.92, 0.46, side * 0.14), (0.07, 0.1, 0.09), 'Skin', subdivisions=2)
-        tube(scene, f'Feeler{side}', [G(0.9, 0.45, side * 0.2), G(1.02, 0.7, side * 0.27), G(1.12, 0.82, side * 0.36)], (0.035, 0.028, 0.02), [(0, 1), (1, 2)], 'Skin', subdivisions=1)
-
+        # Side plate: behind the doors, leaning outwards
+        ellipsoid(scene, f'SidePlate{side}', G(0.8, -0.04, side * 0.31), (0.05, 0.12, 0.27), 'Starch', subdivisions=2)
+        # Door: a long lower piece and a squarer upper piece overlapping it
+        ellipsoid(scene, f'DoorLow{side}', G(0.86, -0.1, side * 0.125), (0.05, 0.115, 0.23), 'Starch', subdivisions=2)
+        ellipsoid(scene, f'DoorHigh{side}', G(0.89, 0.14, side * 0.13), (0.05, 0.125, 0.13), 'Starch', subdivisions=2)
+        ellipsoid(scene, f'Palp{side}', G(0.9, 0.3, side * 0.09), (0.045, 0.06, 0.06), 'Skin', subdivisions=2)
+        tube(scene, f'Feeler{side}', [G(0.88, 0.36, side * 0.2), G(1.04, 0.62, side * 0.3), G(1.2, 0.74, side * 0.44)], (0.05, 0.04, 0.03), [(0, 1), (1, 2)], 'Skin', subdivisions=1)
 
 def build_pegeye(scene):
     """

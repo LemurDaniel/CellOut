@@ -5,6 +5,8 @@
 //   back and flanks, the belly stays light (CreatureDesign.Pattern). On top the spray paint:
 //   up to 160 dots (CreatureDesign.MAX_SPLATS) with a speckled rim like a spray can.
 //   Under the open sky of the land the skin is matt and glows less (sky_open).
+//   The skin surface (CreatureDesign.Skin): smooth clay, scales or warts, under the paint. Scales and
+//   warts are domes in relief: their slope tilts the normal like a bump map, the light models them.
 //   The mouth opening is cut into the body mesh (Visual/CreatureClay.cs), the line and its dark cavity
 //   are drawn here per pixel from the mark the mesh carries in its UV2.
 global uniform float sky_open;       // 0 under water .. 1 under the open sky, set by Plane3D.SetSky
@@ -21,16 +23,19 @@ uniform float half_length = 0.7;     // half the vertebra span, the wave grows t
 uniform int pattern = 0;             // 0 none, 1 stripes, 2 spots, 3 patches, 4 saddle (CreaturePattern)
 uniform vec4 pattern_color : source_color = vec4(0.3, 0.2, 0.2, 1.0);
 uniform float pattern_scale = 1.0;
+uniform int skin = 0;                // 0 smooth, 1 scales of a reptile, 2 warts of a toad (CreatureSkin)
 uniform int splat_count = 0;
 uniform vec4 splat_pos[160];         // xyz center in model space, w radius
 uniform vec4 splat_color[160];
 uniform float mouth_gape = -1.0;     // half the opening at the nose in heights of the head, negative = no mouth (MouthShape.Gape)
-uniform float mouth_min_gape = 0.045; // CreatureClay.MIN_GAPE
+uniform float mouth_min_gape = 0.045; // MouthShape.MIN_GAPE
 
 varying vec3 local_pos;
+varying float spine_lift;            // height of the spine at this ring, back and belly are measured from it (Visual/CreatureClay.cs, vertex color)
 varying vec2 mouth_mark;             // x = 0 at the mouth corners .. 1 at the nose tip, y = below the mouth line in heights of the head
 
 const vec3 MAW_COLOR = vec3(0.13, 0.03, 0.05);
+const float LIFT_RANGE = 2.0;        // CreatureClay.LIFT_RANGE
 const float LIP_RIM = 0.03;          // width of the pink rim in heights of the head
 float hash(vec3 p) {
 	return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453);
@@ -55,6 +60,27 @@ float cells(vec3 p) {
 	return sqrt(best);
 }
 
+// Like cells, but with the way to that nearest point: xyz from p to the point, w the distance.
+// The distance grows straight away from the point, so a bump over the cell needs no second sample
+vec4 cell_offset(vec3 p) {
+	vec3 i = floor(p);
+	vec3 f = fract(p);
+	vec3 nearest = vec3(8.0);
+	float best = 64.0;
+	for (int x = -1; x <= 1; x++)
+	for (int y = -1; y <= 1; y++)
+	for (int z = -1; z <= 1; z++) {
+		vec3 o = vec3(float(x), float(y), float(z));
+		vec3 d = o + hash3(i + o) - f;
+		float square = dot(d, d);
+		if (square < best) {
+			best = square;
+			nearest = d;
+		}
+	}
+	return vec4(nearest, sqrt(best));
+}
+
 // Smooth 3D value noise for lumps and the grain of the clay
 float noise(vec3 p) {
 	vec3 i = floor(p);
@@ -68,6 +94,7 @@ float noise(vec3 p) {
 
 void vertex() {
 	local_pos = VERTEX;
+	spine_lift = (COLOR.g - COLOR.r) * LIFT_RANGE;     // meshes without colors (limbs, fillets) are white: 0
 	mouth_mark = UV2;                   // meshes without UV2 (limbs, fillets, knuckles) carry 0: plain skin
 
 	// Lumps of hand-kneaded clay and the jelly wobble of the blob
@@ -116,8 +143,40 @@ void fragment() {
 	// Fingerprint grooves: wavy parallel lines, bent by the grain
 	float prints = sin((local_pos.x * 1.3 + local_pos.y + local_pos.z * 0.6) * 55.0 + grain * 7.0) * 0.5 + 0.5;
 
+	// Back and belly count from the spine: a lifted neck or a lowered body keeps its paint
+	vec3 body_pos = vec3(local_pos.x, local_pos.y - spine_lift, local_pos.z);
+
 	vec3 col = clay_color.rgb * (0.9 + 0.18 * grain);
-	col = mix(col, pattern_color.rgb * (0.9 + 0.18 * grain), paint(local_pos, grain));
+	col = mix(col, pattern_color.rgb * (0.9 + 0.18 * grain), paint(body_pos, grain));
+
+	// Skin surface, under the spray paint: the paint lies on the scales
+	// Every scale and wart is a dome: the light sees its slope (bump), the color only follows
+	float sheen = 0.0;                  // domes catch a little more light
+	vec3 bump = vec3(0.0);              // slope of the skin relief in model space, times its strength
+	if (skin == 1) {
+		// Scales: one dome per cell with a groove between them, a little longer along the body
+		vec3 stretch = vec3(13.0, 17.0, 17.0);
+		vec4 cell = cell_offset(local_pos * stretch + vec3(seed));
+		float t = clamp((cell.w - 0.12) / 0.4, 0.0, 1.0);          // 0 on the dome .. 1 in the groove
+		float groove = t * t * (3.0 - 2.0 * t);
+		col *= mix(1.08, 0.7, groove);
+		sheen = (1.0 - groove) * 0.5;
+		bump = cell.xyz / max(cell.w, 0.001) * stretch * (6.0 * t * (1.0 - t)) * 0.05;
+	} else if (skin == 2) {
+		// Warts: scattered bumps with a dark ring around each
+		vec4 cell = cell_offset(local_pos * 10.0 + vec3(seed * 2.0));
+		float t = clamp((cell.w - 0.06) / 0.18, 0.0, 1.0);         // 0 on the wart .. 1 on the skin around it
+		float wart = 1.0 - t * t * (3.0 - 2.0 * t);
+		float ring = smoothstep(0.18, 0.24, cell.w) * (1.0 - smoothstep(0.24, 0.34, cell.w));
+		col = mix(col, col * 1.18 + vec3(0.03), wart) * (1.0 - 0.2 * ring);
+		sheen = wart * 0.4;
+		bump = cell.xyz / max(cell.w, 0.001) * (6.0 * t * (1.0 - t)) * 0.75;
+	}
+	if (skin != 0) {
+		// Tilt the normal against the slope, along the surface only (NORMAL is in view space)
+		vec3 slope = (VIEW_MATRIX * MODEL_MATRIX * vec4(bump, 0.0)).xyz / max(length(MODEL_MATRIX[0].xyz), 0.0001);
+		NORMAL = normalize(NORMAL - (slope - dot(slope, NORMAL) * NORMAL));
+	}
 
 	// Spray paint: soft dots, the rim broken into specks, later dots on top
 	for (int i = 0; i < splat_count; i++) {
@@ -133,6 +192,7 @@ void fragment() {
 	col *= 1.0 - knead * (0.07 * prints + 0.07 * fine);
 
 	// The mouth cavity: dark red-black inside, a pink rim where the lips turn in
+	float in_maw = 0.0;                 // the cavity swallows the light: no rim, no backlight, no shine
 	if (mouth_gape >= 0.0 && mouth_mark.x > 0.0) {
 		float gape = max(mouth_gape * smoothstep(0.0, 0.3, mouth_mark.x), mouth_min_gape);
 		float off = abs(mouth_mark.y);
@@ -142,11 +202,12 @@ void fragment() {
 		float lips = (1.0 - smoothstep(gape, gape + LIP_RIM, off)) * ends * (1.0 - maw);
 		col = mix(col, mix(col, vec3(0.85, 0.45, 0.5), 0.45), lips);
 		col = mix(col, MAW_COLOR, maw);
+		in_maw = maw;
 	}
 
 	// Countershading of the living body: darker back, lighter belly
-	float belly = 1.0 - smoothstep(-0.25, 0.2, local_pos.y);
-	col = mix(col, mix(col * 0.82, col * 1.3 + vec3(0.06), belly), (1.0 - knead) * 0.8);
+	float belly = 1.0 - smoothstep(-0.25, 0.2, body_pos.y);
+	col = mix(col, mix(col * 0.82, col * 1.3 + vec3(0.06), belly), (1.0 - knead) * 0.8 * (1.0 - in_maw));
 	col = mix(col, vec3(1.0, 0.35, 0.35), flash * 0.7);
 
 #ifdef CLAY_TRANSLUCENT
@@ -179,11 +240,11 @@ void fragment() {
 	float pores = noise(local_pos * 60.0 + vec3(seed * 3.0));
 	col *= 1.0 - 0.1 * smoothstep(0.45, 0.8, pores) * sky_open;
 	ALBEDO = col;
-	ROUGHNESS = mix(mix(0.4, 0.72, sky_open), 0.8, knead);
-	SPECULAR = mix(mix(0.5, 0.28, sky_open), 0.25, knead);
-	RIM = mix(0.55, 0.2, sky_open);
+	ROUGHNESS = mix(mix(0.4, 0.72, sky_open), 0.8, knead) * (1.0 - 0.35 * sheen);
+	SPECULAR = mix(mix(0.5, 0.28, sky_open), 0.25, knead) * (1.0 - in_maw);
+	RIM = mix(0.55, 0.2, sky_open) * (1.0 - in_maw);
 	RIM_TINT = 0.35;
-	BACKLIGHT = mix(col * 0.3 + vec3(0.15, 0.05, 0.03), col * 0.1, sky_open);
-	EMISSION = col * rim * 0.16 * (1.0 - 0.85 * sky_open) + vec3(1.0, 0.3, 0.3) * flash * 0.35;
+	BACKLIGHT = mix(col * 0.3 + vec3(0.15, 0.05, 0.03), col * 0.1, sky_open) * (1.0 - in_maw);
+	EMISSION = col * rim * 0.16 * (1.0 - 0.85 * sky_open) * (1.0 - in_maw) + vec3(1.0, 0.3, 0.3) * flash * 0.35;
 #endif
 }

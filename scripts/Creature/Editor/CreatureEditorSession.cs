@@ -67,6 +67,9 @@ public sealed class CreatureEditorSession
     public CreatureDesign Draft { get; private set; } = CreatureDesign.Blob();
     public bool IsChoosingType { get; private set; }
     public bool IsSymmetric { get; private set; } = true;
+
+    /// <summary>Point symmetry of new parts: they stand this many times around the spine (2..CreatureDesign.MAX_RADIAL), 0 while the axis symmetry or none is on.</summary>
+    public int RadialCount { get; private set; }
     public bool IsSpraying { get; private set; }
     public CreaturePartKind? Selected { get; private set; }
     public CreatureCategory Category { get; private set; } = CreatureCategory.Fins;
@@ -111,9 +114,13 @@ public sealed class CreatureEditorSession
     //   ShowCategory     Switches the palette tab.
     //   Select           Picks a part from the palette.
     //   SetColor         Recolors the draft (null = coral default).
+    //   SetPosture       Posture of the whole body in degrees.
+    //   SetHover         Hover height above the ground on land.
+    //   SetSkin          Surface of the skin: smooth, scales or warts.
     //   SetPattern       Paints a pattern in the second color.
     //   SetPatternColor  Second color of the paint (null = a dark shade of the body).
-    //   SetSymmetric     Symmetry switch: new side parts as pairs or as single halves.
+    //   SetSymmetric     Axis symmetry: new side parts as pairs or as single halves.
+    //   SetRadial        Point symmetry: new parts stand in a ring around the spine.
     //   SetSpraying      Spray can on or off, on it lets go of part and palette selection.
     //   UndoSpray        Takes back the last spray stroke.
     //   ClearSpray       Wipes all spray paint.
@@ -196,6 +203,27 @@ public sealed class CreatureEditorSession
         Changed?.Invoke();
     }
 
+    /// <summary>Sets the posture of the draft in degrees (0 level, 90 upright). Raises Changed.</summary>
+    public void SetPosture(float degrees)
+    {
+        Draft.SetPitch(Mathf.DegToRad(degrees));
+        Changed?.Invoke();
+    }
+
+    /// <summary>Sets how high the draft floats above the ground on land, in body sizes. Raises Changed.</summary>
+    public void SetHover(float hover)
+    {
+        Draft.SetHover(hover);
+        Changed?.Invoke();
+    }
+
+    /// <summary>Picks the surface of the skin of the draft. Raises Changed.</summary>
+    public void SetSkin(CreatureSkin skin)
+    {
+        Draft.SetSkin(skin);
+        Changed?.Invoke();
+    }
+
     /// <summary>Paints the draft with a pattern in its second color, CreaturePattern.None for a plain body.</summary>
     public void SetPattern(CreaturePattern pattern)
     {
@@ -215,6 +243,16 @@ public sealed class CreatureEditorSession
     public void SetSymmetric(bool isSymmetric)
     {
         IsSymmetric = isSymmetric;
+        RadialCount = 0;                             // the two symmetries exclude each other
+        Changed?.Invoke();
+    }
+
+    /// <summary>Switches the point symmetry: new parts stand count times around the spine. It turns the axis symmetry off. Placed parts keep theirs.</summary>
+    /// <param name="count">(Required) 2..CreatureDesign.MAX_RADIAL, anything below 2 turns it off.</param>
+    public void SetRadial(int count)
+    {
+        RadialCount = count < 2 ? 0 : Mathf.Min(count, CreatureDesign.MAX_RADIAL);
+        IsSymmetric = RadialCount < 2 && IsSymmetric;
         Changed?.Invoke();
     }
 
@@ -267,7 +305,8 @@ public sealed class CreatureEditorSession
     /// <summary>Points a part costs with the current symmetry: a single half of a pair costs half, rounded up.</summary>
     public int CostOf(CreaturePartInfo info)
     {
-        return info.CostFor(IsSymmetric ? 0 : 1);
+        bool isRing = RadialCount >= 2 && CreatureDesign.CanBeRadial(info.Kind);
+        return info.CostFor(IsSymmetric ? 0 : 1) * (isRing ? RadialCount : 1);
     }
 
     /// <summary>The side a part dropped at a point takes: 0 with symmetry, else the flank of the point.</summary>
@@ -285,10 +324,17 @@ public sealed class CreatureEditorSession
     /// <example><code>session.TryPlace(CreaturePartKind.Hands, 0.6f, 1, out int cost)   // one right hand, half price</code></example>
     public bool TryPlace(CreaturePartKind kind, float t, int side, out int cost)
     {
-        cost = CreatureCatalog.Get(kind).CostFor(CreatureDesign.SideFor(kind, side));
+        // Point symmetry: a ring of single halves around the spine, each at its price
+        bool isRing = RadialCount >= 2 && CreatureDesign.CanBeRadial(kind);
+        side = isRing && CreatureCatalog.Get(kind).IsPaired ? 1 : side;
+        cost = CreatureCatalog.Get(kind).CostFor(CreatureDesign.SideFor(kind, side)) * (isRing ? RadialCount : 1);
         if (IsChoosingType || cost > Points || !Draft.TryPlace(kind, t, cost, side))
         {
             return false;
+        }
+        if (isRing)
+        {
+            Draft.SetPartRadial(Draft.Parts.Count - 1, RadialCount);
         }
         _spent += cost;
         return true;

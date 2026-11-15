@@ -6,7 +6,7 @@
 #   > Curl tail:   Tail, root at the origin at the tail tip, reaching back (-X), about 1 unit.
 #   > Tube snout:  Snout, x = 0 at the mouth corners, x = 1 at the nose tip. The tube reaches far past the nose tip.
 #   > Turret eye:  Eye, an eyeball of radius 1 at the origin on the right flank, +Z out of the head.
-#   > Gape maw:    Snout, teeth along the opening data/mouths.json carves for GapeMaw.
+#   > Gape maw:    Snout, nostril tubes on the nose; opening and teeth come from data/mouths.json.
 #   > Fin ribbon:  Hug, x -0.5 .. 0.5 along the body (half its length), y = 1 the back, z = 1 the flank.
 #
 #   ./tools/blender/Show-Model.ps1 -Module new_seahorse -Call 'build_curltail(scene)' -Name curltail
@@ -179,22 +179,12 @@ def build_turreteye(scene):
 # ==============================   EEL PARTS   ==============================
 # ===========================================================================
 #
-#   maw_edge          Height of the upper or lower edge of the carved opening at a spot.
-#   maw_outline       Spots along the lips from one mouth corner around the nose to the other.
-#   build_gapemaw     Gaping maw of a moray: needle teeth on both lips, two nostril tubes on the nose.
+#   build_gapemaw     Gaping maw of a moray: two short nostril tubes on the nose.
 #   build_finribbon   A low fin seam along the back with a wavy edge, one piece covers half the body.
 #
-#   The maw follows the opening the body carves for GapeMaw (data/mouths.json): the
-#   numbers below repeat that line and must change with it.
+#   The opening and the needle teeth of the maw come from the game (data/mouths.json,
+#   line GapeMaw), the model only adds what the carve cannot do.
 #
-
-MAW_LENGTH = 1.5                     # mouths.json: length
-MAW_SMILE = 0.1                      # mouths.json: smile
-MAW_GAPE = 0.26                      # mouths.json: gape
-MAW_Y_SCALE = 0.75                   # the game stretches model y to this share of the head height
-MAW_INSET = 0.9                      # the teeth stand this share of the head width from the middle
-MAW_SIDE_TEETH = 4                   # teeth per flank behind the head cap
-MAW_FRONT_TEETH = 9                  # teeth around the head cap
 
 RIBBON_BASE = 0.8                    # the seam starts inside the back
 RIBBON_HEIGHT = 2.0                  # mean height of its edge, 1 = the back
@@ -206,38 +196,10 @@ RIBBON_THICKNESS = 0.12              # across the body, in flank widths
 RIBBON_END = 0.05                    # the edge sinks to the back over this share at both ends
 
 
-def maw_edge(x, side):
-    """Model y of the upper (side 1) or lower (side -1) lip at x (0 corners .. 1 nose tip), as CreatureClay carves it."""
-    ramp = max(0.0, min(1.0, x / 0.3))
-    opening = MAW_GAPE * ramp * ramp * (3.0 - 2.0 * ramp)
-    return (MAW_SMILE * (1.0 - x) ** 2 + side * opening) / MAW_Y_SCALE
-
-
-def maw_outline():
-    """(x, z) spots for teeth: along the right flank, around the head cap, back along the left flank."""
-    cap_start = 1.0 - 1.0 / MAW_LENGTH
-    side = [(0.32 + (cap_start - 0.32) * i / MAW_SIDE_TEETH, MAW_INSET) for i in range(MAW_SIDE_TEETH)]
-    front = []
-    for i in range(MAW_FRONT_TEETH):
-        angle = math.radians(80.0 - 160.0 * i / (MAW_FRONT_TEETH - 1))
-        front.append((cap_start + (1.0 - cap_start) * math.cos(angle) * 0.93, math.sin(angle) * MAW_INSET))
-    return side + front + [(x, -z) for x, z in reversed(side)]
-
-
 def build_gapemaw(scene):
-    # Needle teeth: long ones hanging from the upper lip, shorter ones standing between them on the lower lip
-    spots = maw_outline()
-    for index, (x, z) in enumerate(spots):
-        length = 0.3 if 0 == index % 2 else 0.2
-        cone(scene, f'Upper{index}', G(x, maw_edge(x, 1) + 0.05, z), G(x, maw_edge(x, 1) - length, z * 0.94), 0.04)
-    for index in range(len(spots) - 1):
-        (x0, z0), (x1, z1) = spots[index], spots[index + 1]
-        x, z = (x0 + x1) / 2, (z0 + z1) / 2
-        cone(scene, f'Lower{index}', G(x, maw_edge(x, -1) - 0.05, z), G(x, maw_edge(x, -1) + 0.2, z * 0.92), 0.035)
-
-    # Nostril tubes: two short pipes on the tip of the nose, pointing forward and up
+    # Nostril tubes: two short pipes lying on the tip of the nose, pointing forward
     for side in (-1, 1):
-        tube(scene, f'Nostril{side}', [G(0.74, 0.9, side * 0.3), G(0.8, 1.12, side * 0.32), G(0.86, 1.26, side * 0.34)],
+        tube(scene, f'Nostril{side}', [G(0.78, 0.8, side * 0.3), G(0.9, 0.87, side * 0.32), G(1.0, 0.92, side * 0.34)],
              (0.075, 0.065, 0.06), [(0, 1), (1, 2)], 'Skin')
 
 

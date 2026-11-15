@@ -148,13 +148,15 @@ def build_smile(scene):
 def build_frogeye(scene):
     """
     The eye of a frog or newt (Eye: an eyeball of radius 1 at the origin, +Z out of the
-    head, +X forward): a golden dome with a flat lying pupil, sitting in a ring of skin
-    and half covered by a heavy upper lid, which gives the relaxed amphibian look.
+    head, +X forward): a dark ball with a golden iris and a wide flat pupil, sitting in
+    a ring of skin under a low lid of skin. A narrow brow line in the pattern color runs
+    along the edge of the lid, the yellow brow of a fire salamander.
     """
-    # Golden ball with a wide flat pupil looking out and a little forward
-    ellipsoid(scene, 'Ball', G(0, 0, 0), (1.0, 1.0, 1.0), 'Beak', subdivisions=3)
-    ellipsoid(scene, 'Pupil', G(0.2, -0.06, 0.52), (0.78, 0.6, 0.5), 'Pupil', subdivisions=3)
-    ellipsoid(scene, 'Glint', G(0.42, 0.14, 0.9), (0.14, 0.14, 0.14), 'Glint', subdivisions=2)
+    # Dark ball, the golden iris bulges out of it where the eye looks: out and a little forward
+    ellipsoid(scene, 'Ball', G(0, 0, 0), (1.0, 1.0, 1.0), 'Dark', subdivisions=3)
+    ellipsoid(scene, 'Iris', G(0.05, -0.02, 0.22), (0.88, 0.88, 0.88), 'Beak', subdivisions=3)
+    ellipsoid(scene, 'Pupil', G(0.12, -0.06, 0.62), (0.66, 0.52, 0.44), 'Pupil', subdivisions=3)
+    ellipsoid(scene, 'Glint', G(0.4, 0.2, 0.98), (0.13, 0.13, 0.13), 'Glint', subdivisions=2)
 
     # Socket: a ring of skin around the base of the ball, open at the back like a horseshoe
     count = 14
@@ -162,5 +164,10 @@ def build_frogeye(scene):
             for i in range(count)]
     tube(scene, 'Socket', ring, [0.2] * count, [(i, i + 1) for i in range(count - 1)], 'Skin', subdivisions=1, max_pieces=2)
 
-    # Upper lid: a cap in the pattern color over the top of the ball, the yellow brow of a fire salamander
-    ellipsoid(scene, 'Lid', G(-0.04, 0.72, -0.1), (1.1, 1.04, 0.62), 'BackSkin', subdivisions=3)
+    # Upper lid: a low cap of skin over the top of the ball
+    ellipsoid(scene, 'Lid', G(-0.04, 0.82, -0.1), (1.08, 1.04, 0.46), 'Skin', subdivisions=3)
+
+    # Brow: a narrow line along the edge of the lid, from the back around the front of the eye
+    angles = [math.radians(-70.0 + 180.0 * i / 8) for i in range(9)]
+    brow = [G(0.93 * math.sin(angle) - 0.04, 0.64, 0.93 * math.cos(angle) - 0.06) for angle in angles]
+    tube(scene, 'Brow', brow, [0.075] * len(brow), [(i, i + 1) for i in range(len(brow) - 1)], 'BackSkin', subdivisions=1, max_pieces=2)

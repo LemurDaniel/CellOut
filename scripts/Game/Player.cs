@@ -10,9 +10,8 @@
 //   At 64 cells and enough biomass it can evolve into an organism (Space or the HUD
 //   button): Main plays the evolve cutscene, the CreatureEditor shapes the clay, then
 //   BecomeOrganism takes over the body plan and every trait comes from the creature.
-//   On land (Main sets IsOnLand at the coast) it needs air and legs: without a lung the
-//   air runs out, without legs it only crawls. The first step onto land with both makes
-//   it a land animal. The pack (a nest with conspecifics) and the tribe (the pack settles
+//   On land (Main sets IsOnLand at the coast) it walks on legs, without legs it only crawls. The first time on land makes it a land
+//   animal, whatever it has. The pack (a nest with conspecifics) and the tribe (the pack settles
 //   around a fire, the player becomes one commanded unit of many) are founded by the
 //   PackKeeper (Tribe/Pack/) through FoundSociety.
 //   Created by Main, which listens to its signals. Steered with WASD, arrows or the held
@@ -25,7 +24,7 @@
 //     MOVE               Input, movement, regeneration, photosynthesis and diet fading.
 //     DIVISION           When the cells may divide and the division itself.
 //     ORGANISM           Evolving the full cluster into a creature and committing its body plan.
-//     LAND               Air, crawling and walking on land, the step to the land animal.
+//     LAND               Crawling and walking on land, the step to the land animal.
 //     SOCIETY            Pack and tribe: the stages the PackKeeper founds, orders and the takeover of a kin.
 //     STATS              Speed, goal progress and the directional combat values.
 //     GAMEPLAY           Biomass, damage and committing a new design.
@@ -345,27 +344,20 @@ public partial class Player : CellBody
     // ================================   LAND   =================================
     // ===========================================================================
     //
-    //   IsLandAnimal   From stage 5 on: the creature stepped onto land with legs and lung.
-    //   CanWalk        Legs placed and air breathed, the conditions of the step onto land.
-    //   Air            Breath left, 0..1, drains on land without a lung.
-    //   UpdateLand     Air drains or refills, suffocation hurts, the first walk on land advances.
+    //   IsLandAnimal   From stage 5 on: the creature went onto land, whatever it walks or breathes with.
+    //   UpdateLand     The first time on land advances the stage.
     //
     //   Main sets CellBody.IsOnLand every physics frame from the Coast.
     //
 
     public bool IsLandAnimal => Stage >= LAND_STAGE;
 
-    public bool CanWalk => IsOrganism && Creature.LegPairs > 0 && Creature.BreathesAir;
-
-    public float Air { get; private set; } = 1f;
-
     /*
       > Not an organism yet: nothing to do
-      > On land without breathing air: the air drains, at 0 the body suffocates
-      > Otherwise: the air refills
-      > First time on land with legs and lung: the creature becomes a land animal
+      > First time on land: the creature becomes a land animal, with or without legs or lung
+        (decision of the user 2026-11-15); nobody needs air on land any more, without legs it crawls
     */
-    /// <summary>Air, suffocation and the step onto land, once per physics frame.</summary>
+    /// <summary>The step onto land, once per physics frame.</summary>
     private void UpdateLand(float dt)
     {
         if (!IsOrganism)
@@ -373,27 +365,7 @@ public partial class Player : CellBody
             return;
         }
 
-        if (IsOnLand && !Creature.BreathesAir)
-        {
-            Air = Mathf.Max(0f, Air - dt / Tune.AirSeconds);
-            if (Air <= 0f && Invulnerable <= 0f)
-            {
-                Hp       -= MaxHp * Tune.SuffocateDamage * dt;
-                HurtFlash = Mathf.Max(HurtFlash, 0.4f);
-                if (Hp <= 0f)
-                {
-                    Log.Verbose("Player", "Suffocated on land.");
-                    Die();
-                }
-                EmitSignal(SignalName.StatsChanged);
-            }
-        }
-        else
-        {
-            Air = Mathf.Min(1f, Air + dt * Tune.AirRefill);
-        }
-
-        if (ORGANISM_STAGE == Stage && IsOnLand && CanWalk)
+        if (ORGANISM_STAGE == Stage && IsOnLand)
         {
             Stage            = LAND_STAGE;
             EvolutionPoints += Tune.EpPerStage;

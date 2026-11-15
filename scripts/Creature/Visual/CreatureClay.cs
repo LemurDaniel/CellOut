@@ -32,7 +32,7 @@ public static class CreatureClay
 
     private const int RINGS = 96;                   // rings along the body, fine enough for a smooth silhouette
     private const int SEGMENTS = 40;
-    public const float MIN_GAPE = 0.045f;           // even a closed mouth is a thin line, in heights of the head (half its width)
+    private const float LIFT_RANGE = 2f;            // spine heights up to this are carried in the vertex color (clay.gdshaderinc, LIFT_RANGE)
     private const float RING_TILT = 0.6f;           // share of the spine slope the rings tilt by: full tilt folds the inside of a bend
 
     /// <summary>
@@ -64,6 +64,9 @@ public static class CreatureClay
                 // The shader draws the mouth line per pixel from this mark, sharper than the mesh could cut it
                 // In UV2: primitive meshes sharing the clay (fillets, knuckles) bring their own UV, but no UV2
                 surface.SetUV2(null == mouth ? Vector2.Zero : CarveMouth(design, mouth, center, ref vertex));
+                // Height of the spine there, for the shader: back and belly are measured from the spine, not from the
+                // origin (a lifted neck keeps its pattern). Red counts up, green down, white (meshes without colors) is 0
+                surface.SetColor(new Color(1f - Mathf.Clamp(center.Y, 0f, LIFT_RANGE) / LIFT_RANGE, 1f - Mathf.Clamp(-center.Y, 0f, LIFT_RANGE) / LIFT_RANGE, 1f));
                 surface.AddVertex(vertex);
             }
         }
@@ -120,7 +123,7 @@ public static class CreatureClay
         // Lower jaw: everything below the line shifts, the most at the nose
         vertex.X += mouth.Jut * head * Mathf.SmoothStep(0f, 1f, s) * Mathf.Clamp(below / Mathf.Max(head * 0.6f, 0.001f), 0f, 1f);
 
-        float   gape    = Mathf.Max(mouth.Gape * head * Mathf.SmoothStep(0f, 0.3f, s), head * MIN_GAPE);
+        float   gape    = Mathf.Max(mouth.Gape * head * Mathf.SmoothStep(0f, 0.3f, s), head * MouthShape.MIN_GAPE);
         float   off     = Mathf.Abs(below) / gape;
         Vector3 outward = new Vector3(0f, vertex.Y - center.Y, vertex.Z - center.Z);
         outward = outward.LengthSquared() < 1e-8f ? Vector3.Zero : outward.Normalized();
@@ -146,13 +149,17 @@ public static class CreatureClay
     */
     public const float LIMB_ROOT_RADIUS = 0.14f;             // chunky on purpose, cartoon monsters
     public const float LIMB_TIP_RADIUS = 0.08f;
+    public const float TENTACLE_TIP_RADIUS = 0.022f;         // a tentacle runs out into a point
+    public const float TENTACLE_END_RADIUS = 0.05f;          // unless a club or a hand sits on its tip
     private const int LIMB_STEPS = 10;
     private const int LIMB_SEGMENTS = 18;
 
     /// <summary>The clay tube of a sculpted limb, LIMB_ROOT_RADIUS thick at the shoulder, LIMB_TIP_RADIUS at the tip.</summary>
     /// <param name="path">(Required) The shoulder and every joint, in limb space.</param>
+    /// <param name="tipRadius">(Optional) Radius at the tip. Defaults to LIMB_TIP_RADIUS.</param>
+    /// <param name="rootRadius">(Optional) Radius at the shoulder. Defaults to LIMB_ROOT_RADIUS.</param>
     /// <returns>The tube mesh in limb space.</returns>
-    public static ArrayMesh LimbMesh(IReadOnlyList<Vector3> path)
+    public static ArrayMesh LimbMesh(IReadOnlyList<Vector3> path, float tipRadius = LIMB_TIP_RADIUS, float rootRadius = LIMB_ROOT_RADIUS)
     {
         // Smoothed samples, thick at the shoulder, thin at the tip
         var samples = new List<Vector3>();
@@ -179,7 +186,7 @@ public static class CreatureClay
             }
             normal = (normal - tangent * normal.Dot(tangent)).Normalized();   // parallel transport
             Vector3 binormal = tangent.Cross(normal);
-            float   radius   = Mathf.Lerp(LIMB_ROOT_RADIUS, LIMB_TIP_RADIUS, (float)i / (samples.Count - 1));
+            float   radius   = Mathf.Lerp(rootRadius, tipRadius, (float)i / (samples.Count - 1));
             for (int j = 0; j < LIMB_SEGMENTS; j++)
             {
                 float angle = Mathf.Tau * j / LIMB_SEGMENTS;

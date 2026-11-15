@@ -186,6 +186,7 @@ public sealed class CreatureStats
                 case CreaturePartKind.CaudalFin:
                 case CreaturePartKind.SharkTail:
                 case CreaturePartKind.NewtTail:
+                case CreaturePartKind.CrocTail:
                 case CreaturePartKind.MantleFins:
                     stats.SwimSpeed *= effects.CaudalFinSwim;
                     break;
@@ -203,6 +204,7 @@ public sealed class CreatureStats
                 case CreaturePartKind.SharkFin:
                 case CreaturePartKind.TallFin:
                 case CreaturePartKind.FinRibbon:
+                case CreaturePartKind.OralArms:
                     stats.Acceleration *= effects.DorsalFinAcceleration;
                     break;
                 case CreaturePartKind.PectoralFin:
@@ -218,6 +220,7 @@ public sealed class CreatureStats
                 case CreaturePartKind.Jaw:
                 case CreaturePartKind.NeedleMaw:
                 case CreaturePartKind.SharkMaw:
+                case CreaturePartKind.CrocMaw:
                 case CreaturePartKind.OrcaMaw:
                 case CreaturePartKind.GapeMaw:
                 case CreaturePartKind.SquidBeak:
@@ -242,6 +245,10 @@ public sealed class CreatureStats
                     break;
                 case CreaturePartKind.Shell:
                 case CreaturePartKind.Carapace:
+                case CreaturePartKind.SpiralShell:
+                case CreaturePartKind.NautilusShell:
+                case CreaturePartKind.BackPlates:
+                case CreaturePartKind.JellyBell:
                     stats._plateAngles.AddRange(BACK_AND_FLANKS);
                     stats.Health    *= effects.ShellHealth;
                     stats.SwimSpeed *= effects.ShellSwim;
@@ -263,6 +270,7 @@ public sealed class CreatureStats
                 case CreaturePartKind.LidEye:
                 case CreaturePartKind.TurretEye:
                 case CreaturePartKind.FrogEye:
+                case CreaturePartKind.CrocEye:
                     stats.MagnetBonus += effects.EyeMagnet * share;
                     break;
                 case CreaturePartKind.StalkEye:
@@ -277,6 +285,9 @@ public sealed class CreatureStats
                 case CreaturePartKind.BentLimb:
                 case CreaturePartKind.Limb:
                 case CreaturePartKind.Tentacle:
+                case CreaturePartKind.Feeler:
+                case CreaturePartKind.JointedLeg:
+                case CreaturePartKind.Neck:
                     stats.SwimSpeed *= Scaled(effects.LimbDrag);
                     if (design.IsWalkingLimb(part))
                     {
@@ -293,6 +304,8 @@ public sealed class CreatureStats
                 case CreaturePartKind.StubbyLegs:
                 case CreaturePartKind.ClawLegs:
                 case CreaturePartKind.CrabLegs:
+                case CreaturePartKind.WebbedFeet:
+                case CreaturePartKind.CrocFeet:
                     stats.SwimSpeed *= Scaled(effects.LimbDrag);
                     break;
                 // Hands grab food, claws scratch at both front flanks (a single claw at its own flank,
@@ -322,8 +335,9 @@ public sealed class CreatureStats
                     stats.EpPerLevelBonus += effects.BigBrainEp;
                     stats.Acceleration    *= effects.BigBrainAcceleration;
                     break;
-                // Lungs: air on land (CreatureDesign.BreathesAir), more air means more health
+                // Lungs: more air means more health (nobody needs air on land any more)
                 case CreaturePartKind.Lung:
+                    stats.Health *= effects.LungHealth;
                     break;
                 case CreaturePartKind.Blowhole:
                     stats.Health *= effects.BlowholeHealth;

@@ -19,7 +19,13 @@
 //       "gape": 0.12,      half the opening at the nose, in heights of the head (0 = a closed line)
 //       "depth": 0.25,     how deep the cavity is cut, in heights of the head
 //       "lip": 0.03,       how far the lips bulge out around the opening, in heights of the head
-//       "jut": 0.0         how far the lower jaw is pushed forward, in heights of the head (negative = it sits back under the snout)
+//       "jut": 0.0,        how far the lower jaw is pushed forward, in heights of the head (negative = it sits back under the snout)
+//       "teeth": 0,        teeth per row and flank, the game stands them on the lips of the opening (Design/MouthTeeth.cs)
+//       "teethRows": "Both",   Both, Upper or Lower
+//       "toothLength": 0.12,   root to tip, in heights of the head (never longer than the opening allows)
+//       "toothWidth": 0.06,    width along the lip, in heights of the head
+//       "toothFlat": 1.0,      thickness as share of the width: 1 a cone or needle, 0.3 a flat shark triangle
+//       "toothRagged": 0.0     every second tooth is shorter by this share
 //     }
 
 //
@@ -53,6 +59,15 @@ public sealed record MouthShape
     public float Depth { get; init; } = 0.25f;
     public float Lip { get; init; } = 0.03f;
     public float Jut { get; init; }
+    public int Teeth { get; init; }
+    public TeethRows TeethRows { get; init; } = TeethRows.Both;
+    public float ToothLength { get; init; } = 0.12f;
+    public float ToothWidth { get; init; } = 0.06f;
+    public float ToothFlat { get; init; } = 1f;
+    public float ToothRagged { get; init; }
+
+    /// <summary>Even a closed mouth is a thin line: the least half opening, in heights of the head.</summary>
+    public const float MIN_GAPE = 0.045f;
 
     /// <summary>X of the mouth corners: Length head caps behind the nose tip, never behind the middle of the body.</summary>
     /// <param name="design">(Required) The body the mouth sits on.</param>
@@ -132,7 +147,8 @@ public static class MouthShapes
     {
         foreach (CreaturePart part in design.Parts)
         {
-            if (CreatureCategory.Mouths == part.Info.Category)
+            // A mouth on a limb joint cuts into its own little head there, not into the body
+            if (CreatureCategory.Mouths == part.Info.Category && !CreatureDesign.IsOnBud(part))
             {
                 return Current.TryGetValue(part.Kind, out MouthShape shape) ? shape : null;
             }

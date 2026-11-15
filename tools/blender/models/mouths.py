@@ -117,6 +117,7 @@ FILTER_MOUTH = {'length': 2.8, 'level': -0.2, 'smile': 0.28, 'gape': 0.16}
 MOUTH_FIT = 1.03                     # the game stretches the model this far past the nose tip and the flanks
 MOUTH_HEIGHT = 0.75                  # model y = 1 is this share of the head height
 MOUTH_Y_UNIT = 0.66                  # a model y unit in head widths: parts are built round and squashed at the end
+BALEEN_HANG = 0.8                    # the curtain covers this share of the opening, from the upper lip down
 WHALE_PLEATS = (0.2, 0.36, 0.52, 0.68, 0.84, 1.0)   # throat pleats: how far each one runs below the lower lip, model y
 
 
@@ -170,14 +171,16 @@ def build_filtermouth(scene):
     shape = FILTER_MOUTH
     stations = mouth_stations(shape, 16, 27)
 
-    # Baleen: thin plates hanging from the upper edge of the opening, all along the mouth line
-    for i, (degrees, back) in enumerate(stations):
-        center, s = on_mouth(shape, degrees, back, 0.1, 0.0, 0.95)
-        upper, _ = on_mouth(shape, degrees, back, 1.0, 0.0, 0.95)
-        if s < 0.06:
+    # Baleen: a dense curtain of fine grey and brown plates hanging from the upper lip only,
+    # overlapping without a gap, the lower ends frayed
+    for i, (degrees, back) in enumerate(mouth_stations(shape, 44, 61)):
+        hang = BALEEN_HANG * (0.82 + 0.18 * ((i * 7) % 5) / 4.0)
+        center, s = on_mouth(shape, degrees, back, 1.05 - hang, 0.0, 0.955)
+        upper, _ = on_mouth(shape, degrees, back, 1.05, 0.0, 0.955)
+        if s < 0.05:
             continue
-        ellipsoid(scene, f'Baleen{i}', center, (0.028, 0.028, max(0.02, (upper - center).length)), 'Claw', subdivisions=1)
-
+        ellipsoid(scene, f'Baleen{i}', center, (0.034, 0.03, max(0.02, (upper - center).length)),
+                  'Stone' if 0 == i % 2 else 'Twig', subdivisions=1)
     # Knobs of a humpback on the upper jaw, in the color of the back
     for i, (degrees, back) in enumerate(mouth_stations(shape, 4, 9)):
         center, s = on_mouth(shape, degrees, back, 1.0, 0.3 + 0.2 * (i % 2), 1.0)

@@ -58,7 +58,9 @@ public partial class CreatureVisual3D : Node3D
     private const float SWIM_FREQUENCY = 9f;         // added at full speed
     private const float SPOUT_PERIOD = 5f;           // a marine mammal breathes every few seconds
     private const float SPOUT_SECONDS = 0.9f;
-    private const float LAND_LIFT = 0.32f;           // legs lift the body this far above its swim height on land: stilts, the legs grow with it
+    private const float MIN_LAND_LIFT = -0.45f;      // a flat body sinks at most this far to lay its belly on the ground
+    private const float MAX_LAND_LIFT = 4f;          // an upright body with long arms rises at most this far
+    private const float POSTURE_EASE = 5f;           // how fast the body pitches into its posture (per second)
     private const float CRAWL_WAVE = 0.25f;          // share of the swim wave left on land without legs: the wiggle is its crawl
     private const float WAVE_EASE = 4f;              // per second, the wave fades in and out at the shore
 
@@ -85,6 +87,9 @@ public partial class CreatureVisual3D : Node3D
 
     /// <summary>(Optional) Draws only the parts, no body (palette tiles of the creature editor). Defaults to false.</summary>
     public bool IsPartsOnly { get; set; }
+
+    /// <summary>Whether the body stands in the posture of its design (CreatureDesign.Pitch). The editor sculpts it level and turns this off.</summary>
+    public bool ShowsPosture { get; set; } = true;
 
     /// <summary>(Optional) A camera that frames the parts after every rebuild (palette tiles). Defaults to none.</summary>
     public Camera3D FitCamera { get; set; }
@@ -124,7 +129,7 @@ public partial class CreatureVisual3D : Node3D
 
     private float _lift;
     private float _sink;                             // eases to Plane3D.SeaDrop in the water, 0 on land
-    private float _wave = 1f;                        // share of the swim wave: 1 in the water, 0 walking on land
+    private float _wave = 1f;                        // share of the swim wave: 1 in the water with a fin, 0 without one or walking on land
     private ShaderMaterial _clay;
     private int _signature;
     private float _time;
@@ -172,7 +177,10 @@ public partial class CreatureVisual3D : Node3D
 
         float speedShare = 0f;
         bool  isOnLand   = null != Body && Body.IsOnLand;
-        _lift = Mathf.Lerp(_lift, isOnLand && design.LegPairs > 0 ? LAND_LIFT : 0f, Mathf.Clamp(dt * 4f, 0f, 1f));
+        // On land the lowest part of the body (in its posture) rests on the ground, raised by the hover height of the
+        // design: legs lift the body as far as they reach, a jellyfish stands on its arms or floats above them
+        float landLift = Mathf.Clamp(Coast.GROUND_HEIGHT - Lowest, MIN_LAND_LIFT, MAX_LAND_LIFT) + design.Hover;
+        _lift = Mathf.Lerp(_lift, isOnLand ? landLift : 0f, Mathf.Clamp(dt * 4f, 0f, 1f));
         _sink = Mathf.Lerp(_sink, isOnLand ? 0f : Plane3D.SeaDrop, Mathf.Clamp(dt * 4f, 0f, 1f));
         if (null != Body)
         {
@@ -193,8 +201,11 @@ public partial class CreatureVisual3D : Node3D
         // ---------------------------------------------------------------------------
 
         _phase += dt * (IDLE_FREQUENCY + SWIM_FREQUENCY * speedShare);
-        // On legs the body walks stiff, no swim wave at all; the phase keeps running so it fades back in smoothly
-        float waveGoal   = !isOnLand ? 1f : design.LegPairs > 0 ? 0f : CRAWL_WAVE;
+        // The parts decide the motion (decision of the user 2026-11-15), the phase keeps running so the wave fades in smoothly:
+        // > In the water: the swim wave with a fin, fluke or tail, a stiff glide without one
+        // > On land on legs: stiff, the legs walk
+        // > On land without legs: a small wiggle, that is its crawl
+        float waveGoal   = !isOnLand ? (design.SwimsWithWave ? 1f : 0f) : design.LegPairs > 0 ? 0f : CRAWL_WAVE;
         _wave = Mathf.Lerp(_wave, waveGoal, Mathf.Clamp(dt * WAVE_EASE, 0f, 1f));
         float amplitude  = (IDLE_AMP + SWIM_AMP * speedShare) * SwimScale * _wave;
         bool  isVertical = CreatureType.MarineMammal == design.Type;
@@ -202,6 +213,22 @@ public partial class CreatureVisual3D : Node3D
         SetClay("swim_amp", amplitude);
         SetClay("flash", null != Body ? Body.HurtFlash : 0f);
         _parts.Swim(design.HalfLength, amplitude, _phase, isVertical);
+
+        // ---------------------------------------------------------------------------
+        // Posture
+        //   The whole body pitches around its middle: upright jellyfish, level fish.
+        // ---------------------------------------------------------------------------
+
+        // The posture belongs to the animal, in the water and on land alike (decision of the user 2026-11-15:
+        // the upright jellyfish fell over on land because its threads counted as legs)
+        float postureGoal = ShowsPosture ? design.Pitch : 0f;
+        _posture = Mathf.Lerp(_posture, postureGoal, Mathf.Clamp(dt * POSTURE_EASE, 0f, 1f));
+        var pitched = new Basis(Vector3.Back, _posture);
+        _parts.Basis = pitched;
+        if (null != _bodyMesh && IsInstanceValid(_bodyMesh))
+        {
+            _bodyMesh.Basis = pitched;
+        }
 
         // ---------------------------------------------------------------------------
         // Details
@@ -307,6 +334,42 @@ public partial class CreatureVisual3D : Node3D
     private ShaderMaterial _limbClay;
     private ShaderMaterial _knuckleClay;
     private CreatureParts3D _parts;                  // a new component per rebuild, it frees with the other children
+    private MeshInstance3D _bodyMesh;                // null for parts only
+
+    /// <summary>
+    /// The lowest point of the built body in unit space, standing in the posture of its design
+    /// (also while ShowsPosture is off): what touches the ground on land and the turntable of the editor.
+    /// </summary>
+    public float Lowest { get; private set; }
+
+    /// <summary>Measures Lowest from the bounds of every built mesh (rest pose), with the body turned into its posture for the moment.</summary>
+    private void MeasureLowest(CreatureDesign design)
+    {
+        var posture = new Basis(Vector3.Back, design.Pitch);
+        var shown   = new Basis(Vector3.Back, _posture);
+        _parts.Basis = posture;
+        if (null != _bodyMesh)
+        {
+            _bodyMesh.Basis = posture;
+        }
+        float lowest = float.PositiveInfinity;
+        foreach (MeshInstance3D mesh in FindChildren("*", nameof(MeshInstance3D), true, false).OfType<MeshInstance3D>())
+        {
+            Transform3D toVisual = Transform3D.Identity;
+            for (Node node = mesh; node != this && node is Node3D node3D; node = node.GetParent())
+            {
+                toVisual = node3D.Transform * toVisual;
+            }
+            lowest = Mathf.Min(lowest, (toVisual * mesh.GetAabb()).Position.Y);
+        }
+        Lowest       = float.IsPositiveInfinity(lowest) ? 0f : lowest;
+        _parts.Basis = shown;
+        if (null != _bodyMesh)
+        {
+            _bodyMesh.Basis = shown;
+        }
+    }
+    private float _posture;                          // the pitch shown, eases towards the posture of the design
 
     private void Rebuild(CreatureDesign design)
     {
@@ -322,16 +385,21 @@ public partial class CreatureVisual3D : Node3D
         _clay.Shader = color.A < 0.99f ? TRANSLUCENT_SHADER : CLAY_SHADER;
         SetClay("pattern", (int)design.Pattern);
         SetClay("pattern_color", design.PatternColor ?? color.Darkened(0.45f));
+        SetClay("skin", (int)design.Skin);
         SetClay("clay_color", color);
         SetClay("seed", null != Body ? Body.AnimSeed : Seed);
         SetClay("knead", Knead);
         SetClay("swim_vertical", CreatureType.MarineMammal == design.Type ? 1f : 0f);
         SetClay("half_length", Mathf.Max(design.HalfLength, 0.1f));
         SetClay("mouth_gape", MouthShapes.For(design)?.Gape ?? -1f);
-        SetClay("mouth_min_gape", CreatureClay.MIN_GAPE);
+        SetClay("mouth_min_gape", MouthShape.MIN_GAPE);
         if (!IsPartsOnly)
         {
-            CellVisual3D.AddMesh(this, BuildBodyMesh(design), _clay, Vector3.Zero, Vector3.One);
+            _bodyMesh = CellVisual3D.AddMesh(this, BuildBodyMesh(design), _clay, Vector3.Zero, Vector3.One);
+        }
+        else
+        {
+            _bodyMesh = null;
         }
 
         // Clay of sculpted limbs: same look, no swim wave of its own (the limb rides its pivot)
@@ -345,6 +413,7 @@ public partial class CreatureVisual3D : Node3D
         _parts = new CreatureParts3D();
         AddChild(_parts);
         _parts.Build(design, color, _limbClay, _knuckleClay);
+        MeasureLowest(design);
         Log.Verbose("CreatureVisual3D", $"Rebuilt {design.Type} with {design.Girths.Count} vertebrae and {design.Parts.Count} part(s).");
     }
 

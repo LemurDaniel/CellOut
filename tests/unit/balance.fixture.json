@@ -28,11 +28,7 @@
 
     "jawEatRatio": 0.95,
     "eatRatioPerDivision": 0.05,
-    "minEatRatio": 0.75,
-
-    "airSeconds": 8,
-    "airRefill": 0.5,
-    "suffocateDamage": 0.1
+    "minEatRatio": 0.75
   },
 
   "diet": {
@@ -139,6 +135,8 @@
       "RoundFlipper":  { "cost": 1, "weight": 0.5 },
       "HindPaddle":    { "cost": 1, "weight": 0.4 },
       "FinRibbon":     { "cost": 1, "weight": 0.4 },
+      "OralArms":      { "cost": 1, "weight": 0.3 },
+      "CrocTail":      { "cost": 1, "weight": 0.8 },
 
       "Jaw":           { "cost": 2, "weight": 0.9 },
       "FilterMouth":   { "cost": 2, "weight": 0.7 },
@@ -152,11 +150,16 @@
       "SquidBeak":     { "cost": 2, "weight": 0.4 },
       "CrabMouth":     { "cost": 2, "weight": 0.4 },
       "Smile":         { "cost": 2, "weight": 0.3 },
+      "CrocMaw":       { "cost": 2, "weight": 1.0 },
 
       "Spines":        { "cost": 2, "weight": 0.7 },
       "Shell":         { "cost": 3, "weight": 3.0 },
       "PoisonGland":   { "cost": 3, "weight": 0.3 },
       "Carapace":      { "cost": 3, "weight": 2.5 },
+      "SpiralShell":   { "cost": 3, "weight": 2.5 },
+      "NautilusShell": { "cost": 3, "weight": 2.0 },
+      "BackPlates":    { "cost": 3, "weight": 2.0 },
+      "JellyBell":     { "cost": 3, "weight": 0.8 },
 
       "PitEye":        { "cost": 1, "weight": 0.1 },
       "Eye":           { "cost": 2, "weight": 0.3 },
@@ -171,15 +174,21 @@
       "LidEye":        { "cost": 2, "weight": 0.3 },
       "TurretEye":     { "cost": 2, "weight": 0.3 },
       "FrogEye":       { "cost": 2, "weight": 0.3 },
+      "CrocEye":       { "cost": 2, "weight": 0.3 },
 
       "StubLimb":      { "cost": 1, "weight": 0.3 },
       "BentLimb":      { "cost": 1, "weight": 0.45 },
       "Limb":          { "cost": 1, "weight": 0.6 },
       "Tentacle":      { "cost": 2, "weight": 0.7 },
+      "Feeler":        { "cost": 1, "weight": 0.1 },
+      "JointedLeg":    { "cost": 2, "weight": 0.5 },
+      "Neck":          { "cost": 2, "weight": 0.9 },
 
       "Legs":          { "cost": 2, "weight": 1.5, "carry": 14, "stride": 1 },
       "StubbyLegs":    { "cost": 2, "weight": 1.8, "carry": 20, "stride": 0.75 },
       "ClawLegs":      { "cost": 3, "weight": 2.0, "carry": 12, "stride": 1.15 },
+      "WebbedFeet":    { "cost": 2, "weight": 1.2, "carry": 12, "stride": 1.1 },
+      "CrocFeet":      { "cost": 2, "weight": 1.6, "carry": 14, "stride": 0.9 },
       "CrabLegs":      { "cost": 2, "weight": 0.9, "carry": 10, "stride": 1.1 },
 
       "Hands":         { "cost": 2, "weight": 0.8 },
@@ -250,6 +259,7 @@
       "smallBrainEp": 1,
       "bigBrainEp": 2,
       "bigBrainAcceleration": 1.15,
+      "lungHealth": 1.1,
       "blowholeHealth": 1.25,
       "bigLungHealth": 1.2
     }

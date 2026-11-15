@@ -28,6 +28,8 @@ namespace CellOut;
 /// <param name="Size">Visual size, 1 = normal, MIN_PART_SIZE..MAX_PART_SIZE. Looks only, the stats ignore it.</param>
 /// <param name="Stretch">Extra factor per axis on top of Size (x along the body, y up, z out of the flank, before the turn),
 /// null = unstretched. Read it through Proportion. MIN_PART_STRETCH..MAX_PART_STRETCH per axis. Looks only.</param>
+/// <param name="Radial">Point symmetry: the part stands this many times around the spine, evenly spread (2 to CreatureDesign.MAX_RADIAL), 0 for none. A paired kind is a single half then (Side 1).</param>
+/// <param name="LimbKind">A foot or hand on a sculpted limb: the limb kind it was stuck on (its tube keeps that look), else null.</param>
 /// <param name="Side">0 for a pair or a midline part, 1 right (+Z) or -1 left for a single half of a paired part.</param>
 /// <param name="Offset">Shift of the right half (or the whole midline part) in unit space, the left half mirrors it. Looks only.</param>
 /// <param name="Rotation">Euler turn in radians around the anchor of the right half, the left half mirrors it. Looks only.</param>
@@ -48,13 +50,21 @@ public readonly record struct CreaturePart(
     int Id = 0,
     int ParentId = 0,
     int ParentJoint = 0,
-    Vector3? Stretch = null)
+    Vector3? Stretch = null,
+    CreaturePartKind? LimbKind = null,
+    int Radial = 0)
 {
+    /// <summary>The look of the limb tube: the limb kind a foot or hand was stuck on, else the kind itself.</summary>
+    public CreaturePartKind LimbStyle => LimbKind ?? Kind;
+
     /// <summary>The stretch per axis, (1, 1, 1) for an unstretched part.</summary>
     public Vector3 Proportion => Stretch ?? Vector3.One;
 
     public CreaturePartInfo Info => CreatureCatalog.Get(Kind);
 
-    /// <summary>1 for a pair or a midline part, 0.5 for a single half: weight and effects scale with it.</summary>
-    public float Share => 0 == Side ? 1f : 0.5f;
+    /// <summary>How many times the part stands around the spine: Radial for point symmetry, else 1.</summary>
+    public int Copies => Radial >= 2 ? Radial : 1;
+
+    /// <summary>1 for a pair or a midline part, 0.5 for a single half, times the copies of point symmetry: weight and effects scale with it.</summary>
+    public float Share => (0 == Side ? 1f : 0.5f) * Copies;
 }

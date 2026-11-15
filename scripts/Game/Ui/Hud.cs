@@ -120,7 +120,6 @@ public partial class Hud : CanvasLayer
         // Air: it drains on land without a lung, the dial shows it while it is not full
         if (null != _player)
         {
-            _dial.Air = _player.Air;
         }
         Breathe(_divideButton, _divideShownAt, 0f);
         Breathe(_organismButton, _organismShownAt, 2.6f);

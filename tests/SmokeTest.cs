@@ -1606,10 +1606,11 @@ public partial class SmokeTest : Node
             mammal._PhysicsProcess(STEP);
             breather._PhysicsProcess(STEP);
         }
-        bool isOk = Mathf.IsZeroApprox(fish.Air) && fish.Hp < fish.MaxHp * 0.9f && fish.Hp > 0f
-            && Mathf.IsZeroApprox(mammal.Air) && mammal.Hp < mammal.MaxHp * 0.9f
-            && Mathf.IsEqualApprox(breather.Air, 1f)
-            && Player.ORGANISM_STAGE == fish.Stage;
+        // Nobody needs air on land any more: twelve seconds ashore cost no health, with or without a lung
+        bool isOk = Mathf.IsEqualApprox(fish.Hp, fish.MaxHp)
+            && Mathf.IsEqualApprox(mammal.Hp, mammal.MaxHp)
+            && Mathf.IsEqualApprox(breather.Hp, breather.MaxHp)
+            && fish.IsLandAnimal;                    // on land is a land animal, lung or not
         fish.Free();
         mammal.Free();
         breather.Free();
@@ -1624,8 +1625,11 @@ public partial class SmokeTest : Node
         walker.IsOnLand  = true;
         bool isCrawling  = Mathf.IsEqualApprox(crawler.CurrentSpeed(), CellBody.SwimSpeed(crawler.BodySize()) * Balance.Current.Creature.Land.CrawlSpeed);
         bool isWalking   = walker.CurrentSpeed() > crawler.CurrentSpeed();
+        // The step onto land makes both land animals, legs or not
+        bool wasSeaStage = !walker.IsLandAnimal && !crawler.IsLandAnimal;
         walker._PhysicsProcess(0.1);
-        bool isLandStage = walker.IsLandAnimal && !crawler.IsLandAnimal;
+        crawler._PhysicsProcess(0.1);
+        bool isLandStage = wasSeaStage && walker.IsLandAnimal && crawler.IsLandAnimal;
         crawler.Free();
         walker.Free();
         return isCrawling && isWalking && isLandStage;

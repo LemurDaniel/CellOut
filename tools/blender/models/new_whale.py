@@ -48,7 +48,7 @@ TALLFIN_FLAT = 0.2                   # thickness of the back fin, share of its c
 #   build_flipper   Long flipper of a humpback: model space FlankPair, knobs on the leading edge. "Flutter", 2 s.
 #   build_tallfin   Tall back fin of an orca: model space Top, a thick triangle. "Flutter", 2 s.
 #   build_roundflipper   Round paddle of an orca: model space FlankPair. "Flutter", 2 s.
-#   build_orcamaw   Peg teeth in the carved grin of an orca: model space Snout.
+#   build_orcamaw   Tongue in the carved grin of an orca, the teeth come from data/mouths.json: model space Snout.
 #   build_patcheye  Small dark eye with the white eye patch of an orca: model space Eye.
 #
 
@@ -154,21 +154,13 @@ ORCA_MAW = {'length': 1.7, 'level': -0.32, 'smile': 0.2, 'gape': 0.1}
 
 def build_orcamaw(scene):
     """
-    The teeth in the carved grin of an orca or dolphin: two rows of blunt pegs that
-    mesh like a zip, the upper ones hang, the lower ones stand in the gaps.
+    The game stands the peg teeth on the lips of the carved opening itself
+    (data/mouths.json, "teeth"): the model only adds a pink tongue deep in the grin.
     """
     shape = ORCA_MAW
-    stations = mouth_stations(shape, 8, 23)
-    for i, (degrees, back) in enumerate(stations):
-        is_upper = 0 == i % 2
-        edge = 1.0 if is_upper else -1.0
-        base, s = on_mouth(shape, degrees, back, edge * 0.92, 0.0, 0.955)
-        tip, _ = on_mouth(shape, degrees, back, -edge * 0.3, 0.0, 0.965)
-        if s < 0.3:
-            continue
-        cone(scene, f'Tooth{i}', base, tip, 0.065, 'Claw')
+    tip, _ = on_mouth(shape, 0.0, 0.0, -0.75, 0.0, 0.7)
+    ellipsoid(scene, 'Tongue', tip + G(-0.22, 0, 0), (0.3, 0.26, 0.05), 'Pad', subdivisions=2)
     squash(scene, shape)
-
 
 def build_patcheye(scene):
     """

@@ -38,7 +38,10 @@ public partial class PartIcon : SubViewportContainer
         {
             OwnWorld3D         = true,
             TransparentBg      = true,
-            Msaa3D             = Viewport.Msaa.Msaa2X,
+            // Smooth edges on every graphics tier: a studio is small and renders at full scale, so MSAA 4x
+            // plus FXAA is cheap here (FXAA only breaks together with a render scale below 1, GraphicsQuality)
+            Msaa3D             = Viewport.Msaa.Msaa4X,
+            ScreenSpaceAA      = Viewport.ScreenSpaceAAEnum.Fxaa,
             HandleInputLocally = false,
             Size               = size,
         };

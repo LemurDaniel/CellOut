@@ -39,8 +39,11 @@ public static class LimbJoints
       - BentLimb (2):  one knee, hangs to the ground like a leg
       - Limb (3):      knee and ankle, hangs to the ground like a leg
       - Tentacle (4):  curls out and down, the tip bends back up
+      - Feeler (3):    a thin antenna, up and forward, a bead on its tip
+      - JointedLeg (3): the leg of a crab or spider: the knee above the back, the tip on the ground
+      - Neck (3):      a thick neck, up and forward: it carries a head (parts on its tip joint)
       - Feet:          a leg of three joints, the foot model on the tip touches the ground
-                       of the coast with the body lifted (LAND_LIFT in CreatureVisual3D.cs)
+                       of the coast with the body lifted (CreatureVisual3D rests the lowest part on the ground)
       - Hands:         an arm of three joints reaching forward, held above the ground
                        (hand, claws, pincers); the sucker arm brings a tentacle instead
       A fresh leg-like limb already carries on land; pulled up and forward it becomes an arm.
@@ -55,6 +58,9 @@ public static class LimbJoints
         [CreaturePartKind.BentLimb] = new Vector3[] { new(0.06f, -0.34f, 0.32f), new(0.16f, -0.82f, 0.38f) },
         [CreaturePartKind.Limb]     = new Vector3[] { new(0.04f, -0.12f, 0.28f), new(0.12f, -0.46f, 0.42f), new(0.2f, -0.82f, 0.42f) },
         [CreaturePartKind.Tentacle] = TENTACLE_JOINTS,
+        [CreaturePartKind.Feeler]     = new Vector3[] { new(0.12f, 0.2f, 0.1f), new(0.3f, 0.42f, 0.16f), new(0.52f, 0.5f, 0.2f) },
+        [CreaturePartKind.JointedLeg] = new Vector3[] { new(0.02f, 0.2f, 0.3f), new(0.06f, -0.22f, 0.62f), new(0.08f, -0.6f, 0.68f) },
+        [CreaturePartKind.Neck]       = new Vector3[] { new(0.12f, 0.25f, -0.05f), new(0.26f, 0.5f, -0.08f), new(0.42f, 0.7f, -0.08f) },
         [CreaturePartKind.Legs]       = LEG_JOINTS,
         [CreaturePartKind.StubbyLegs] = LEG_JOINTS,
         [CreaturePartKind.ClawLegs]   = LEG_JOINTS,

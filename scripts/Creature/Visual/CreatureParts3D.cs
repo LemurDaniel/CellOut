@@ -82,7 +82,7 @@ public partial class CreatureParts3D : Node3D
         [CreaturePartKind.PoisonGland] = 1.4f,
     };
 
-    private sealed record Attached(Node3D Pivot, float X, float Y);   // Y: height of the bent spine there
+    private sealed record Attached(Node3D Pivot, float X, float Y, bool IsOnLimb = false);   // Y: height of the bent spine there, IsOnLimb: rides its limb, not the swim wave
 
     private readonly List<Attached> _attached = new();
     private readonly List<Node3D> _eyes = new();
@@ -115,10 +115,20 @@ public partial class CreatureParts3D : Node3D
             // A kind of PLACEMENTS brings its size in its row, it is built in body scale
             float         size    = PLACEMENTS.ContainsKey(part.Kind) ? 1f
                 : BASE_KIND_SIZES.TryGetValue(part.Kind, out float kindSize) ? kindSize : BASE_PART_SIZES[part.Info.Category];
-            List<Node3D>  dropped = _poser.Pose(index, part, pivots, size);
-            foreach (Node3D piece in dropped)
+            // Pivots on the body are posed together, the pivots on a limb joint per bud (one per flank of the limb)
+            foreach (IGrouping<Node, Node3D> group in pivots.GroupBy(pivot => pivot.GetParent()))
             {
-                _eyes.RemoveAll(eye => eye == piece || piece.IsAncestorOf(eye));
+                Transform3D? toVisual = this == group.Key ? null : GlobalTransform.AffineInverse() * ((Node3D)group.Key).GlobalTransform;
+                List<Node3D> dropped  = _poser.Pose(index, part, group.ToList(), size, toVisual);
+                foreach (Node3D piece in dropped)
+                {
+                    _eyes.RemoveAll(eye => eye == piece || piece.IsAncestorOf(eye));
+                }
+            }
+
+            if (part.Radial >= 2 && !CreatureDesign.IsOnBud(part))
+            {
+                AddRing(index, part, pivots);
             }
 
             // Sculpted limbs remember their posed shoulder per flank (joint handles of the editor)
@@ -140,8 +150,112 @@ public partial class CreatureParts3D : Node3D
         }
     }
 
+    /*
+      Point symmetry: the posed pieces of the part (its right half) are copied Radial - 1
+      times, each copy turned a step further around the spine at its pivot. The copies
+      play the animation of the original, blink with it and pick the same part. Branches
+      on a limb only grow on the original, not on its copies.
+    */
+    private void AddRing(int index, CreaturePart part, IReadOnlyList<Node3D> pivots)
+    {
+        foreach (Node3D pivot in pivots)
+        {
+            List<Node3D> pieces = pivot.GetChildren().OfType<Node3D>().ToList();
+            for (int k = 1; k < part.Radial; k++)
+            {
+                var turned = new Node3D { Basis = new Basis(Vector3.Right, Mathf.Tau * k / part.Radial) };
+                pivot.AddChild(turned);
+                foreach (Node3D piece in pieces)
+                {
+                    var copy = (Node3D)piece.Duplicate();
+                    turned.AddChild(copy);
+                    _poser.AddCopy(index, copy);
+                    if (_eyes.Contains(piece))
+                    {
+                        _eyes.Add(copy);
+                    }
+                    // A duplicated player does not play: start what the original plays, a little later per copy
+                    var players = piece.FindChildren("*", nameof(AnimationPlayer), true, false).OfType<AnimationPlayer>().ToList();
+                    var copies  = copy.FindChildren("*", nameof(AnimationPlayer), true, false).OfType<AnimationPlayer>().ToList();
+                    for (int i = 0; i < players.Count && i < copies.Count; i++)
+                    {
+                        if (!string.IsNullOrEmpty(players[i].CurrentAnimation))
+                        {
+                            copies[i].SpeedScale = players[i].SpeedScale;
+                            copies[i].Play(players[i].CurrentAnimation);
+                            copies[i].Seek(k * 0.15, true);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private const float BUD_SCALE = 0.42f;           // a part on a limb joint is built on a little body of this size
+    private static readonly float[] BUD_GIRTHS = { 0.4f, 0.62f, 0.7f, 0.52f };
+
+    private Node3D _pivotParent;                     // set while a part is built on a bud: its pivots hang there
+    private CreatureDesign _pivotDesign;             // the body the pivots of the part being built sit on
+
+    /*
+      A part on a joint of a limb that is no limb itself: built with the same code as on the
+      body, but on a bud, a little plain body that points along the limb (nose outwards) and
+      sits with its middle on the joint. One bud per flank of the limb, a child of the posed
+      limb piece: it follows the pose of the limb and the swim wave on its own.
+      > A mouth gets the clay of its bud with the carved opening: a little head on the limb.
+      > Everything else shows only the part, the bud stays invisible.
+    */
+    private void BuildOnLimb(CreatureDesign design, CreaturePart part, Color color)
+    {
+        int parentIndex = design.IndexOfId(part.ParentId);
+        if (parentIndex < 0 || null == design.Parts[parentIndex].Joints)
+        {
+            return;
+        }
+        IReadOnlyList<Vector3> joints = design.Parts[parentIndex].Joints;
+        int     joint  = Mathf.Clamp(part.ParentJoint, 0, joints.Count - 1);
+        Vector3 before = 0 == joint ? Vector3.Zero : joints[joint - 1];
+        Vector3 along  = (joints[joint] - before).Normalized();
+        Vector3 aside  = along.Cross(Vector3.Up);
+        aside = aside.LengthSquared() < 1e-4f ? Vector3.Back : aside.Normalized();
+        var     turn   = new Basis(along, aside.Cross(along), aside);
+
+        CreatureDesign bud = CreatureDesign.FromGirths(design.Type, BUD_GIRTHS, null);
+        bool isMouth = CreatureCategory.Mouths == part.Info.Category;
+        if (isMouth)
+        {
+            bud.TryPlace(part.Kind, 1f, 0);          // the bud carves the opening of this mouth
+        }
+        Vector3 middle = new((bud.TailTipX + bud.NoseTipX) * 0.5f, 0f, 0f);
+        foreach ((int _, Node3D piece) in _limbs.PiecesOf(parentIndex).ToList())
+        {
+            var holder = new Node3D { Transform = new Transform3D(turn * Basis.FromScale(Vector3.One * BUD_SCALE), joints[joint]) };
+            piece.AddChild(holder);
+            var budSpace = new Node3D { Position = -middle };
+            holder.AddChild(budSpace);
+            if (isMouth)
+            {
+                var head = (ShaderMaterial)_knuckleClay.Duplicate();
+                head.SetShaderParameter("mouth_gape", MouthShapes.For(bud)?.Gape ?? -1f);
+                head.SetShaderParameter("half_length", Mathf.Max(bud.HalfLength, 0.1f));
+                CellVisual3D.AddMesh(budSpace, CreatureClay.BuildBodyMesh(bud), head, Vector3.Zero, Vector3.One);
+            }
+            _pivotParent = budSpace;
+            _pivotDesign = bud;
+            BuildPart(bud, part with { ParentId = 0, T = CreatureDesign.BudShare(part.Kind) }, color);
+            _pivotParent = null;
+            _pivotDesign = null;
+        }
+    }
+
     private void BuildPart(CreatureDesign design, CreaturePart part, Color color)
     {
+        if (CreatureDesign.IsOnBud(part))
+        {
+            BuildOnLimb(design, part, color);
+            return;
+        }
+
         // Materials that follow the design: the fin webbing, BackSkin (the color of the painted back)
         // and Skin, the plain clay of the body, so a snout or a tail is one piece with it
         Color              back    = CreaturePattern.None == design.Pattern ? color : design.PatternColor ?? color.Darkened(0.45f);
@@ -439,6 +553,14 @@ public partial class CreatureParts3D : Node3D
         [CreaturePartKind.LidEye]        = new(ModelSpace.Eye),
         [CreaturePartKind.TurretEye]     = new(ModelSpace.Eye),
         [CreaturePartKind.FrogEye]       = new(ModelSpace.Eye),
+        [CreaturePartKind.CrocEye]       = new(ModelSpace.Eye),
+        [CreaturePartKind.CrocTail]      = new(ModelSpace.Tail),
+        [CreaturePartKind.SpiralShell]   = new(ModelSpace.Hug, Size: 1.1f, Reach: 0.6f),
+        [CreaturePartKind.NautilusShell] = new(ModelSpace.Hug, Size: 1.1f, Reach: 0.7f),
+        [CreaturePartKind.BackPlates]    = new(ModelSpace.Hug, Reach: 0.8f),
+        [CreaturePartKind.CrocMaw]       = new(ModelSpace.Snout),
+        [CreaturePartKind.JellyBell]     = new(ModelSpace.Hug, Size: 1.15f, Reach: 0.9f),
+        [CreaturePartKind.OralArms]      = new(ModelSpace.Belly),
     };
 
     /// <summary>Builds the model of a kind listed in PLACEMENTS on its pivot and starts its animation.</summary>
@@ -459,8 +581,10 @@ public partial class CreatureParts3D : Node3D
                 Node3D snout  = CreatureModels.NewModel(part.Kind, color, finSkin);
                 snout.Position = new Vector3(0f, shape.Level * design.TopAt(mouthX), 0f);
                 snout.Scale    = new Vector3((design.NoseTipX - mouthX) * 1.03f, design.TopAt(mouthX) * 0.75f * placement.Size, width);
-                AddPivot(mouthX).AddChild(snout);
+                Node3D jaws = AddPivot(mouthX);
+                jaws.AddChild(snout);
                 models.Add(snout);
+                AddTeeth(design, part, shape, jaws, snout.Position);
                 break;
             case ModelSpace.Hug:
                 Node3D hug = CreatureModels.NewModel(part.Kind, color, finSkin);
@@ -507,6 +631,51 @@ public partial class CreatureParts3D : Node3D
         }
     }
 
+    private const float TOOTH_CONE_HEIGHT = 0.6f;    // CellVisual3D.ConeMesh
+    private const float TOOTH_CONE_WIDTH = 0.26f;
+    private static readonly Color TOOTH_COLOR = new(0.97f, 0.95f, 0.88f);
+
+    /*
+      The teeth stand on the lips of the carved opening (Design/MouthTeeth.cs), one cone each,
+      in a holder next to the mouth model on the same pivot. The poser grows every piece by
+      the size and stretch of the part: the holder undoes that for the roots, so they stay on
+      the lips and only the teeth themselves grow with the part.
+    */
+    /// <summary>Adds the teeth of a mouth shape to the pivot of its mouth model.</summary>
+    /// <param name="jaws">(Required) The pivot of the mouth at the mouth corners.</param>
+    /// <param name="at">(Required) Position of the mouth model on that pivot, the holder sits on the same spot (one anchor for the poser).</param>
+    private static void AddTeeth(CreatureDesign design, CreaturePart part, MouthShape shape, Node3D jaws, Vector3 at)
+    {
+        List<Tooth> teeth = MouthTeeth.Place(design, shape);
+        if (0 == teeth.Count)
+        {
+            return;
+        }
+        var holder = new Node3D { Position = at };
+        jaws.AddChild(holder);
+        Vector3  grown  = part.Proportion * part.Size;
+        Vector3  origin = jaws.Position + at;
+        Material ivory  = CellVisual3D.Material(TOOTH_COLOR, 0.22f, 0.3f);     // a little glow of their own: teeth stand in the shade of the head
+        foreach (Tooth tooth in teeth)
+        {
+            // Cone along Y: wide along the lip, thin across it, the base on the root
+            Vector3 across = tooth.Along.Cross(tooth.Direction).Normalized();
+            var     basis  = new Basis(
+                tooth.Along * (tooth.Width / TOOTH_CONE_WIDTH),
+                tooth.Direction * (tooth.Length / TOOTH_CONE_HEIGHT),
+                across * (tooth.Width * shape.ToothFlat / TOOTH_CONE_WIDTH));
+            Vector3 center = tooth.Root + tooth.Direction * tooth.Length * 0.5f - origin;
+            var     mesh   = new MeshInstance3D
+            {
+                Mesh             = CellVisual3D.ConeMesh(),
+                MaterialOverride = ivory,
+                Transform        = new Transform3D(basis, center / grown),
+                CastShadow       = GeometryInstance3D.ShadowCastingSetting.Off,
+            };
+            holder.AddChild(mesh);
+        }
+    }
+
     /// <summary>A model that hugs the body (spines, shell): built around a unit sphere, stretched to the body at its pivot.</summary>
     private static void AttachHugging(Node3D pivot, CreaturePartKind kind, Color color, Vector3 scale)
     {
@@ -544,10 +713,10 @@ public partial class CreatureParts3D : Node3D
     /// <summary>A pivot on the bent spine at an X: parts built on it sit at the height of the spine there.</summary>
     private Node3D AddPivot(float x)
     {
-        float y     = _design.LiftAt(x);
+        float y     = (_pivotDesign ?? _design).LiftAt(x);
         var   pivot = new Node3D { Position = new Vector3(x, y, 0f) };
-        AddChild(pivot);
-        _attached.Add(new Attached(pivot, x, y));
+        (_pivotParent ?? this).AddChild(pivot);
+        _attached.Add(new Attached(pivot, x, y, null != _pivotParent));
         return pivot;
     }
 
@@ -569,6 +738,10 @@ public partial class CreatureParts3D : Node3D
     {
         foreach (Attached part in _attached)
         {
+            if (part.IsOnLimb)
+            {
+                continue;                            // rides its limb
+            }
             float bend  = SwimWave.Bend(part.X, halfLength, amplitude, phase);
             float slope = (SwimWave.Bend(part.X + 0.01f, halfLength, amplitude, phase) - SwimWave.Bend(part.X - 0.01f, halfLength, amplitude, phase)) / 0.02f;
             part.Pivot.Position = isVertical ? new Vector3(part.X, part.Y + bend, 0f) : new Vector3(part.X, part.Y, bend);

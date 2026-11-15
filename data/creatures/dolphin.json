@@ -7,6 +7,6 @@
   "gaps": [0.36, 0.36, 0.36, 0.36, 0.36, 0.36, 0.3, 0.22],
   "parts": [
     { "kind": "Fluke", "t": 0, "free": true, "size": 1.3 },
-    { "kind": "Eye", "t": 0.75, "free": true, "size": 0.75, "offset": [0.04, -0.1, 0] }
+    { "kind": "Eye", "t": 0.75, "free": true, "size": 0.7, "offset": [0.06, -0.12, 0], "stretch": [1.1, 0.85, 1] }
   ]
 }

@@ -208,4 +208,111 @@ public class CreatureTemplateTests
         Assert.Equal(Godot.Vector3.One, design.Parts[1].Proportion);     // unstretched parts stay at one
         Assert.Null(design.Parts[1].Stretch);
     }
+
+    [Fact]
+    public void AnyPartSitsOnALimbJoint()
+    {
+        CreatureDesign design = CreatureTemplates.Parse("""
+            {
+              "key": "STALKS", "type": "Fish", "girths": [0.3, 0.5, 0.7, 0.5],
+              "parts": [
+                { "kind": "Tentacle", "t": 0.6 },
+                { "kind": "Eye", "onPart": 0, "onJoint": 3 },
+                { "kind": "Jaw", "onPart": 0, "onJoint": 1 },
+                { "kind": "Tentacle", "onPart": 0, "onJoint": 2 }
+              ]
+            }
+            """).Build();
+
+        Assert.True(CreatureDesign.IsOnBud(design.Parts[1]));
+        Assert.True(CreatureDesign.IsOnBud(design.Parts[2]));
+        Assert.False(CreatureDesign.IsOnBud(design.Parts[3]));        // a limb on a limb is a branch with joints of its own
+        Assert.Equal(1f, design.Parts[2].T);                          // the mouth sits at the nose of its bud
+        Assert.Equal(CreatureCatalog.Get(CreaturePartKind.Eye).Cost, design.Parts[1].PaidCost);
+
+        // The limb takes everything on it along
+        design.RemovePart(0);
+        Assert.Empty(design.Parts);
+    }
+
+    [Fact]
+    public void FeetAlwaysWalk()
+    {
+        // The legs of the crab stand out sideways: they are feet all the same
+        CreatureDesign crab = CreatureTemplates.Get("CRAB").Build();
+        Assert.Equal(4, crab.LegPairs);
+
+        // A foot held up in the air still counts, a bare limb held up does not
+        CreatureDesign design = CreatureTemplates.Plain(CreatureType.Fish).Build();
+        Assert.True(design.TryPlace(CreaturePartKind.Legs, 0.3f, 0));
+        design.SetLimbJoint(design.Parts.Count - 1, 2, new Godot.Vector3(0.3f, 0.6f, 0.4f));
+        Assert.True(design.TryPlace(CreaturePartKind.Limb, 0.7f, 0));
+        design.SetLimbJoint(design.Parts.Count - 1, 2, new Godot.Vector3(0.3f, 0.6f, 0.4f));
+        Assert.Equal(1, design.LegPairs);
+    }
+
+    [Fact]
+    public void OnlyFinsSwimWithAWave()
+    {
+        Assert.True(CreatureTemplates.Get("SHARK").Build().SwimsWithWave);
+        Assert.False(CreatureTemplates.Get("CRAB").Build().SwimsWithWave);       // legs and pincers, no fin: it glides stiff
+        Assert.True(CreatureTemplates.Get("EEL").Build().SwimsWithWave);         // no tail fin, but the fin seam along its back
+        Assert.False(CreatureTemplates.Get("TURTLE").Build().SwimsWithWave);     // paddles only: they stroke, the shell stays stiff
+        Assert.False(CreatureTemplates.Get("JELLYFISH").Build().SwimsWithWave);  // bell and arms move on their own
+
+        // The free tail fin of the plain body is what makes it wave
+        CreatureDesign plain = CreatureTemplates.Plain(CreatureType.Fish).Build();
+        Assert.True(plain.SwimsWithWave);
+        while (plain.Parts.Count > 0)
+        {
+            plain.RemovePart(0);
+        }
+        Assert.False(plain.SwimsWithWave);
+    }
+
+    [Fact]
+    public void PostureAndSkinAreRead()
+    {
+        CreatureDesign upright = CreatureTemplates.Parse("""
+            { "key": "UPRIGHT", "type": "Fish", "girths": [0.3, 0.5, 0.4], "pitch": 90, "skin": "Scales", "parts": [] }
+            """).Build();
+        Assert.Equal(CreatureLook.MAX_PITCH, upright.Pitch, 4);
+        Assert.Equal(CreatureSkin.Scales, upright.Skin);
+
+        upright.SetPitch(-9f);
+        Assert.Equal(-CreatureLook.MAX_PITCH, upright.Pitch, 4);       // clamped to a quarter turn
+
+        CreatureDesign level = CreatureTemplates.Plain(CreatureType.Fish).Build();
+        Assert.Equal(0f, level.Pitch);
+        Assert.Equal(CreatureSkin.Smooth, level.Skin);
+    }
+
+    [Fact]
+    public void PointSymmetryStandsInARing()
+    {
+        CreatureTemplate template = CreatureTemplates.Parse("""
+            {
+              "key": "RING", "type": "Fish", "girths": [0.3, 0.5, 0.7, 0.5],
+              "parts": [
+                { "kind": "Feeler", "t": 0.5, "radial": 8 },
+                { "kind": "DorsalFin", "t": 0.2, "radial": 99 }
+              ]
+            }
+            """);
+        CreatureDesign design = template.Build();
+
+        // A ring of single halves, each at its price and with its share of weight and effect
+        CreaturePart feeler = design.Parts[0];
+        Assert.Equal(8, feeler.Radial);
+        Assert.Equal(1, feeler.Side);
+        Assert.Equal(CreatureCatalog.Get(CreaturePartKind.Feeler).CostFor(1) * 8, feeler.PaidCost);
+        Assert.Equal(4f, feeler.Share);
+        Assert.Equal(CreatureDesign.MAX_RADIAL, design.Parts[1].Radial);      // clamped
+
+        // One slot on the body stays one part
+        Assert.True(design.TryPlace(CreaturePartKind.Jaw, 1f, 0));
+        Assert.False(design.SetPartRadial(design.Parts.Count - 1, 4));
+        Assert.True(design.SetPartRadial(0, 0));
+        Assert.Equal(1, design.Parts[0].Copies);
+    }
 }

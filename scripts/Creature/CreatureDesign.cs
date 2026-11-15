@@ -223,21 +223,43 @@ public sealed class CreatureDesign
     }
 
     /*
-      Branches: a sculpted limb (or a foot or hand, it brings its limb) grows from a joint
-      of a placed limb instead of the body. It takes the side of its parent, its own joints
-      start at that joint. It ignores the gaps on the body (TrySnap) and goes with its
-      parent: RemovePart takes every branch along.
+      Branches: every part can grow from a joint of a placed limb instead of the body.
+      > A sculpted limb (or a foot or hand, it brings its limb): takes the side of its
+        parent, its own joints start at that joint.
+      > Anything else (an eye, a fin, a mouth, spines ...): sits on the joint like on a
+        little body of its own, the bud (Visual/CreatureParts3D.cs). It appears on every
+        flank its parent has.
+      A branch ignores the gaps and the one-per-body rules of the body (TrySnap) and goes
+      with its parent: RemovePart takes every branch along.
     */
-    /// <summary>Places a limb on a joint of a placed limb (a branch).</summary>
-    /// <param name="kind">(Required) A sculpted limb, a foot or a hand.</param>
+    /// <summary>Where a part that is no limb sits on its bud: the mouth at the nose, a tail at the tail, the rest in the middle.</summary>
+    public static float BudShare(CreaturePartKind kind)
+    {
+        return CreatureCatalog.Get(kind).Mount switch
+        {
+            CreatureMount.Head => 1f,
+            CreatureMount.Tail => 0f,
+            CreatureMount.Skull => 0.8f,
+            _                  => 0.55f,
+        };
+    }
+
+    /// <summary>Whether a part sits on a joint of a limb without being a limb itself (it is built on a bud there).</summary>
+    public static bool IsOnBud(CreaturePart part)
+    {
+        return 0 != part.ParentId && null == part.Joints;
+    }
+
+    /// <summary>Places a part on a joint of a placed limb (a branch).</summary>
+    /// <param name="kind">(Required) Any part: a limb grows on from the joint, anything else sits on it.</param>
     /// <param name="parentIndex">(Required) Index in Parts of a limb with joints.</param>
     /// <param name="joint">(Required) Joint of the parent, 0 = first joint .. Joints.Count - 1 = tip.</param>
     /// <param name="paidCost">(Required) Points paid, refunded on removal.</param>
-    /// <returns>False when the kind grows no limb or the parent has no such joint.</returns>
+    /// <returns>False when the parent is no limb or has no such joint.</returns>
     /// <example><code>design.TryPlaceOnLimb(CreaturePartKind.Tentacle, arm, 1, paidCost: 2);   // a tentacle from the elbow</code></example>
     public bool TryPlaceOnLimb(CreaturePartKind kind, int parentIndex, int joint, int paidCost)
     {
-        if (null == DefaultJoints(kind) || parentIndex < 0 || parentIndex >= _parts.Count)
+        if (parentIndex < 0 || parentIndex >= _parts.Count)
         {
             return false;
         }
@@ -246,7 +268,10 @@ public sealed class CreatureDesign
         {
             return false;
         }
-        var part = new CreaturePart(kind, parent.T, paidCost, Side: parent.Side, Joints: DefaultJoints(kind).ToArray(),
+        // Anything but a limb sits on the joint like on a little body of its own (a bud): its share is its spot on that bud
+        IReadOnlyList<Vector3> joints = DefaultJoints(kind)?.ToArray();
+        float                  share  = null != joints ? parent.T : BudShare(kind);
+        var part = new CreaturePart(kind, share, paidCost, Side: null != joints ? parent.Side : 0, Joints: joints,
             Id: ++_lastId, ParentId: parent.Id, ParentJoint: joint);
         if (CreatureCatalog.Get(kind).IsLeg)
         {
@@ -284,7 +309,22 @@ public sealed class CreatureDesign
         {
             return false;
         }
-        _parts[index] = _parts[index] with { Kind = end, PaidCost = _parts[index].PaidCost + paidCost };
+        _parts[index] = _parts[index] with { Kind = end, LimbKind = _parts[index].Kind, PaidCost = _parts[index].PaidCost + paidCost };
+        Version++;
+        return true;
+    }
+
+    /// <summary>Sets the look of the limb under a placed foot or hand (templates), a jointed leg under a claw for example.</summary>
+    /// <param name="index">(Required) Index in Parts, a foot or a hand.</param>
+    /// <param name="limb">(Required) A sculpted limb kind.</param>
+    /// <returns>False when the part is no foot or hand or the kind no sculpted limb.</returns>
+    public bool SetLimbKind(int index, CreaturePartKind limb)
+    {
+        if (index < 0 || index >= _parts.Count || !_parts[index].Info.IsEnd || !CreatureCatalog.Get(limb).IsSculpted)
+        {
+            return false;
+        }
+        _parts[index] = _parts[index] with { LimbKind = limb };
         Version++;
         return true;
     }
@@ -329,14 +369,20 @@ public sealed class CreatureDesign
     }
 
     /// <summary>
-    /// Whether a sculpted limb reaches the ground of the coast (Coast.GROUND_HEIGHT below the
-    /// body center) with its tip: then it walks and carries. Size and shift count, the turn not.
+    /// Whether a limb walks and carries: a foot always does, a bare sculpted limb or a hand when its
+    /// tip reaches the ground of the coast (Coast.GROUND_HEIGHT below the body center). Size and
+    /// shift count, the turn not.
     /// </summary>
     public bool IsWalkingLimb(CreaturePart part)
     {
         if (null == part.Joints || 0 == part.Joints.Count)
         {
             return false;
+        }
+        // A foot is a foot however its leg is posed (a crab holds its legs out sideways)
+        if (CreatureCategory.Feet == part.Info.Category)
+        {
+            return true;
         }
         float tipY = LimbRoot(part).Y + part.Offset.Y + part.Joints[^1].Y * part.Size;
         return tipY <= Coast.GROUND_HEIGHT + LimbJoints.WALK_REACH;
@@ -412,6 +458,42 @@ public sealed class CreatureDesign
         Version++;
     }
 
+    public const int MAX_RADIAL = 8;
+
+    /*
+      Point symmetry: the part stands count times around the spine, evenly spread, instead
+      of once or as a mirrored pair. A paired kind becomes its right half, the copies make
+      the ring. Kinds with one slot on the body (mouth, tail, brain) and parts on a limb
+      joint stay single.
+    */
+    /// <summary>Whether a kind can stand in a ring around the spine.</summary>
+    public static bool CanBeRadial(CreaturePartKind kind)
+    {
+        return !CreatureCatalog.Get(kind).IsSingleSlot;
+    }
+
+    /// <summary>Sets the point symmetry of one placed part.</summary>
+    /// <param name="index">(Required) Index in Parts.</param>
+    /// <param name="count">(Required) Copies around the spine, 2..MAX_RADIAL, anything below 2 turns it off.</param>
+    /// <returns>False when the kind has one slot on the body or the part sits on a limb joint.</returns>
+    /// <example><code>design.SetPartRadial(0, 8);   // eight tentacles around a jellyfish</code></example>
+    public bool SetPartRadial(int index, int count)
+    {
+        if (index < 0 || index >= _parts.Count)
+        {
+            throw new System.ArgumentOutOfRangeException(nameof(index), $"index must be between 0 and {_parts.Count - 1}, got '{index}'.");
+        }
+        CreaturePart part = _parts[index];
+        if (count >= 2 && (!CanBeRadial(part.Kind) || 0 != part.ParentId))
+        {
+            return false;
+        }
+        int radial = count < 2 ? 0 : Mathf.Min(count, MAX_RADIAL);
+        _parts[index] = part with { Radial = radial, Side = radial >= 2 && part.Info.IsPaired ? 1 : part.Side };
+        Version++;
+        return true;
+    }
+
     public const float MIN_PART_STRETCH = 0.3f;      // per axis on top of the size: flat fins, long snouts, squashed eyes
     public const float MAX_PART_STRETCH = 3f;
 
@@ -438,6 +520,14 @@ public sealed class CreatureDesign
 
     /// <summary>Pairs of limbs that reach the ground (bare or with a foot), they carry the body on land.</summary>
     public int LegPairs => _parts.Count(IsWalkingLimb);
+
+    /// <summary>
+    /// Whether the body swims with a wave: it carries a tail fin (a part of the Fins tab on the tail mount) or the fin
+    /// seam of an eel. Without one it glides stiff: back fins, flippers and the arms of a jellyfish only play their own
+    /// animation (decision of the user 2026-11-15, the jellyfish bobbed up and down).
+    /// </summary>
+    public bool SwimsWithWave => _parts.Any(part => CreatureCategory.Fins == part.Info.Category
+        && (CreatureMount.Tail == part.Info.Mount || CreaturePartKind.FinRibbon == part.Kind));
 
     /// <summary>Every body needs a lung to breathe air, whatever its type (the type is cosmetic).</summary>
     public bool BreathesAir => Count(CreaturePartKind.Lung) > 0 || Count(CreaturePartKind.BigLung) > 0;
@@ -576,6 +666,39 @@ public sealed class CreatureDesign
     public void SetPattern(CreaturePattern pattern, Color? color)
     {
         _look.SetPattern(pattern, color);
+        Version++;
+    }
+
+    /// <summary>Posture of the whole body in radians: 0 level, CreatureLook.MAX_PITCH upright with the nose up. Looks only, the game logic stays flat.</summary>
+    public float Pitch => _look.Pitch;
+
+    /// <summary>Sets the posture of the whole body, clamped to a quarter turn up or down.</summary>
+    /// <example><code>design.SetPitch(Mathf.Pi * 0.5f);   // a jellyfish stands upright</code></example>
+    public void SetPitch(float pitch)
+    {
+        _look.SetPitch(pitch);
+        Version++;
+    }
+
+    /// <summary>How high the body floats above the ground on land, in body sizes: 0 rests its lowest part on the ground. Looks only.</summary>
+    public float Hover => _look.Hover;
+
+    /// <summary>Sets the hover height on land, clamped to 0..CreatureLook.MAX_HOVER.</summary>
+    /// <example><code>design.SetHover(0.6f);   // a jellyfish floats above the ground</code></example>
+    public void SetHover(float hover)
+    {
+        _look.SetHover(hover);
+        Version++;
+    }
+
+    /// <summary>Surface of the skin: smooth, scales or warts. Looks only.</summary>
+    public CreatureSkin Skin => _look.Skin;
+
+    /// <summary>Picks the surface of the skin, free of charge, looks only.</summary>
+    /// <example><code>design.SetSkin(CreatureSkin.Scales);</code></example>
+    public void SetSkin(CreatureSkin skin)
+    {
+        _look.SetSkin(skin);
         Version++;
     }
 

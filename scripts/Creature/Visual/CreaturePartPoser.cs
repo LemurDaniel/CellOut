@@ -29,6 +29,7 @@ public sealed class CreaturePartPoser
     //   Pose          Applies side, size, shift and turn of a part to its built pieces.
     //   FlankOf       Which flank a piece sits on, 0 for the midline.
     //   RemovePiece   Drops the other half of a single side part.
+    //   AddCopy       Remembers the meshes of a ring copy for picking.
     //
 
     private const float FLANK_EPSILON = 0.005f;
@@ -53,8 +54,9 @@ public sealed class CreaturePartPoser
     /// <param name="part">(Required) The placed part with side, size, offset and rotation.</param>
     /// <param name="pivots">(Required) The pivots built for this part, their children are the pieces.</param>
     /// <param name="baseSize">(Required) Base size of the part before CreaturePart.Size.</param>
+    /// <param name="toVisual">(Optional) From the space of the pivots to the space of the visual, for pivots on a limb joint. Defaults to none: the pivots hang on the visual.</param>
     /// <returns>The dropped pieces of the other flank (single half), already removed and queued to free.</returns>
-    public List<Node3D> Pose(int index, CreaturePart part, IReadOnlyList<Node3D> pivots, float baseSize)
+    public List<Node3D> Pose(int index, CreaturePart part, IReadOnlyList<Node3D> pivots, float baseSize, Transform3D? toVisual = null)
     {
         CreaturePartInfo info         = part.Info;
         Basis            grow         = Basis.FromScale(Vector3.One * baseSize * part.Size);
@@ -112,9 +114,24 @@ public sealed class CreaturePartPoser
                     _partMeshes.Add((index, flank, child));
                 }
             }
-            _partAnchors.Add((index, flank, anchor + shift));
+            _partAnchors.Add((index, flank, (toVisual ?? Transform3D.Identity) * (anchor + shift)));
         }
         return dropped;
+    }
+
+    /// <summary>Remembers the meshes of a copy of a part (point symmetry), so a click on it picks the part too.</summary>
+    /// <param name="index">(Required) Index of the part in Design.Parts.</param>
+    /// <param name="copy">(Required) The copied piece with its meshes.</param>
+    public void AddCopy(int index, Node3D copy)
+    {
+        if (copy is MeshInstance3D own)
+        {
+            _partMeshes.Add((index, 1, own));
+        }
+        foreach (MeshInstance3D mesh in copy.FindChildren("*", nameof(MeshInstance3D), true, false).OfType<MeshInstance3D>())
+        {
+            _partMeshes.Add((index, 1, mesh));
+        }
     }
 
     private static int FlankOf(Node3D piece)

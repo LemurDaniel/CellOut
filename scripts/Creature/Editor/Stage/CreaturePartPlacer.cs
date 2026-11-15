@@ -130,7 +130,7 @@ public partial class CreaturePartPlacer : Node
             }
             return false;
         }
-        PickPart(draft.Parts.Count - 1, draft.Parts[parentIndex].Side);
+        PickPart(draft.Parts.Count - 1, 0 != draft.Parts[parentIndex].Side ? draft.Parts[parentIndex].Side : 0);
         _stage.Celebrate(_session.PointOf(draft.Parts[^1]), CreatureEditorUi.TypeAccent(draft.Type), 1.06f);
         return true;
     }
@@ -217,16 +217,16 @@ public partial class CreaturePartPlacer : Node
     /*
       A part dropped or clicked onto a placed limb (anything with joints):
       > A foot or hand on a bare sculpted limb sticks on its tip (AttachEnd).
-      > A sculpted limb, or a foot or hand on a limb that has its end, grows as a branch
-        from the joint closest to the cursor on screen (PlaceOnLimb).
-      > Anything else, or no limb under the cursor: false, the caller places it on the body.
+      > Everything else sits on, or grows from, the joint closest to the cursor on screen
+        (PlaceOnLimb): a limb branches, an eye, fin or mouth sits on the joint.
+      > No limb under the cursor: false, the caller places it on the body.
     */
     private bool TryGrowOnLimb(CreaturePartKind kind, Vector2 pixel)
     {
         CreatureDesign   draft = _session.Draft;
         CreaturePartInfo info  = CreatureCatalog.Get(kind);
         int              index = _stage.PartAt(pixel, out int flank);
-        if (index < 0 || null == draft.Parts[index].Joints || !(info.IsSculpted || info.IsEnd))
+        if (index < 0 || null == draft.Parts[index].Joints)
         {
             return false;
         }

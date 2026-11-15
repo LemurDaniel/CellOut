@@ -63,6 +63,7 @@ public partial class CreatureEditor : CanvasLayer
     //   DraftColor      Color of the draft, the coral default when none is picked.
     //   Select          Picks a part from the palette.
     //   PickColor       Recolors the draft (null = coral default), free of charge.
+    //   PickSkin        Surface of the skin (smooth, scales, warts), free of charge.
     //   PickPattern     Paints a pattern in the second color, free of charge.
     //   PickPatternColor  Second color of the paint (null = a dark shade of the body), free of charge.
     //   SetSymmetric    Symmetry switch: new side parts as pairs or as single halves.
@@ -111,6 +112,17 @@ public partial class CreatureEditor : CanvasLayer
     public CreatureCategory Category => _session.Category;
     public int PickedPart => _session.PickedPart;
     public bool IsSymmetric => _session.IsSymmetric;
+
+    /// <inheritdoc cref="CreatureEditorSession.RadialCount"/>
+    public int RadialCount => _session.RadialCount;
+
+    /// <inheritdoc cref="CreatureEditorSession.SetRadial"/>
+    /// <example><code>editor.SetRadial(8);   // the next tentacle stands eight times around the body</code></example>
+    public void SetRadial(int count)
+    {
+        Log.Verbose("CreatureEditor", $"Point symmetry x{count}.");
+        _session.SetRadial(count);
+    }
     public int Points => _session.Points;
     public Color DraftColor => _session.DraftColor;
 
@@ -190,6 +202,14 @@ public partial class CreatureEditor : CanvasLayer
         _session.SetColor(color);
         _stage.Recolor();
         _toolbar.PunchColors();
+    }
+
+    /// <summary>Picks the surface of the skin: smooth, scales or warts. Free of charge, looks only.</summary>
+    /// <example><code>editor.PickSkin(CreatureSkin.Scales);</code></example>
+    public void PickSkin(CreatureSkin skin)
+    {
+        Log.Verbose("CreatureEditor", $"Skin {skin}.");
+        _session.SetSkin(skin);
     }
 
     /// <summary>Paints the draft with a pattern in its second color, CreaturePattern.None for a plain body.</summary>
@@ -394,6 +414,7 @@ public partial class CreatureEditor : CanvasLayer
     //   of the stage.
     //
 
+    private const float TOOL_COLUMN_WIDTH = 262f;    // the toolbar plus room for its scroll bar
     private const float SIZE_STEP = 0.1f;            // per wheel notch over the picked part
 
     private void OnStageInput(InputEvent @event)
@@ -583,7 +604,10 @@ public partial class CreatureEditor : CanvasLayer
         // Rows of the panel: tabs, template cards (first shaping), the workbench and the footer
         _frame.AddRow(_tabs);
         _frame.AddRow(_cards);
-        _frame.AddWorkbench(_palette, _stage, _toolbar);
+        // The tool column scrolls instead of pushing the footer off a low window
+        var tools = new ScrollContainer { HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled, CustomMinimumSize = new Vector2(TOOL_COLUMN_WIDTH, 0f) };
+        tools.AddChild(_toolbar);
+        _frame.AddWorkbench(_palette, _stage, tools);
         _frame.AddRow(_footer);
 
         // The session tells when tiles are rebuilt, every widget follows, the selection changed or an end was pulled
@@ -629,11 +653,15 @@ public partial class CreatureEditor : CanvasLayer
         _toolbar.AddVertebraPressed    += () => AddVertebra();
         _toolbar.RemoveVertebraPressed += () => RemoveVertebra();
         _toolbar.SymmetryToggled       += SetSymmetric;
+        _toolbar.RadialPicked          += SetRadial;
         _toolbar.SprayToggled          += SetSpraying;
         _toolbar.UndoSprayPressed      += () => UndoSpray();
         _toolbar.ClearSprayPressed     += ClearSpray;
         _toolbar.ColorPicked           += PickColor;
         _toolbar.PatternPicked         += PickPattern;
+        _toolbar.SkinPicked            += PickSkin;
+        _toolbar.PostureChanged        += degrees => _session.SetPosture(degrees);
+        _toolbar.HoverChanged          += hover => _session.SetHover(hover);
         _toolbar.PatternColorPicked    += PickPatternColor;
 
         _tabs = new CreatureCategoryTabs();

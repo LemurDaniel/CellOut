@@ -24,6 +24,9 @@
 //                                      short gaps make a ball or let the spine climb steeply
 //     "color": "#6b859e",              (optional) body color, else the color of the player
 //     "pattern": "Saddle",             (optional) None, Stripes, Spots, Patches or Saddle
+//     "pitch": 90,                     (optional) posture of the whole body in degrees: 0 level, 90 upright with the nose up, -90 nose down
+//     "hover": 0.6,                    (optional) how high the body floats above the ground on land, in body sizes (0 to 1.5, default 0: its lowest part rests on the ground)
+//     "skin": "Scales",                (optional) Smooth, Scales (reptile) or Warts (toad)
 //     "patternColor": "#f2f2eb",       (optional) second color, else a dark shade of the body
 //     "parts": [
 //       { "kind": "CaudalFin", "t": 0, "free": true },
@@ -34,6 +37,8 @@
 //         "stretch": [1.5, 1, 0.6],    (optional) extra factor per axis on top of size, 0.3 to 3 (x along the body, y up, z out of the flank)
 //         "offset": [0, 0.1, 0],       (optional) shift in unit space (x forward, y up, z out of the right flank)
 //         "rotation": [0, 0, 0.3],     (optional) euler turn in radians
+//         "radial": 8,                  (optional) point symmetry: the part stands this many times around the spine (2 to 8), each copy at the price of a single half
+//         "limb": "JointedLeg",        (optional) feet and hands: the look of their limb (a sculpted limb kind)
 //         "joints": [[0.04, -0.12, 0.26], [0.1, -0.36, 0.34], [0.12, -0.6, 0.34]] },   (optional) sculpted limbs: every joint from the shoulder outwards
 //       { "kind": "Tentacle", "onPart": 2, "onJoint": 1 }       (optional) a branch: grows from a joint of the part with that index
 //     ]
@@ -77,6 +82,8 @@ public sealed record CreatureTemplatePart
     public float[] Offset { get; init; }
     public float[] Rotation { get; init; }
     public float[][] Joints { get; init; }
+    public CreaturePartKind? Limb { get; init; }
+    public int Radial { get; init; }
     public int? OnPart { get; init; }
     public int OnJoint { get; init; }
 }
@@ -93,6 +100,9 @@ public sealed record CreatureTemplateFile
     public string Color { get; init; }
     public CreaturePattern Pattern { get; init; }
     public string PatternColor { get; init; }
+    public CreatureSkin Skin { get; init; }
+    public float Pitch { get; init; }
+    public float Hover { get; init; }
     public required CreatureTemplatePart[] Parts { get; init; }
 }
 
@@ -279,15 +289,22 @@ public static class CreatureTemplates
         for (int i = 0; i < file.Parts.Length; i++)
         {
             CreatureTemplatePart part = file.Parts[i];
-            int  cost     = part.Free ? 0 : CreatureCatalog.Get(part.Kind).CostFor(part.Side);
+            // Point symmetry: a ring of single halves, each at its price
+            bool isRing   = part.Radial >= 2;
+            int  side     = isRing && CreatureCatalog.Get(part.Kind).IsPaired ? 1 : part.Side;
+            int  cost     = part.Free ? 0 : CreatureCatalog.Get(part.Kind).CostFor(side) * (isRing ? Mathf.Min(part.Radial, CreatureDesign.MAX_RADIAL) : 1);
             bool isPlaced = null == part.OnPart
-                ? design.TryPlace(part.Kind, part.T, cost, part.Side)
+                ? design.TryPlace(part.Kind, part.T, cost, side)
                 : design.TryPlaceOnLimb(part.Kind, part.OnPart.Value, part.OnJoint, cost);
             if (!isPlaced)
             {
                 throw new InvalidOperationException($"Template {file.Key} must find room for every part, part {i} ('{part.Kind}' at {part.T}) did not fit.");
             }
             int index = design.Parts.Count - 1;
+            if (isRing && !design.SetPartRadial(index, part.Radial))
+            {
+                throw new InvalidOperationException($"Template {file.Key}: 'radial' needs a kind that may stand more than once on the body, part {i} is '{part.Kind}'.");
+            }
             design.SetPartSize(index, part.Size);
             if (null != part.Stretch)
             {
@@ -296,6 +313,10 @@ public static class CreatureTemplates
             if (null != part.Offset || null != part.Rotation)
             {
                 design.SetPartPose(index, ToVector(file, part.Offset), ToVector(file, part.Rotation));
+            }
+            if (null != part.Limb && !design.SetLimbKind(index, part.Limb.Value))
+            {
+                throw new InvalidOperationException($"Template {file.Key}: 'limb' needs a foot or hand as kind and a sculpted limb as value, part {i} is '{part.Kind}' with limb '{part.Limb}'.");
             }
             for (int joint = 0; null != part.Joints && joint < part.Joints.Length; joint++)
             {
@@ -308,6 +329,9 @@ public static class CreatureTemplates
             design.SetColor(ToColor(file, file.Color));
         }
         design.SetPattern(file.Pattern, null == file.PatternColor ? null : ToColor(file, file.PatternColor));
+        design.SetSkin(file.Skin);
+        design.SetPitch(Mathf.DegToRad(file.Pitch));
+        design.SetHover(file.Hover);
         return design;
     }
 

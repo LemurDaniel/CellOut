@@ -169,9 +169,6 @@ public sealed record PlayerBalance
     public required float MinEatRatio { get; init; }
 
     // Land
-    public required float AirSeconds { get; init; }              // a full breath lasts this long on land
-    public required float AirRefill { get; init; }               // per second in the water
-    public required float SuffocateDamage { get; init; }         // share of the maximum health per second without air
 }
 
 public sealed record DietBalance
@@ -364,6 +361,7 @@ public sealed record CreatureEffectsBalance
     public required int SmallBrainEp { get; init; }              // extra evolution points per level
     public required int BigBrainEp { get; init; }
     public required float BigBrainAcceleration { get; init; }
+    public required float LungHealth { get; init; }
     public required float BlowholeHealth { get; init; }
     public required float BigLungHealth { get; init; }
 }
