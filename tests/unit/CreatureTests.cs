@@ -41,7 +41,7 @@ public class CreatureTests
     // ===========================================================================
     //
     //   CatalogListsEveryKind     One entry per CreaturePartKind, in palette order.
-    //   BodyTypeFiltersParts      A fish gets the lung, never fluke or blowhole.
+    //   BodyTypeOffersEveryPart   The body type is cosmetic: a fish may carry fluke and blowhole too.
     //   HalfPairCostsHalfRoundedUp  2 -> 1, 3 -> 2, a midline part keeps its cost.
     //
 
@@ -57,13 +57,17 @@ public class CreatureTests
     }
 
     [Fact]
-    public void BodyTypeFiltersParts()
+    public void BodyTypeOffersEveryPart()
     {
         CreaturePartKind[] fishLungs = CreatureCatalog.ForCategory(CreatureType.Fish, CreatureCategory.Lungs).Select(part => part.Kind).ToArray();
 
-        Assert.Equal(new[] { CreaturePartKind.Lung, CreaturePartKind.BigLung }, fishLungs);
-        Assert.False(CreatureCatalog.Get(CreaturePartKind.Fluke).IsFor(CreatureType.Fish));
-        Assert.True(CreatureCatalog.Get(CreaturePartKind.Jaw).IsFor(CreatureType.MarineMammal));
+        // The tab lists its kinds for a fish as for a marine mammal, lung and blowhole side by side
+        Assert.Contains(CreaturePartKind.Lung, fishLungs);
+        Assert.Contains(CreaturePartKind.Blowhole, fishLungs);
+        Assert.Equal(CreatureCatalog.ForCategory(CreatureType.MarineMammal, CreatureCategory.Lungs).Select(part => part.Kind), fishLungs);
+        Assert.True(CreatureCatalog.Get(CreaturePartKind.Fluke).IsFor(CreatureType.Fish));
+        Assert.True(CreatureCatalog.Get(CreaturePartKind.CaudalFin).IsFor(CreatureType.MarineMammal));
+        Assert.Equal(CreatureCatalog.All().Count, CreatureCatalog.ForType(CreatureType.MarineMammal).Count);
     }
 
     [Fact]
@@ -80,7 +84,8 @@ public class CreatureTests
     // ===========================================================================
     //
     //   BlobWeighsAboutTen          The bare clay blob: 7 to 11 kg, crawls on land, cannot fly.
-    //   BodyFollowsGirthAndType     Health and swim speed of the blob from the body formula.
+    //   BodyFollowsGirth            Health and swim speed of the blob from the body formula.
+    //   BodyTypeChangesNoTrait      Fish and marine mammal: same health, speed and weight, both need a lung for air.
     //   TailFinSpeedsUp             Caudal fin x1.3 swim speed and its weight on top.
     //   HalfPairCountsWithItsRoot   A single pectoral fin gives sqrt(1.3) and half the weight.
     //   LegsCarryTheBody            One pair of legs: carry 14, drag in the water, walking speed from the load.
@@ -107,19 +112,36 @@ public class CreatureTests
     }
 
     [Fact]
-    public void BodyFollowsGirthAndType()
+    public void BodyFollowsGirth()
     {
         CreatureDesign design = CreatureDesign.Blob();
         float girth = design.MeanGirth;
         int   extra = design.Girths.Count - 5;
-        float typeHealth = CreatureType.MarineMammal == design.Type ? 1.3f : 1f;
-        float typeSwim   = CreatureType.Fish == design.Type ? 1.1f : 1f;
 
         CreatureStats stats = CreatureStats.From(design);
 
-        Assert.Equal(typeHealth * (0.7f + 0.6f * girth) * (1f + 0.05f * extra), stats.Health, PRECISION);
-        Assert.Equal(typeSwim * (1.15f - 0.3f * girth) * (1f + 0.03f * extra), stats.SwimSpeed, PRECISION);
+        Assert.Equal((0.7f + 0.6f * girth) * (1f + 0.05f * extra), stats.Health, PRECISION);
+        Assert.Equal((1.15f - 0.3f * girth) * (1f + 0.03f * extra), stats.SwimSpeed, PRECISION);
         Assert.Equal(design.Volume() * 7.5f, stats.Weight, PRECISION);
+    }
+
+    [Fact]
+    public void BodyTypeChangesNoTrait()
+    {
+        CreatureDesign fish   = CreatureDesign.Blob();
+        CreatureDesign mammal = CreatureDesign.Blob();
+        fish.Type   = CreatureType.Fish;
+        mammal.Type = CreatureType.MarineMammal;
+
+        CreatureStats fishStats   = CreatureStats.From(fish);
+        CreatureStats mammalStats = CreatureStats.From(mammal);
+
+        Assert.Equal(fishStats.Health, mammalStats.Health, PRECISION);
+        Assert.Equal(fishStats.SwimSpeed, mammalStats.SwimSpeed, PRECISION);
+        Assert.Equal(fishStats.Weight, mammalStats.Weight, PRECISION);
+        Assert.False(mammal.BreathesAir);
+        Place(mammal, CreaturePartKind.Lung);
+        Assert.True(mammal.BreathesAir);
     }
 
     [Fact]

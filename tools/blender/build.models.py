@@ -1,6 +1,6 @@
 # NOTE:
 #   Builds the models of Cell Out in Blender and exports one .glb per model:
-#   - assets/models/creature/  feet, hands, wings, fins, brain, stalk eyes of the organism stage
+#   - assets/models/creature/  feet, hands, pincer, squid club, wings, fins, mouths, spines, shell, gills, brain, stalk eyes, lantern of the organism stage
 #   - assets/models/cell/      the eighteen cell editor parts (flagellum, cilium, jaw, spike, ...)
 #   - assets/models/tree/      primeval trees of the islands (fern, cycad, horsetail, broadleaf, giant)
 #   - assets/models/village/   the nest of the pack and the fire pit of the tribe
@@ -8,7 +8,7 @@
 #   Everything is generated: skin modifier tubes, displaced spheres, an armature per
 #   moving part with one looping animation (Walk, Grab, Flap, Flutter, Sway, Whip, Beat, Chomp).
 #   Materials only carry names (Skin, Claw, Pad, Feather, Membrane, Fin, FinRay, Brain, EyeWhite,
-#   Pupil, Glint, Chitin, Armor, Chloro, Grana, Vacuole, Droplet, Toxin, Venom, Iris, Dark, Bark,
+#   Pupil, Glint, Chitin, Armor, Chloro, Grana, Vacuole, Droplet, Toxin, Venom, Iris, Dark, Beak, Shell, ShellRim, Gill, Lantern, Bark,
 #   Leaf, LeafDark, Frond, Horsetail, Needle, Cone, Twig, Moss, Earth, Down, Stone, Log, Ember,
 #   Paint, PaintDark, Wood, Bone, Door, Flame, Rope, FruitRed, FruitGold, FruitGreen), the
 #   game recolors them (Core/PartModels.cs, Core/TreeModels.cs).
@@ -39,13 +39,24 @@ import models.helpers
 import models.limbs
 import models.organs
 import models.fins
+import models.mouths
+import models.defense
 import models.cells
+import models.new_angler
+import models.new_crab
+import models.new_newt
+import models.new_puffer
+import models.new_seahorse
+import models.new_shark
+import models.new_squid
+import models.new_turtle
+import models.new_whale
 import models.trees
 import models.village
 import models.buildings
 
 # Inside a running Blender the modules stay loaded between runs: reload, helpers first
-for module in (models.helpers, models.limbs, models.organs, models.fins, models.cells, models.trees, models.village, models.buildings):
+for module in (models.helpers, models.limbs, models.organs, models.fins, models.mouths, models.defense, models.cells, models.trees, models.village, models.buildings):
     importlib.reload(module)
 
 from models.buildings import (
@@ -90,8 +101,10 @@ from models.cells import (
 )
 from models.fins import build_caudal, build_dorsal, build_fluke, build_pectoral
 from models.helpers import build_scene, export, join_by_material
-from models.limbs import build_foot, build_hand
-from models.organs import build_brain, build_stalk_eye, build_wing
+from models.defense import build_shell, build_spines
+from models.limbs import build_foot, build_hand, build_pincer, build_sucker_club
+from models.mouths import build_beak, build_filtermouth, build_jaw
+from models.organs import build_brain, build_gills, build_lure, build_stalk_eye, build_wing
 from models.trees import (
     build_tree_broadleaf,
     build_tree_cycad,
@@ -145,6 +158,30 @@ PARTS = {
     'creature/creature.fluke.glb':         build_fluke,
     'creature/creature.dorsalfin.glb':     build_dorsal,
     'creature/creature.pectoralfin.glb':   build_pectoral,
+    'creature/creature.jaw.glb':           build_jaw,
+    'creature/creature.filtermouth.glb':   build_filtermouth,
+    'creature/creature.beak.glb':          build_beak,
+    'creature/creature.spines.glb':        build_spines,
+    'creature/creature.shell.glb':         build_shell,
+    'creature/creature.gills.glb':         build_gills,
+    'creature/creature.lure.glb':          build_lure,
+    'creature/creature.pincer.glb':        build_pincer,
+    'creature/creature.suckerclub.glb':    build_sucker_club,
+    'creature/creature.sharktail.glb':     models.new_shark.build_sharktail,
+    'creature/creature.sharkfin.glb':      models.new_shark.build_sharkfin,
+    'creature/creature.newttail.glb':      models.new_newt.build_newt_tail,
+    'creature/creature.feathergills.glb':  models.new_newt.build_feather_gills,
+    'creature/creature.mantlefins.glb':    models.new_squid.build_mantle_fins,
+    'creature/creature.siphon.glb':        models.new_squid.build_siphon,
+    'creature/creature.fantail.glb':       models.new_puffer.build_fantail,
+    'creature/creature.puffermouth.glb':   models.new_puffer.build_puffermouth,
+    'creature/creature.curltail.glb':      models.new_seahorse.build_curltail,
+    'creature/creature.tubesnout.glb':     models.new_seahorse.build_tubesnout,
+    'creature/creature.tallfin.glb':       models.new_whale.build_tallfin,
+    'creature/creature.flipper.glb':       models.new_whale.build_flipper,
+    'creature/creature.paddle.glb':        models.new_turtle.build_flipper,
+    'creature/creature.needlemaw.glb':     models.new_angler.build_needlemaw,
+    'creature/creature.carapace.glb':      models.new_crab.build_carapace,
     'cell/cell.flagellum.glb':             build_flagellum,
     'cell/cell.cilium.glb':                build_cilium,
     'cell/cell.jaw.glb':                   build_cell_jaw,

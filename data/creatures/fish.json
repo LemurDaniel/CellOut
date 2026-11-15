@@ -1,0 +1,10 @@
+{
+  "key": "FISH",
+  "order": 10,
+  "type": "Fish",
+  "girths": [0.3, 0.48, 0.7, 0.86, 0.84, 0.62],
+  "parts": [
+    { "kind": "CaudalFin", "t": 0, "free": true },
+    { "kind": "Eye", "t": 0.86, "free": true }
+  ]
+}

@@ -34,6 +34,7 @@ public static class CreatureModels
       the joint to the body at the origin, unit size.
       - Feet:       ankle at the origin, sole below, toes along +X. No animation, they stand flat.
       - Hands:      wrist at the origin, reaching forward (+X), thumb towards -Z. "Grab", 2 s.
+                    The same for the pincer of a crab and the club of a squid tentacle.
                     Feet and hands sit on the tip of a sculpted limb (Visual/CreatureLimbs3D.cs).
       - Wings:      root at the origin, spreading along +Z, swept back. "Flap", 1 s.
       - Stalk eye:  base at the origin, eye at y = 1.2, pupil towards +X and +Z. "Sway", 3 s.
@@ -41,6 +42,12 @@ public static class CreatureModels
       - Fins:       root at the origin. Tail fin upright and flukes flat, both reaching back (-X);
                     back fin upright, rising (+Y) and swept back; paddle flat, reaching out (+Z).
                     Real rays (FinRay) on a thick webbing (Fin). "Flutter", 1 s.
+      - Mouths:     a horseshoe around the snout that opens to the back: its ends at x = 0,
+                    z = -1 and 1 (the flanks), its front at x = 1 (the nose tip). The jaw chomps
+                    ("Chomp", 2 s), whale mouth and beak stand still.
+      - Spines, shell: around a unit sphere at the origin, stretched to the body there.
+      - Gills:      on the skin of the right flank, out of the body is +Z, slits upright.
+      - Lantern:    base at the origin, arching forward over the head. "Sway", 3 s.
       Parts on the right flank (+Z) are used as they are, the left ones mirrored on Z.
     */
     public const string MODEL_DIR = "res://assets/models/creature/";
@@ -53,6 +60,8 @@ public static class CreatureModels
             [CreaturePartKind.CrabLegs]      = ("creature.crabtip.glb", null),
             [CreaturePartKind.Hands]         = ("creature.hand.glb", "Grab"),
             [CreaturePartKind.Claws]         = ("creature.clawpaw.glb", "Grab"),
+            [CreaturePartKind.Pincers]       = ("creature.pincer.glb", "Grab"),
+            [CreaturePartKind.Suckers]       = ("creature.suckerclub.glb", "Grab"),
             [CreaturePartKind.MembraneWings] = ("creature.membranewings.glb", "Flap"),
             [CreaturePartKind.FeatherWings]  = ("creature.featherwings.glb", "Flap"),
             [CreaturePartKind.SmallBrain]    = ("creature.brain.glb", null),
@@ -62,6 +71,28 @@ public static class CreatureModels
             [CreaturePartKind.Fluke]         = ("creature.fluke.glb", "Flutter"),
             [CreaturePartKind.DorsalFin]     = ("creature.dorsalfin.glb", "Flutter"),
             [CreaturePartKind.PectoralFin]   = ("creature.pectoralfin.glb", "Flutter"),
+            [CreaturePartKind.Jaw]           = ("creature.jaw.glb", "Chomp"),
+            [CreaturePartKind.FilterMouth]   = ("creature.filtermouth.glb", null),
+            [CreaturePartKind.Beak]          = ("creature.beak.glb", null),
+            [CreaturePartKind.Spines]        = ("creature.spines.glb", null),
+            [CreaturePartKind.Shell]         = ("creature.shell.glb", null),
+            [CreaturePartKind.Gills]         = ("creature.gills.glb", null),
+            [CreaturePartKind.Lure]          = ("creature.lure.glb", "Sway"),
+            [CreaturePartKind.SharkTail]     = ("creature.sharktail.glb", "Flutter"),
+            [CreaturePartKind.NewtTail]      = ("creature.newttail.glb", "Flutter"),
+            [CreaturePartKind.MantleFins]    = ("creature.mantlefins.glb", "Flutter"),
+            [CreaturePartKind.FanTail]       = ("creature.fantail.glb", "Flutter"),
+            [CreaturePartKind.CurlTail]      = ("creature.curltail.glb", "Curl"),
+            [CreaturePartKind.SharkFin]      = ("creature.sharkfin.glb", "Flutter"),
+            [CreaturePartKind.TallFin]       = ("creature.tallfin.glb", "Flutter"),
+            [CreaturePartKind.Flipper]       = ("creature.flipper.glb", "Flutter"),
+            [CreaturePartKind.Paddle]        = ("creature.paddle.glb", "Stroke"),
+            [CreaturePartKind.NeedleMaw]     = ("creature.needlemaw.glb", "Chomp"),
+            [CreaturePartKind.PufferMouth]   = ("creature.puffermouth.glb", null),
+            [CreaturePartKind.TubeSnout]     = ("creature.tubesnout.glb", null),
+            [CreaturePartKind.Carapace]      = ("creature.carapace.glb", null),
+            [CreaturePartKind.FeatherGills]  = ("creature.feathergills.glb", "Sway"),
+            [CreaturePartKind.Siphon]        = ("creature.siphon.glb", "Puff"),
         };
 
     /// <summary>A new instance of a creature part model, recolored (Core/PartModels.cs).</summary>
@@ -109,6 +140,8 @@ public static class CreatureModels
         Color edge = CreaturePattern.None != design.Pattern && null != design.PatternColor
             ? design.PatternColor.Value.Lightened(0.25f)
             : bodyColor.Lightened(0.55f);
-        return PartModels.Membrane(bodyColor, new Color(edge, bodyColor.A), PartModels.MembranePlane.Free, FIN_REACH, 0f);
+        // A saddle paints the whole back: fins grow out of that color, not out of the pale belly
+        Color root = CreaturePattern.Saddle == design.Pattern ? design.PatternColor ?? bodyColor.Darkened(0.45f) : bodyColor;
+        return PartModels.Membrane(new Color(root, bodyColor.A), new Color(edge, bodyColor.A), PartModels.MembranePlane.Free, FIN_REACH, 0f);
     }
 }

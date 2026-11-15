@@ -1,10 +1,11 @@
 # NOTE:
 #   Ends of the sculpted limbs of the organism stage: three feet, a crab tip, a grasping
-#   hand and a clawed paw (assets/models/creature/). Registered in build.models.py.
+#   hand, a clawed paw, a crab pincer and a squid club (assets/models/creature/).
+#   Registered in build.models.py.
 
 #
 #   Chapters:
-#     LIMB PARTS   Three feet, a hand and a claw paw: the ends of the sculpted limbs.
+#     LIMB PARTS   Feet, hand, claw paw, pincer and squid club: the ends of the sculpted limbs.
 #
 
 import math
@@ -26,6 +27,8 @@ from models.helpers import (
     tube,
 )
 
+END_SCALE = 0.5                      # pincer and squid club are modelled one unit long and shrunk to the size of a hand
+
 
 # ===========================================================================
 # =============================   LIMB PARTS   ==============================
@@ -39,6 +42,8 @@ from models.helpers import (
 #   build_hand    A grasping hand or a clawed paw alone: wrist at the origin, reaching forward.
 #   hand          Four knuckled fingers with nails, a thumb towards the body, a palm pad.
 #   claw_paw      A heavy paw with three big sickle claws.
+#   build_pincer  The pincer of a crab: a bulbous palm, a fixed and a movable finger.
+#   build_sucker_club   The club of a squid tentacle with two rows of suckers.
 #
 #   The game puts them on the tip of a sculpted limb. Hands grab in two seconds:
 #   fingers or claws close and open, the thumb meets them.
@@ -83,9 +88,9 @@ def column_foot(scene, ankle):
 
 def crab_tip(scene, ankle):
     """Crab foot: a short knobbly segment ending in one pointed chitin hook, no sole."""
-    knee = ankle + G(0.05, -0.1, 0)
-    meshes = [tube(scene, 'Foot', [ankle, knee], (0.07, 0.06), [(0, 1)])]
-    meshes.append(curved_claw(scene, 'Tip', knee + G(0, -0.02, 0), G(0.3, -1.0, 0), 0.17, 0.055, curl=-0.25))
+    knee = ankle + G(0.03, -0.1, 0)
+    meshes = [tube(scene, 'Foot', [ankle, knee], (0.075, 0.055), [(0, 1)])]
+    meshes.append(curved_claw(scene, 'Tip', knee + G(0, -0.01, 0), G(0.12, -1.0, 0), 0.17, 0.05, curl=-0.12))
     return meshes, knee
 
 
@@ -156,6 +161,103 @@ def hand(scene, wrist):
     digits.append(('Thumb', base, tip, [thumb, thumb_nail]))
     meshes += [thumb, thumb_nail]
     return meshes, palm, digits
+
+
+def build_pincer(scene):
+    """
+    The pincer of a crab, the end of a sculpted limb: the wrist at the origin, reaching
+    forward (+X). A bulbous palm, a fixed lower finger and a movable upper one, both
+    with a row of blunt teeth. Snaps open and shut in two seconds ("Grab").
+    """
+    # A boxing glove of a palm, taller than wide, with three knuckle bumps on its back
+    wrist = tube(scene, 'Wrist', [G(0, 0, 0), G(0.14, 0, 0)], (0.1, 0.12), [(0, 1)])
+    palm = ellipsoid(scene, 'Palm', G(0.34, 0.02, 0), (0.33, 0.24, 0.3), 'Skin')
+    meshes = [wrist, palm]
+    rigid = {'Wrist': 'Hand', 'Palm': 'Hand'}
+    for i, (forward, up) in enumerate(((0.16, 0.25), (0.31, 0.31), (0.46, 0.29))):
+        bump = ellipsoid(scene, f'Bump{i}', G(forward, up, 0), (0.06, 0.07, 0.045), 'Skin', subdivisions=2)
+        meshes.append(bump)
+        rigid[bump.name] = 'Hand'
+
+    # Fingers: a fat fixed one below, a hooked movable one above, both end in a dark tip
+    lower_points = [G(0.46, -0.12, 0), G(0.74, -0.2, 0), G(0.93, -0.12, 0)]
+    upper_points = [G(0.44, 0.14, 0), G(0.7, 0.3, 0), G(0.92, 0.2, 0)]
+    lower = tube(scene, 'Lower', lower_points, (0.16, 0.12, 0.07), [(0, 1), (1, 2)])
+    upper = tube(scene, 'Upper', upper_points, (0.14, 0.11, 0.065), [(0, 1), (1, 2)])
+    lower_tip = tube(scene, 'LowerTip', [G(0.9, -0.13, 0), G(1.02, -0.03, 0)], (0.075, 0.015), [(0, 1)], 'Dark')
+    upper_tip = tube(scene, 'UpperTip', [G(0.89, 0.22, 0), G(1.02, 0.06, 0)], (0.07, 0.015), [(0, 1)], 'Dark')
+    meshes += [lower, upper, lower_tip, upper_tip]
+    rigid.update({'Lower': 'Hand', 'LowerTip': 'Hand', 'Upper': 'Finger', 'UpperTip': 'Finger'})
+    for i, forward in enumerate((0.56, 0.68, 0.8)):
+        size = 0.055 - i * 0.008
+        lower_tooth = ellipsoid(scene, f'LowerTooth{i}', G(forward, -0.03 - (0.8 - forward) * 0.1, 0), (size, size, size), 'Claw', subdivisions=1)
+        upper_tooth = ellipsoid(scene, f'UpperTooth{i}', G(forward + 0.06, 0.13 + (0.8 - forward) * 0.2, 0), (size, size, size), 'Claw', subdivisions=1)
+        meshes += [lower_tooth, upper_tooth]
+        rigid[lower_tooth.name] = 'Hand'
+        rigid[upper_tooth.name] = 'Finger'
+
+    # Built one unit long for round numbers, the game wants it the size of the other hands
+    for mesh in meshes:
+        mesh.data.transform(Matrix.Scale(END_SCALE, 4))
+    armature = rig(scene, 'Rig', [
+        ('Hand', G(0, 0, 0), G(0.4, 0, 0) * END_SCALE, None),
+        ('Finger', G(0.4, 0.1, 0) * END_SCALE, G(1.02, 0.1, 0) * END_SCALE, 'Hand'),
+    ])
+    bind(armature, meshes, rigid=rigid)
+
+    # Grab: the upper finger lifts and snaps back down
+    animate(armature, 'Grab', FPS * 2, {
+        'Finger': (AXIS_OUT, lambda share: 24.0 * max(0.0, math.sin(share * math.tau)) ** 2),
+    })
+
+
+CLUB_WIDEN = 1.35                    # the squid club is a leaf: wider than its tube ...
+CLUB_FLATTEN = 0.6                   # ... and flatter
+
+
+def build_sucker_club(scene):
+    """
+    The club of a squid tentacle, the end of a sculpted limb: the wrist at the origin,
+    reaching forward (+X) and curling down. It widens into a leaf and ends in a point,
+    two rows of suckers sit on its underside. Curls and stretches in two seconds ("Grab").
+    """
+    points = [G(0, 0, 0), G(0.18, 0.0, 0), G(0.4, -0.02, 0), G(0.62, -0.06, 0), G(0.82, -0.14, 0), G(0.97, -0.26, 0)]
+    radii = (0.085, 0.09, 0.16, 0.175, 0.12, 0.03)
+    club = tube(scene, 'Club', points, radii, [(i, i + 1) for i in range(len(points) - 1)])
+    # A leaf instead of a sausage: flat (Godot Y) and wide (Godot Z), the wrist stays almost round
+    for vertex in club.data.vertices:
+        leaf = min(1.0, max(0.0, (vertex.co.x - 0.1) / 0.25))
+        vertex.co.y *= 1.0 + (CLUB_WIDEN - 1.0) * leaf
+        vertex.co.z *= 1.0 + (CLUB_FLATTEN - 1.0) * leaf
+    meshes = [club]
+
+    # Two rows of sucker cups on the flat underside, shrinking towards the tip
+    for i, (share, cup) in enumerate(((0.36, 0.062), (0.52, 0.075), (0.68, 0.07), (0.83, 0.052))):
+        index = max(j for j in range(len(points) - 1) if points[j].x <= share)
+        along = (share - points[index].x) / (points[index + 1].x - points[index].x)
+        middle = points[index].lerp(points[index + 1], along)
+        radius = radii[index] + (radii[index + 1] - radii[index]) * along
+        for side in (-1, 1):
+            center = G(share, (middle.z - radius * 1.02) * CLUB_FLATTEN, side * radius * CLUB_WIDEN * 0.5)
+            meshes.append(ellipsoid(scene, f'Sucker{i}_{side}', center, (cup, cup, cup * 0.6), 'Pad', subdivisions=2))
+            meshes.append(ellipsoid(scene, f'SuckerHole{i}_{side}', center + G(0, -cup * 0.42, 0), (cup * 0.55, cup * 0.55, cup * 0.3), 'Dark', subdivisions=2))
+
+    for mesh in meshes:
+        mesh.data.transform(Matrix.Scale(END_SCALE, 4))
+    armature = rig(scene, 'Rig', [
+        ('Club0', points[0] * END_SCALE, points[2] * END_SCALE, None),
+        ('Club1', points[2] * END_SCALE, points[4] * END_SCALE, 'Club0'),
+        ('Club2', points[4] * END_SCALE, points[5] * END_SCALE, 'Club1'),
+    ])
+    bind(armature, meshes)
+
+    # Grab: the club curls in and stretches again, the tip the most
+    curl = lambda share: 0.5 - 0.5 * math.cos(share * math.tau)
+    animate(armature, 'Grab', FPS * 2, {
+        'Club0': (AXIS_OUT, lambda share: -8.0 * curl(share)),
+        'Club1': (AXIS_OUT, lambda share: -20.0 * curl(share)),
+        'Club2': (AXIS_OUT, lambda share: -30.0 * curl(share)),
+    })
 
 
 def claw_paw(scene, wrist):

@@ -1,0 +1,17 @@
+{
+  "key": "ORCA",
+  "order": 80,
+  "type": "MarineMammal",
+  "girths": [0.28, 0.45, 0.75, 0.95, 1.0, 0.97, 0.87],
+  "lifts": [0.4, 0.3, 0.24, 0.22, 0.22, 0.22, 0.22],
+  "color": "#f2f2eb",
+  "pattern": "Saddle",
+  "patternColor": "#1c2029",
+  "parts": [
+    { "kind": "Fluke", "t": 0, "free": true, "size": 1.4 },
+    { "kind": "Eye", "t": 0.84, "free": true, "size": 1, "offset": [0, 0.05, 0] },
+    { "kind": "TallFin", "t": 0.52, "size": 1.0 },
+    { "kind": "Flipper", "t": 0.62, "size": 0.8, "offset": [0, -0.2, 0], "rotation": [0.55, -0.2, -0.6] },
+    { "kind": "Jaw", "t": 1 }
+  ]
+}

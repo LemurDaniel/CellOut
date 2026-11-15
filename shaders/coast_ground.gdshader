@@ -1,8 +1,11 @@
 // NOTE:
 //   Ground of the islands, from the deep up to the meadow on the hill. Patterns run in
 //   world coordinates / unit, the bands follow d = island_depth (distance into the land):
-//     - meadow:  two greens in patches, darker clumps, rare round flower specks
-//     - dunes:   an irregular edge between sand and grass
+//     - meadow:  lush and light green in patches, sunny yellowish stretches, fine blades,
+//                clover cushions, flower specks, tufts as relief, a sheen at flat angles,
+//                gusts of wind running over it as lighter waves
+//     - dunes:   an irregular edge between sand and grass that frays into tufts
+//     - clouds:  their shadows drift over the land (planet.gdshaderinc)
 //     - beach:   dry sand with ripples along the shore, wet sand behind the swash, a sheen
 //     - water:   teal sand with dancing caustics, sinking into the sea floor color
 //   With depth (height in player sizes) the ground turns into exactly the sea floor of
@@ -30,31 +33,58 @@ void vertex() {
 	VERTEX = planet_bend(VERTEX, MODEL_MATRIX);
 }
 
+// Height of the small relief at pattern point q: tufts of grass on the meadow (1), flat
+// ripples on the sand (0)
+float ground_relief(vec2 q, float meadow) {
+	float tufts = coast_noise(q * 7.0) * 0.65 + coast_noise(q * 17.0 + 2.0) * 0.35;
+	float sand = coast_noise(q * vec2(4.0, 9.0) + 5.0) * 0.2;
+	return mix(sand, tufts, meadow);
+}
+
 void fragment() {
 	float d = island_depth(world_pos.xz);
 	vec2 q = world_pos.xz / unit;
 	float shore = coast_shoreline(world_pos.xz, unit, TIME);
 	float grain = coast_fbm(q * 3.0);
 
-	// Sand: dry with ripples along the shore, wet a little darker
+	// Detail fades with the distance, else the fine patterns flicker far away
+	float near = 1.0 - smoothstep(18.0 * unit, 70.0 * unit, length(VERTEX));
+
+	// Sand: dry with ripples along the shore and darker grains, wet a little darker
 	float ripples = sin(d / unit * 9.0 + coast_fbm(q * 1.5) * 6.0) * 0.5 + 0.5;
-	vec3 dry = vec3(0.6, 0.53, 0.39) * (0.9 + 0.18 * grain) * (0.95 + 0.07 * ripples);
+	float grains = coast_noise(q * 34.0);
+	vec3 dry = vec3(0.66, 0.56, 0.38) * (0.9 + 0.18 * grain) * (0.94 + 0.08 * ripples) * (1.0 - 0.1 * near * smoothstep(0.55, 0.9, grains));
 	vec3 wet = vec3(0.4, 0.35, 0.27) * (0.9 + 0.18 * grain);
 
-	// Meadow: patches of two greens, clumps and rare flowers, a bit lighter up the hill
+	// Meadow: lush and light green in patches, wide sunny stretches of yellowish grass,
+	// fine blades close up, a bit lighter up the hill
 	float patches = coast_fbm(q * 0.6 + 7.0);
-	vec3 grass = mix(vec3(0.13, 0.24, 0.11), vec3(0.24, 0.35, 0.15), patches);
-	grass *= (0.8 + 0.3 * coast_fbm(q * 4.0)) * (1.0 + 0.12 * clamp(height, 0.0, 1.5));
+	float sunny = smoothstep(0.42, 0.7, coast_fbm(q * 0.13 + 21.0));
+	vec3 grass = mix(vec3(0.06, 0.19, 0.07), vec3(0.15, 0.3, 0.09), patches);
+	grass = mix(grass, vec3(0.27, 0.32, 0.1), sunny * (0.25 + 0.3 * patches));
+	float blades = coast_noise(q * 23.0) * 0.6 + coast_noise(q * 47.0 + 3.0) * 0.4;
+	grass *= (0.8 + 0.3 * coast_fbm(q * 4.0)) * (1.0 + 0.55 * near * (blades - 0.5)) * (1.0 + 0.12 * clamp(height, 0.0, 1.5));
+	// Wind: gusts run over the meadow as wide lighter waves, only under the open sky
+	float gust = coast_noise(q * vec2(0.22, 0.5) + TIME * vec2(0.42, 0.15));
+	grass *= 1.0 + 0.2 * (smoothstep(0.45, 0.85, gust) - 0.25) * sky_open;
+	// Clover: dark round cushions here and there
+	vec2 cloverCell = floor(q * 2.2);
+	vec2 cloverSpot = fract(q * 2.2) - 0.5 - (vec2(coast_hash(cloverCell + 5.0), coast_hash(cloverCell + 9.0)) - 0.5) * 0.5;
+	float clover = step(0.72, coast_hash(cloverCell)) * (1.0 - smoothstep(0.1, 0.26, length(cloverSpot) + 0.08 * coast_noise(q * 9.0)));
+	grass = mix(grass, vec3(0.07, 0.2, 0.08), clover * 0.55);
 	// Flowers: a round speck in a few random cells
 	vec2 flowerCell = floor(q * 10.0);
 	vec2 flowerSpot = fract(q * 10.0) - 0.5;
-	float flower = step(0.99, coast_hash(flowerCell)) * (1.0 - smoothstep(0.12, 0.2, length(flowerSpot)));
-	vec3 bloom = mix(vec3(0.95, 0.85, 0.3), vec3(0.92, 0.5, 0.7), coast_hash(flowerCell + 3.1));
-	grass = mix(grass, bloom, flower * 0.85);
+	float flower = step(0.985, coast_hash(flowerCell)) * (1.0 - smoothstep(0.12, 0.2, length(flowerSpot)));
+	vec3 bloom = mix(vec3(0.98, 0.86, 0.3), vec3(0.95, 0.5, 0.72), coast_hash(flowerCell + 3.1));
+	bloom = mix(bloom, vec3(0.95, 0.96, 1.0), step(0.66, coast_hash(flowerCell + 6.3)));
+	grass = mix(grass, bloom, flower * 0.9);
 
-	// Bands: grass behind an irregular dune edge, wet sand behind the swash
+	// Bands: grass behind an irregular dune edge that frays into tufts, wet sand behind the swash
 	float grassEdge = (3.5 + (coast_fbm(q * 0.3 + 1.3) - 0.5) * 3.0) * unit;
-	vec3 col = mix(dry, grass, smoothstep(grassEdge - 0.6 * unit, grassEdge + 0.6 * unit, d));
+	float frayed = d + (coast_noise(q * 2.6) - 0.5) * 1.5 * unit;
+	float meadow = smoothstep(grassEdge - 0.25 * unit, grassEdge + 0.25 * unit, frayed);
+	vec3 col = mix(dry, grass, meadow);
 	float wetEdge = shore + 0.9 * unit + sin(TIME * 0.7 + (q.x + q.y) * 0.11 - 0.6) * 0.3 * unit;
 	float wetness = 1.0 - smoothstep(wetEdge - 0.3 * unit, wetEdge + 0.3 * unit, d);
 	col = mix(col, wet, wetness);
@@ -70,6 +100,22 @@ void fragment() {
 	// Caustics: the floor ones in the deep, livelier ones on the shallow sand
 	float dance = sin(q.x * 7.0 + TIME * 1.3 + sin(q.y * 5.0)) * sin(q.y * 6.0 - TIME + sin(q.x * 4.0));
 	EMISSION = vec3(0.4, 0.9, 0.8) * (caustic * caustic_strength * depth + max(dance, 0.0) * 0.09 * under * (1.0 - depth));
+
+	// Relief: tufts on the meadow and soft ripples on the sand tilt the normal, so the
+	// sun models them. Height differences of a step along x and z give the slope
+	float dry_land = (1.0 - under) * (1.0 - depth) * near;
+	float step_size = 0.04;
+	float h0 = ground_relief(q, meadow);
+	float hx = ground_relief(q + vec2(step_size, 0.0), meadow);
+	float hz = ground_relief(q + vec2(0.0, step_size), meadow);
+	vec3 slope = vec3(h0 - hx, 0.0, h0 - hz) / step_size;
+	NORMAL = normalize(NORMAL + (VIEW_MATRIX * vec4(slope, 0.0)).xyz * 0.12 * dry_land);
+
+	// Sheen: grass seen at a flat angle catches the sky, the far meadow glows a little
+	float grazing = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
+	col += vec3(0.06, 0.08, 0.025) * grazing * meadow * (1.0 - wetness) * (1.0 - depth) * sky_open;
+
+	col *= mix(1.0, cloud_shadow(world_pos.xz, TIME), 1.0 - depth);
 	ALBEDO = col;
 	ROUGHNESS = mix(mix(1.0, 0.4, wetness * (1.0 - under)), 1.0, depth);
 	SPECULAR = mix(0.4 * wetness * (1.0 - under), 0.0, depth);

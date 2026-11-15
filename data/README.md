@@ -5,6 +5,7 @@ Tunable numbers of the game. The code holds the formulas, this folder holds the 
 | File | Content |
 | --- | --- |
 | `balance.json` | Every balancing value, typed and checked by `scripts/Core/Balance.cs`. Loaded once at start, so a change needs a restart of the game, not a rebuild. |
+| `creatures/` | The template library of the creature editor: one JSON file per ready-made animal (spine, color, pattern, parts with their pose), read by `scripts/Creature/Design/CreatureTemplates.cs`, where the format is documented. Look at one with `tools/Show-Creature.ps1 -Template <KEY>`. |
 
 ## Sections of `balance.json`
 

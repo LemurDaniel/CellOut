@@ -1,10 +1,10 @@
 # NOTE:
-#   Wings, brain and stalk eye of the organism stage (assets/models/creature/).
-#   Registered in build.models.py.
+#   Wings, brain, stalk eye, gills and the angler lantern of the organism stage
+#   (assets/models/creature/). Registered in build.models.py.
 
 #
 #   Chapters:
-#     OTHER PARTS   Membrane and feather wings, brain, stalk eye.
+#     OTHER PARTS   Membrane and feather wings, brain, stalk eye, gills, lantern.
 #
 
 import math
@@ -37,6 +37,8 @@ from models.helpers import (
 #   build_wing        Membrane or feather wing: root at the origin, spreading out (+Z), swept back.
 #   build_brain       Two displaced lobes with folds, no rig.
 #   build_stalk_eye   A bending stalk up (+Y) with a big eye, pupil forward and out.
+#   build_gills       Three gill slits with red frills on a flank.
+#   build_lure        The lantern of an angler fish: a stalk arching forward with a glowing bulb.
 #
 
 def build_wing(scene, kind):
@@ -143,4 +145,69 @@ def build_stalk_eye(scene):
         'Stalk0': (AXIS_FORWARD, lambda share: 7.0 * wave(share)),
         'Stalk1': (AXIS_OUT, lambda share: 10.0 * wave(share, 0.3)),
         'Ball':   (AXIS_UP, lambda share: 18.0 * wave(share, 0.55)),
+    })
+
+
+def build_gills(scene):
+    """
+    Five gill slits on the right flank, like a shark: the origin on the skin, out of the
+    body is +Z, the slits stand upright one behind the other, bowed like a bracket that
+    opens to the back. The middle slit is the tallest, the row gets shorter to both ends.
+    Each is a dark slit with a thin red frill of gill filaments showing behind it. The
+    ends of a slit lean in (-Z), so they stay on the round flank.
+    """
+    SLIT_COUNT, SLIT_GAP = 5, 0.17
+    shares = (-1.0, -0.6, -0.2, 0.2, 0.6, 1.0)
+    chain = [(j, j + 1) for j in range(len(shares) - 1)]
+    for i in range(SLIT_COUNT):
+        back = SLIT_GAP * ((SLIT_COUNT - 1) / 2 - i)
+        height = 0.4 - 0.05 * abs(i - (SLIT_COUNT - 1) / 2)
+        slit = [G(back + 0.09 * (1.0 - t * t), t * height, 0.035 - 0.07 * t * t) for t in shares]
+        frill = [G(back - 0.045 + 0.09 * (1.0 - t * t), t * height * 0.92, 0.012 - 0.07 * t * t) for t in shares]
+        tube(scene, f'Slit{i}', slit, (0.012, 0.026, 0.032, 0.032, 0.026, 0.012), chain, 'Dark', subdivisions=1)
+        tube(scene, f'Frill{i}', frill, (0.012, 0.03, 0.038, 0.038, 0.03, 0.012), chain, 'Gill', subdivisions=1)
+
+
+def build_lure(scene):
+    """
+    The lantern of an angler fish: a stalk rising from the origin and arching forward
+    (+X) over the head, a glowing bulb dangling at its end.
+    """
+    # Stalk: a fishing rod, fat at the forehead, swinging far forward and drooping at the tip,
+    # so the bulb dangles in front of the mouth instead of floating over the head
+    points = [G(0, 0, 0), G(0.04, 0.4, 0), G(0.3, 0.78, 0), G(0.72, 0.88, 0), G(1.02, 0.7, 0)]
+    # The skin runs through the joints and a rounded point between each two, so the rod bends instead of kinking
+    path = [G(0, 0, 0), G(0.0, 0.22, 0), G(0.04, 0.4, 0), G(0.13, 0.63, 0), G(0.3, 0.78, 0), G(0.51, 0.87, 0),
+            G(0.72, 0.88, 0), G(0.9, 0.82, 0), G(1.02, 0.7, 0)]
+    stalk = tube(scene, 'Stalk', path, (0.09, 0.075, 0.06, 0.05, 0.042, 0.035, 0.03, 0.026, 0.024),
+                 [(i, i + 1) for i in range(len(path) - 1)])
+
+    # Bulb: a glowing drop hanging from a fleshy collar, lit from inside
+    bulb_center = G(1.08, 0.5, 0)
+    collar = ellipsoid(scene, 'Collar', bulb_center + G(-0.03, 0.14, 0), (0.09, 0.09, 0.07), 'Skin', subdivisions=2)
+    bulb = ellipsoid(scene, 'Bulb', bulb_center, (0.17, 0.17, 0.2), 'Lantern', subdivisions=3)
+    glint = ellipsoid(scene, 'Glint', bulb_center + G(0.08, 0.09, 0.08), (0.045, 0.045, 0.045), 'Glint', subdivisions=1)
+    meshes = [stalk, collar, bulb, glint]
+    rigid = {'Collar': 'Bulb', 'Bulb': 'Bulb', 'Glint': 'Bulb'}
+    # A small second light under the bulb: the bait, the pair reads as a drop
+    bait = ellipsoid(scene, 'Bait', bulb_center + G(0.01, -0.24, 0), (0.07, 0.07, 0.08), 'Lantern', subdivisions=2)
+    meshes.append(bait)
+    rigid['Bait'] = 'Bulb'
+
+    armature = rig(scene, 'Rig', [
+        ('Stalk0', points[0], points[1], None),
+        ('Stalk1', points[1], points[2], 'Stalk0'),
+        ('Stalk2', points[2], points[3], 'Stalk1'),
+        ('Stalk3', points[3], points[4], 'Stalk2'),
+        ('Bulb', points[4], bulb_center + G(0.0, -0.2, 0), 'Stalk3'),
+    ])
+    bind(armature, meshes, rigid=rigid)
+
+    # Sway: the stalk nods and swings, the bulb dangles behind
+    animate(armature, 'Sway', FPS * 3, {
+        'Stalk0': (AXIS_FORWARD, lambda share: 6.0 * wave(share)),
+        'Stalk1': (AXIS_OUT, lambda share: 9.0 * wave(share, 0.2)),
+        'Stalk2': (AXIS_OUT, lambda share: 8.0 * wave(share, 0.35)),
+        'Stalk3': (AXIS_OUT, lambda share: 8.0 * wave(share, 0.45)),
+        'Bulb':   (AXIS_FORWARD, lambda share: 18.0 * wave(share, 0.55)),
     })

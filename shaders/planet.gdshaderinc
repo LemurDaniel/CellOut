@@ -4,11 +4,43 @@
 //   rendering bends. Globals in project.godot [shader_globals], set every frame by
 //   World/Main.cs (UpdateCamera), 0 = flat (the soup). Plane3D.Drop is the same on the CPU.
 //
+//   Also the shadows of the clouds that drift over the open land (shaders/sky.gdshader
+//   draws the clouds): cloud_shadow darkens the albedo of the scenery below a cloud.
+//   Globals sky_open and sky_unit are set by Plane3D.SetSky.
+//
 //   #include "res://shaders/planet.gdshaderinc"
 //   VERTEX = planet_bend(VERTEX, MODEL_MATRIX);      // in vertex()
+//   ALBEDO *= cloud_shadow(world_pos.xz, TIME);      // in fragment()
 
 global uniform float planet_curve;                // 1 / (2 * planet radius) in 1 / world units
 global uniform vec3 planet_origin;                // the camera, the world stays flat around it
+global uniform float sky_open;                    // 0 under water .. 1 under the open sky (third person)
+global uniform float sky_unit;                    // world units of one Unit of the coast
+
+const float CLOUD_SHADE = 0.26;                   // share of the light a cloud takes
+const float CLOUD_PATCH = 30.0;                   // size of a cloud shadow in Unit
+
+// Hash without sine, see ocean_floor.gdshaderinc
+float planet_hash(vec2 p) {
+	vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+	p3 += dot(p3, p3.yzx + 33.33);
+	return fract((p3.x + p3.y) * p3.z);
+}
+
+float planet_noise(vec2 p) {
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	vec2 u = f * f * (3.0 - 2.0 * f);
+	return mix(mix(planet_hash(i), planet_hash(i + vec2(1.0, 0.0)), u.x),
+			mix(planet_hash(i + vec2(0.0, 1.0)), planet_hash(i + vec2(1.0, 1.0)), u.x), u.y);
+}
+
+// Light left below the drifting clouds at a world point: 1 in the sun, less under a cloud
+float cloud_shadow(vec2 world_xz, float time) {
+	vec2 p = world_xz / (max(sky_unit, 0.001) * CLOUD_PATCH) + time * vec2(0.012, 0.0054);
+	float cover = planet_noise(p) * 0.62 + planet_noise(p * 2.3 + 3.7) * 0.38;
+	return 1.0 - CLOUD_SHADE * sky_open * smoothstep(0.5, 0.7, cover);
+}
 
 // How far a world point sinks below the flat plane
 float planet_drop(vec3 world) {

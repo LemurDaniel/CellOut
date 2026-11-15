@@ -9,6 +9,9 @@
 //   $env:CELLOUT_GRAPHICS = 'Low'      # optional: force a graphics tier (Low, Medium, High)
 //   $env:CELLOUT_REEL_LAND = '1'       # optional: rush to the land animal, only the last still is worth a look
 //   $env:CELLOUT_REEL_TRIBE = '1'      # optional: rush to the pack and the tribe (stills: frames 112 and 212)
+//   $env:CELLOUT_REEL_TEMPLATE = 'SHARK'   # optional: the creature editor stays open with this template (CreatureTemplates), end with --quit-after 300
+//   $env:CELLOUT_REEL_SKY = '1'       # optional, while rushing: the camera tilts flat, the still shows sky and horizon
+//   $env:CELLOUT_REEL_MAP = '1'       # optional: the tribe pans off the village and opens the world map (rushing: still 198)
 
 //
 //   Chapters:
@@ -40,7 +43,8 @@ public partial class GraphicsReel : Node
     private const int PACK_FRAME = 520;
     private const int TRIBE_FRAME = 620;
     private const int BUILD_FRAME = 630;            // tribe: stock by cheat, one building of every function
-    private const int DESIGN_FRAME = 700;           // tribe: the village builder opens, full screen
+    private const int MAP_FRAME = 660;              // tribe, only with CELLOUT_REEL_MAP: camera off the village, world map open
+    private const int DESIGN_FRAME = 700;          // tribe: the village builder opens, full screen
     private const int QUIT_FRAME = 740;
     private const int RUSH_HOLD = 100;              // rushing: every stage poses this many frames (stills: frames 112, 198, 212)
 
@@ -49,6 +53,9 @@ public partial class GraphicsReel : Node
 
     private static readonly bool IS_RUSHING_TRIBE = "1" == OS.GetEnvironment("CELLOUT_REEL_TRIBE");
     private static readonly bool IS_RUSHING = IS_RUSHING_TRIBE || "1" == OS.GetEnvironment("CELLOUT_REEL_LAND");
+    private static readonly bool IS_SHOWING_MAP = "1" == OS.GetEnvironment("CELLOUT_REEL_MAP");
+    private static readonly bool IS_LOOKING_UP = "1" == OS.GetEnvironment("CELLOUT_REEL_SKY");
+    private static readonly string TEMPLATE_KEY = OS.GetEnvironment("CELLOUT_REEL_TEMPLATE");
 
     private Main _main;
     private int _frame;
@@ -93,10 +100,19 @@ public partial class GraphicsReel : Node
                 14                 => IS_RUSHING_TRIBE ? PACK_FRAME : LAND_FRAME,
                 14 + RUSH_HOLD     => IS_RUSHING_TRIBE ? TRIBE_FRAME : QUIT_FRAME,
                 24 + RUSH_HOLD     => BUILD_FRAME,
+                54 + RUSH_HOLD     => MAP_FRAME,
                 104 + RUSH_HOLD    => DESIGN_FRAME,
                 14 + 2 * RUSH_HOLD => QUIT_FRAME,
                 _                  => -1,
             };
+        }
+
+        // Looking up: a right drag tilts the third person camera flat, so the sky fills the upper half
+        if (IS_LOOKING_UP && IS_RUSHING && 60 == _frame)
+        {
+            _main.FollowCamera.HandleInput(new InputEventMouseButton { ButtonIndex = MouseButton.Right, Pressed = true });
+            _main.FollowCamera.HandleInput(new InputEventMouseMotion { Relative = new Vector2(120f, -200f) });
+            _main.FollowCamera.HandleInput(new InputEventMouseButton { ButtonIndex = MouseButton.Right, Pressed = false });
         }
         switch (frame)
         {
@@ -117,10 +133,15 @@ public partial class GraphicsReel : Node
                 _main.StartEvolve(isInstant: true);
                 break;
             case SHAPE_FRAME:
-                if (_main.CreatureEditor.IsOpen)
+                if (_main.CreatureEditor.IsOpen && string.IsNullOrEmpty(TEMPLATE_KEY))
                 {
                     _main.CreatureEditor.ChooseType(CreatureType.Fish);
                     _main.CreatureEditor.Finish();
+                }
+                else if (_main.CreatureEditor.IsOpen)
+                {
+                    // A template to look at: the editor stays open with it on the turntable, quit by --quit-after
+                    _main.CreatureEditor.ChooseTemplate(CreatureTemplates.Get(TEMPLATE_KEY));
                 }
                 break;
             case COAST_FRAME:
@@ -143,6 +164,10 @@ public partial class GraphicsReel : Node
                 {
                     _main.Tribe.TryBuild(kind);
                 }
+                break;
+            case MAP_FRAME when IS_SHOWING_MAP:
+                _main.FollowCamera.FocusOn(_main.Pack.Nest.Position + new Vector2(1f, -0.6f) * _main.Coast.Unit * 60f);
+                _main.Hub.ToggleWorldMap();
                 break;
             case DESIGN_FRAME:
                 _main.OpenBuildingEditor();

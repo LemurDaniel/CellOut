@@ -3,7 +3,8 @@
 //   water line, wave crests rolling in to every shore, broken by noise, and a foam
 //   fringe that follows the swash. Same water line as coast_ground.gdshader.
 //   open_sea (0 top view .. 1 third person) turns the tint into a real sea: turquoise and
-//   see-through in the shallows, fading over SHALLOW_REACH into deep blue, more opaque at
+//   see-through in the shallows, fading over SHALLOW_REACH into deep blue, with a wandering
+//   swell and a net of thin light ripples, more opaque at
 //   grazing angles (fresnel) and towards the horizon, clearer right around the player, so
 //   a swimming body stays visible. Bends with the planet.
 //   Set by World/Coast.cs.
@@ -18,7 +19,7 @@ uniform float unit = 14.0;
 uniform vec4 water_color : source_color = vec4(0.25, 0.6, 0.7, 0.18);
 uniform float open_sea = 0.0;
 uniform vec3 sea_color : source_color = vec3(0.07, 0.3, 0.42);
-uniform vec3 shallow_tint : source_color = vec3(0.25, 0.68, 0.66);
+uniform vec3 shallow_tint : source_color = vec3(0.16, 0.72, 0.68);
 const float SHALLOW_REACH = 14.0;            // shallows to deep blue, in unit
 uniform vec3 sky_tint : source_color = vec3(0.62, 0.8, 0.92);
 uniform vec2 focus = vec2(0.0);              // player on the plane
@@ -53,8 +54,15 @@ void fragment() {
 	float around = 1.0 - smoothstep(focus_size * 1.5, focus_size * 6.0, distance(world_pos.xz, focus));
 	float glint = smoothstep(0.78, 0.95, coast_noise(q * 2.5 + vec2(TIME * 0.3, 0.0)) * coast_noise(q * 3.1 - vec2(0.0, TIME * 0.25) + 4.0) * 1.6);
 	float deep = smoothstep(0.0, SHALLOW_REACH * unit, to_shore);
-	vec3 sea = mix(mix(shallow_tint, sea_color, deep), sky_tint, grazing * 0.7) + glint * 0.35;
-	float sea_alpha = mix(0.15, 1.0, deep) * mix(0.5, 0.97, grazing) * (1.0 - 0.75 * around);
+	vec3 body_color = mix(shallow_tint, sea_color, deep);
+	// Swell: wide lighter and darker stretches wander over the sea
+	body_color *= 0.88 + 0.26 * coast_fbm(q * 0.3 + vec2(TIME * 0.05, TIME * 0.035));
+	// Ripples: where two drifting noises meet, a net of thin light lines, clearest in the shallows
+	float net = abs(coast_noise(q * 1.7 + vec2(TIME * 0.16, 0.0)) - coast_noise(q * 1.7 + 7.3 - vec2(0.0, TIME * 0.13)));
+	float lines = (1.0 - smoothstep(0.0, 0.07, net)) * (1.0 - 0.6 * deep);
+	// The shallows keep their turquoise at flat angles, only the deep sea mirrors the sky
+	vec3 sea = mix(body_color, sky_tint, grazing * mix(0.2, 0.7, deep)) + glint * 0.35 + lines * 0.16;
+	float sea_alpha = mix(0.3, 1.0, deep) * mix(0.5, 0.97, grazing) * (1.0 - 0.75 * around);
 	sea_alpha *= smoothstep(-0.2 * unit, 0.6 * unit, to_shore);
 
 	float in_water = step(-0.4 * unit, to_shore);

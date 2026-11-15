@@ -85,7 +85,7 @@ public sealed class CreatureEditorSession
     /// refreshes once its stage shows the new draft.
     /// </summary>
     /// <param name="source">(Required) The design the draft is copied from, the clay blob or the creature of the player.</param>
-    /// <param name="isChoosingType">(Required) True for the first shaping: the type cards come first.</param>
+    /// <param name="isChoosingType">(Required) True for the first shaping: the template cards come first.</param>
     /// <param name="budget">(Required) Points available in total, read on every access so points earned meanwhile count.</param>
     /// <example><code>session.Begin(CreatureDesign.Blob(), isChoosingType: true, () => player.EvolutionPoints + bonus);</code></example>
     public void Begin(CreatureDesign source, bool isChoosingType, System.Func<int> budget)
@@ -106,7 +106,8 @@ public sealed class CreatureEditorSession
     // ==========================   CHOOSE AND PAINT   ===========================
     // ===========================================================================
     //
-    //   ChooseType       Fish or marine mammal, the clay takes its starter shape.
+    //   ChooseType       The plain starter body of a type, a shortcut for its template.
+    //   ChooseTemplate   The clay becomes a template of the library, its parts are paid.
     //   ShowCategory     Switches the palette tab.
     //   Select           Picks a part from the palette.
     //   SetColor         Recolors the draft (null = coral default).
@@ -118,19 +119,46 @@ public sealed class CreatureEditorSession
     //   ClearSpray       Wipes all spray paint.
     //
 
-    /// <summary>Sets the body type of the first shaping, the clay becomes its starter body (CreatureDesign.Starter).</summary>
+    /// <summary>The plain starter body of a type, a shortcut for its template (CreatureTemplates.Plain).</summary>
     /// <param name="type">(Required) Fish or marine mammal.</param>
-    /// <returns>False when the type is chosen already.</returns>
+    /// <returns>False when the choice is made already.</returns>
     public bool ChooseType(CreatureType type)
+    {
+        return ChooseTemplate(CreatureTemplates.Plain(type));
+    }
+
+    /*
+      The first shaping: the clay becomes a template of the library.
+      > The choice is made already: refused
+      > Its parts cost more points than are left: refused, the cards stay
+      > Otherwise: the draft becomes the template, its parts are paid like parts placed
+        by hand (removing one refunds it). A template without a color of its own keeps
+        the color the clay had
+    */
+    /// <summary>Turns the clay of the first shaping into a template of the library and pays its parts.</summary>
+    /// <param name="template">(Required) A template of CreatureTemplates.All.</param>
+    /// <returns>False when the choice is made already or the points do not reach.</returns>
+    /// <example><code>session.ChooseTemplate(CreatureTemplates.All[4]);   // the shark, 4 EP</code></example>
+    public bool ChooseTemplate(CreatureTemplate template)
     {
         if (!IsChoosingType)
         {
             return false;
         }
-        // The clay becomes the streamlined starter body of the type, the picked color stays
+        CreatureDesign body = template.Build();
+        int            cost = CreatureTemplates.CostOf(body);
+        if (cost > Points)
+        {
+            Log.Verbose("CreatureEditorSession", $"Template {template.Key} costs {cost} EP, only {Points} left.");
+            return false;
+        }
         Color? color = Draft.Color;
-        Draft.CopyFrom(CreatureDesign.Starter(type));
-        Draft.SetColor(color);
+        Draft.CopyFrom(body);
+        if (null == body.Color)
+        {
+            Draft.SetColor(color);
+        }
+        _spent        += cost;
         IsChoosingType = false;
         PaletteChanged?.Invoke();
         Changed?.Invoke();

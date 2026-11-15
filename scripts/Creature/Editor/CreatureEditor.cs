@@ -24,10 +24,9 @@
 //   half the effect). Left drag elsewhere turns the view, the wheel zooms, right click
 //   on a part removes and refunds it. A dropped or clicked part gets a gizmo: arrows
 //   shift it, rings turn it, its mirror half follows; a slider below sets its size,
-//   the wheel over it does the same (all looks only). A column on the right shows the
-//   traits of the draft live (CreatureStats): weight, what the legs carry, speed in
-//   the water and on land, and whether the wings could lift it. "Done" hands the body
-//   plan to the player.
+//   the wheel over it does the same (all looks only). A column on the right holds the
+//   tools: body colors, patterns, the spray can, the symmetry switch and the vertebra
+//   buttons. "Done" hands the body plan to the player.
 //
 //   This class is the coordinator: it keeps the public API, creates the session
 //   (CreatureEditorSession), the frame, the stage components (Stage/) and the views
@@ -58,7 +57,8 @@ public partial class CreatureEditor : CanvasLayer
     //   IsChoosingType  The first shaping still waits for fish or marine mammal.
     //   Points          Evolution points left: the player's, the organism bonus, minus what was spent.
     //   Open            Copies the clay blob (first shaping) or the creature into a draft.
-    //   ChooseType      Fish or marine mammal, the clay takes its shape and the palette opens.
+    //   ChooseType      The plain starter body of a type, a shortcut for its template.
+    //   ChooseTemplate  The clay becomes a template of the library and the palette opens.
     //   ShowCategory    Switches the palette tab.
     //   DraftColor      Color of the draft, the coral default when none is picked.
     //   Select          Picks a part from the palette.
@@ -140,16 +140,27 @@ public partial class CreatureEditor : CanvasLayer
         _frame.SlideTo(1f);
     }
 
-    /// <summary>Sets the body type of the first shaping, the clay becomes its starter body (CreatureDesign.Starter).</summary>
+    /// <summary>The plain starter body of a type, a shortcut for its template (CreatureTemplates.Plain).</summary>
     /// <param name="type">(Required) Fish or marine mammal.</param>
     public void ChooseType(CreatureType type)
     {
-        if (!_session.ChooseType(type))
+        ChooseTemplate(CreatureTemplates.Plain(type));
+    }
+
+    /// <summary>Turns the clay of the first shaping into a template of the library, its parts are paid from the points.</summary>
+    /// <param name="template">(Required) A template of CreatureTemplates.All.</param>
+    /// <returns>False when the choice is made already or the points do not reach.</returns>
+    /// <example><code>editor.ChooseTemplate(CreatureTemplates.All[4]);   // the shark</code></example>
+    public bool ChooseTemplate(CreatureTemplate template)
+    {
+        if (!_session.ChooseTemplate(template))
         {
-            return;
+            return false;
         }
-        Log.Verbose("CreatureEditor", $"Type chosen: {type}.");
-        _stage.Celebrate(Vector3.Zero, CreatureEditorUi.TypeAccent(type), 1.12f);
+        Log.Verbose("CreatureEditor", $"Template chosen: {template.Key}, {Points} EP left.");
+        _stage.Recolor();        // a template may bring its own body color
+        _stage.Celebrate(Vector3.Zero, CreatureEditorUi.TypeAccent(Draft.Type), 1.12f);
+        return true;
     }
 
     /// <summary>Switches the palette to the parts of one category, the selection stays.</summary>
@@ -471,11 +482,11 @@ public partial class CreatureEditor : CanvasLayer
     // ===============================   REFRESH   ===============================
     // ===========================================================================
     //
-    //   Refresh              Phase (cards or sculpting), title, points, buttons, tabs, stats, info card and tiles.
+    //   Refresh              Phase (cards or sculpting), title, points, buttons, tabs, info card and tiles.
     //   RefreshInfo          Name and description of the dragged, hovered or selected part, else of the body type.
     //   OnSelectionChanged   The palette selection changed: info card and tiles follow.
     //   OnEndPulled          The body grew or shrank at an end: log and ring burst at that end.
-    //   _Process             Turns the turntable, updates changed stats, moves handles, marker and gizmo.
+    //   _Process             Turns the turntable, moves handles, marker and gizmo.
     //
 
     /// <summary>Updates every widget.</summary>
@@ -490,7 +501,6 @@ public partial class CreatureEditor : CanvasLayer
         _cards.Refresh();
         _footer.Refresh();
         _tabs.Refresh();
-        _stats.Refresh();
         _footer.RefreshSize();
         RefreshInfo();
         _palette.RefreshTiles();
@@ -522,9 +532,6 @@ public partial class CreatureEditor : CanvasLayer
         }
         _stage.Advance((float)delta);
 
-        // Stats follow every change, also the handle drags that skip Refresh
-        _stats.Follow();
-
         // Vertebra handles, joint handles of the picked limb and the gizmo
         _handles.Update(_stage.Clock);
 
@@ -541,7 +548,7 @@ public partial class CreatureEditor : CanvasLayer
     //
     //   _Ready        Keeps running while paused, builds everything hidden and closed, follows the session.
     //   BuildStage    The turntable stage with drag ghost, sculpt handles, part placer and spray can.
-    //   BuildViews    Toolbar over the turntable, tabs, type cards, tile palette, stats column and footer.
+    //   BuildViews    Tool column, tabs, template cards, tile palette and footer.
     //
 
     private CreatureEditorFrame _frame;
@@ -552,9 +559,8 @@ public partial class CreatureEditor : CanvasLayer
     private CreatureSprayCan _spray;
     private CreatureToolbar _toolbar;
     private CreatureCategoryTabs _tabs;
-    private CreatureTypeCards _cards;
+    private CreatureTemplateCards _cards;
     private CreaturePartPalette _palette;
-    private CreatureStatsColumn _stats;
     private CreatureFooter _footer;
 
     public override void _Ready()
@@ -570,10 +576,10 @@ public partial class CreatureEditor : CanvasLayer
         BuildStage();
         BuildViews();
 
-        // Rows of the panel: tabs, type cards (first shaping), the workbench and the footer
+        // Rows of the panel: tabs, template cards (first shaping), the workbench and the footer
         _frame.AddRow(_tabs);
         _frame.AddRow(_cards);
-        _frame.AddWorkbench(_palette, _stage, _stats);
+        _frame.AddWorkbench(_palette, _stage, _toolbar);
         _frame.AddRow(_footer);
 
         // The session tells when tiles are rebuilt, every widget follows, the selection changed or an end was pulled
@@ -613,7 +619,7 @@ public partial class CreatureEditor : CanvasLayer
 
     private void BuildViews()
     {
-        // Buttons floating over the turntable
+        // The tool column right of the turntable: colors, patterns, spray can, symmetry, vertebrae
         _toolbar = new CreatureToolbar();
         _toolbar.Setup(_session);
         _toolbar.AddVertebraPressed    += () => AddVertebra();
@@ -625,23 +631,19 @@ public partial class CreatureEditor : CanvasLayer
         _toolbar.ColorPicked           += PickColor;
         _toolbar.PatternPicked         += PickPattern;
         _toolbar.PatternColorPicked    += PickPatternColor;
-        _stage.AddChild(_toolbar);
 
         _tabs = new CreatureCategoryTabs();
         _tabs.Setup(_session);
         _tabs.CategoryPressed += ShowCategory;
 
-        _cards = new CreatureTypeCards();
+        _cards = new CreatureTemplateCards();
         _cards.Setup(_session);
-        _cards.TypeChosen += ChooseType;
+        _cards.TemplateChosen += template => ChooseTemplate(template);
 
         _palette = new CreaturePartPalette();
         _palette.Setup(_session, _ghost.StartDrag);
         _palette.PartPicked   += Select;
         _palette.HoverChanged += RefreshInfo;
-
-        _stats = new CreatureStatsColumn();
-        _stats.Setup(_session);
 
         _footer = new CreatureFooter();
         _footer.Setup(_session);

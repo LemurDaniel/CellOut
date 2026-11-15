@@ -270,7 +270,7 @@ public partial class SmokeTest : Node
     }
 
     /// <summary>
-    /// The first shaping: type cards first, then a marine mammal (streamlined starter with free
+    /// The first shaping: template cards first, then a plain marine mammal template (streamlined starter with free
     /// fluke and eyes, the fluke removed again) with fluke and jaw
     /// (a tail fin of fish is refused), the fluke shifted and turned with the gizmo, single
     /// hands with symmetry off, one more vertebra, a thicker middle, a neck lifted and pulled
@@ -278,10 +278,18 @@ public partial class SmokeTest : Node
     /// </summary>
     private static bool ShapeCreature(CreatureEditor editor)
     {
+        // A template of its own: the files of data/creatures are content and change, the probe pins the editor
+        const string STARTER_TEMPLATE = """
+            {
+              "key": "PROBE", "type": "MarineMammal",
+              "girths": [0.26, 0.42, 0.66, 0.88, 0.92, 0.82, 0.6],
+              "parts": [ { "kind": "Fluke", "t": 0, "free": true }, { "kind": "Eye", "t": 0.86, "free": true } ]
+            }
+            """;
         bool isChoosing  = editor.IsOpen && editor.IsChoosingType;
         bool isBlocked   = !editor.TryPlace(CreaturePartKind.Fluke, 0f);
         int  pointsType  = editor.Points;
-        editor.ChooseType(CreatureType.MarineMammal);
+        editor.ChooseTemplate(CreatureTemplates.Parse(STARTER_TEMPLATE));
         bool isFishOnly  = !editor.TryPlace(CreaturePartKind.CaudalFin, 0f);
 
         // Starter body: streamlined, free fluke and eyes; removing the free fluke refunds nothing
@@ -493,23 +501,24 @@ public partial class SmokeTest : Node
     //   Stufen-Cutscene         The stage cutscene fires Finished and puts the camera back where it was.
     //   Editor-Übergang         The editor transition fires Finished once, puts the camera back and frees itself.
     //   Lebewesen               64 cells evolve: editor opens, the player becomes an organism, game resumes.
-    //   Kreatur-Editor          Type first, fish parts refused, costs paid, one part per tail, part size clamped and free, tab switch, girth clamped,
+    //   Kreatur-Editor          Template first (the plain marine mammal), a second tail refused, costs paid, one part per tail, part size clamped and free, tab switch, girth clamped,
     //                           coral by default, translucent picked for free.
     //   Kreatur im Spiel        One body of the same size, creature visual, cell visual hidden, no division, translucent color kept.
     //   Kreatur-Werte           Fluke faster than none, jaw bites forward, spines guard flanks and back.
+    //   Vorlagen                A template the points do not reach is refused, a paid one spends its points, removing a paid part refunds it.
     //   Meer voller Kreaturen   NPCs of the organism stage are creatures.
     //   Kreatur-Geometrie       Blob profile and inside test, vertebra limits, NPC body plans.
     //   Texte Kreatur           Every creature part and type translated in both languages.
     //   Küste                   The coast exists, land and sea are on the right sides, things get pushed to sea.
     //   Landtier per Cheat      F10 points add 10 EP, the land jump walks the creature onto the coast: stage 5.
-    //   Luft an Land            A fish without lung runs out of air on land and suffocates slowly, a mammal does not.
+    //   Luft an Land            Without a lung fish and marine mammal run out of air on land and suffocate slowly, a lung saves them.
     //   Laufen an Land          Without legs it crawls, with legs it walks faster, lung and legs make it a land animal.
     //   Gewicht                 Blob about 10 kg, parts add weight, a heavy body walks slower, more legs carry more.
     //   Fliegen                 A blob with one feather pair is too heavy, a slim body with two pairs could fly.
     //   Hirn                    A big brain adds 2 EP per level (4 instead of 2).
     //   Rudel                   Nest, three followers and two pups after the cheat (enough for the tribe offer), a deadly hit is survived in a member's body.
     //   Stamm                   Fire lit, villagers commanded, the stock pays a dwelling, the village builder pauses and changes
-    //                           the watchtower blueprint, a chopper yields wood, rivals settle, a gift and a forced raid, warriors raze a rival village, the camera rises.
+    //                           the watchtower blueprint, a chopper yields wood, rivals settle, a gift and a forced raid, warriors raze a rival village, the home button returns the camera, the camera rises.
     //   Teil-Modelle            Every Blender part model (creature and cell) loads with meshes and its looping animation.
     //   Grafikstufen            The tier cycles Low, Medium, High, owners hear the change, depth blur only above Low.
     //   Wasserfarben            The water follows the stage: primordial, pond, sea; the lens and the depth fog are set.
@@ -611,6 +620,7 @@ public partial class SmokeTest : Node
             ("Kreatur-Editor", _isCreatureEditorOk),
             ("Kreatur im Spiel", ProbeOrganismPlayer(player)),
             ("Kreatur-Werte", ProbeCreatureStats()),
+            ("Vorlagen", ProbeTemplates()),
             ("Meer voller Kreaturen", ProbeCreatureSea()),
             ("Kreatur-Geometrie", ProbeCreatureGeometry()),
             ("Texte Kreatur", ProbeCreatureTexts("en") && ProbeCreatureTexts("de")),
@@ -864,10 +874,18 @@ public partial class SmokeTest : Node
                 && enemy.Relation < relationBefore
                 && tribe.Economy.Food == foodBefore + war.DefeatFood;
         }
-        bool isOk = isTribe && isOrdered && isPoor && isBuilt && isDesigned && isChopped && hasRivals && isGifted && isRaided && isConquered;
+
+        // Home: the strategy view panned far off returns over the own fire, its footprint has four corners for the map
+        FollowCamera camera = _main.FollowCamera;
+        Vector2      away   = fire + Vector2.Right * unit * 500f;
+        camera.FocusOn(away);
+        bool isAway = camera.StrategyFocus == away;
+        bool isHome = isAway && _main.Hub.GoHome() && camera.StrategyFocus == fire && 4 == camera.ViewFootprint().Length;
+
+        bool isOk = isTribe && isOrdered && isPoor && isBuilt && isDesigned && isChopped && hasRivals && isGifted && isRaided && isConquered && isHome;
         if (!isOk)
         {
-            GD.Print($"  tribe {isTribe}, ordered {isOrdered}, poor {isPoor}, built {isBuilt}, designed {isDesigned}, chopped {isChopped}, rivals {hasRivals}, gifted {isGifted}, raided {isRaided}, conquered {isConquered}");
+            GD.Print($"  tribe {isTribe}, ordered {isOrdered}, poor {isPoor}, built {isBuilt}, designed {isDesigned}, chopped {isChopped}, rivals {hasRivals}, gifted {isGifted}, raided {isRaided}, conquered {isConquered}, home {isHome}");
         }
         return isOk;
     }
@@ -1371,6 +1389,34 @@ public partial class SmokeTest : Node
         return isFaster && isArmed && isGrazer;
     }
 
+    private static bool ProbeTemplates()
+    {
+        CreatureTemplate shark  = CreatureTemplates.Get("SHARK");
+        CreatureTemplate puffer = CreatureTemplates.Get("PUFFER");
+        var session = new CreatureEditorSession();
+        int pufferCost = CreatureTemplates.CostOf(puffer.Build());
+        int sharkCost  = CreatureTemplates.CostOf(shark.Build());
+        session.Begin(CreatureDesign.Blob(), isChoosingType: true, () => pufferCost);
+
+        // Just the points of the puffer: the dearer shark stays on its card, the puffer takes them all and brings its own color
+        bool isRefused = sharkCost > pufferCost && !session.ChooseTemplate(shark) && session.IsChoosingType && pufferCost == session.Points;
+        bool isChosen  = session.ChooseTemplate(puffer) && !session.IsChoosingType && 0 == session.Points
+            && 1 == session.Draft.Count(CreaturePartKind.Spines) && null != session.Draft.Color
+            && !session.ChooseTemplate(puffer);
+
+        // The plain body is free and keeps the color the clay had
+        var plain = new CreatureEditorSession();
+        plain.Begin(CreatureDesign.Blob(), isChoosingType: true, () => 0);
+        plain.SetColor(Colors.Purple);
+        bool isPlain = plain.ChooseType(CreatureType.Fish) && 0 == plain.Points && Colors.Purple == plain.Draft.Color
+            && 1 == plain.Draft.Count(CreaturePartKind.CaudalFin);
+        if (!(isRefused && isChosen && isPlain))
+        {
+            GD.Print($"  templates: refused {isRefused}, chosen {isChosen}, plain {isPlain}");
+        }
+        return isRefused && isChosen && isPlain;
+    }
+
     private static Player OrganismProbe(CreatureType type, params CreaturePartKind[] kinds)
     {
         var probe = new Player();
@@ -1420,7 +1466,7 @@ public partial class SmokeTest : Node
                 isOk = false;
             }
         }
-        foreach (string key in new[] { "CREATURE_TYPE_FISH_NAME", "CREATURE_TYPE_MARINEMAMMAL_DESC", "ORGANISM_BUTTON", "GOAL_ORGANISM_AT", "CREATURE_STAT_WEIGHT", "CREATURE_FLIGHT_HEAVY" })
+        foreach (string key in new[] { "CREATURE_TYPE_FISH_NAME", "CREATURE_TYPE_MARINEMAMMAL_DESC", "ORGANISM_BUTTON", "GOAL_ORGANISM_AT", "CREATURE_TEMPLATE_SHARK", "CREATURE_SPRAY" })
         {
             isOk = isOk && key != Tr(key);
         }
@@ -1540,21 +1586,28 @@ public partial class SmokeTest : Node
     {
         const float STEP = 0.5f;
         const int STEPS = 24;                        // 12 seconds: 8 to run out of air, 4 suffocating
-        Player fish   = OrganismProbe(CreatureType.Fish);
-        Player mammal = OrganismProbe(CreatureType.MarineMammal);
-        fish.IsOnLand   = true;
-        mammal.IsOnLand = true;
-        fish.Invulnerable = 0f;
+        // The body type is cosmetic: a marine mammal without a lung runs out of air like a fish, a lung saves both
+        Player fish    = OrganismProbe(CreatureType.Fish);
+        Player mammal  = OrganismProbe(CreatureType.MarineMammal);
+        Player breather = OrganismProbe(CreatureType.MarineMammal, CreaturePartKind.Lung);
+        foreach (Player probe in new[] { fish, mammal, breather })
+        {
+            probe.IsOnLand     = true;
+            probe.Invulnerable = 0f;
+        }
         for (int i = 0; i < STEPS; i++)
         {
             fish._PhysicsProcess(STEP);
             mammal._PhysicsProcess(STEP);
+            breather._PhysicsProcess(STEP);
         }
         bool isOk = Mathf.IsZeroApprox(fish.Air) && fish.Hp < fish.MaxHp * 0.9f && fish.Hp > 0f
-            && Mathf.IsEqualApprox(mammal.Air, 1f)
+            && Mathf.IsZeroApprox(mammal.Air) && mammal.Hp < mammal.MaxHp * 0.9f
+            && Mathf.IsEqualApprox(breather.Air, 1f)
             && Player.ORGANISM_STAGE == fish.Stage;
         fish.Free();
         mammal.Free();
+        breather.Free();
         return isOk;
     }
 

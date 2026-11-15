@@ -1,13 +1,15 @@
 // NOTE:
 //   The parts of a 3D organism: fins, eyes, mouths (jaw, filter mouth, beak), spines, shell,
-//   poison gland, blowhole, sculpted limbs with feet and hands, a brain, the nostrils of a
-//   lung and wings, each on a pivot along the
-//   spine that rides the swim wave. Legs, hands, wings, brain, stalk eyes and fins are
-//   models from tools/blender (Visual/CreatureModels.cs), the rest are primitive meshes.
+//   poison gland, blowhole, gills, sculpted limbs with feet and hands, a brain, the nostrils
+//   of a lung, a lantern and wings, each on a pivot along the spine that rides the swim
+//   wave. Legs, hands, pincers, sucker arms, wings, brain, stalk eyes, fins, mouths, spines,
+//   shell, gills and the lantern are models from tools/blender (Visual/CreatureModels.cs),
+//   the rest (eyes, pits, blowhole, nostrils, poison gland) are primitive meshes.
 //   A node component of CreatureVisual3D: a child at the origin of the visual, built once
 //   and replaced by a new one on every rebuild. The visual tells it the wave, the blink
 //   and the spout of the frame; picking answers come back as return values.
-//   A new creature part gets its case in BuildPart (see CLAUDE.md, "Neues Kreatur-Teil").
+//   A new modelled part gets a row in PLACEMENTS, only a part that is drawn from primitives or
+//   needs its own rule gets a case in BuildPart (see CLAUDE.md, "Neues Kreatur-Teil").
 //
 //   var parts = new CreatureParts3D();
 //   visual.AddChild(parts);                              // in the tree first: Build reads global transforms
@@ -35,8 +37,9 @@ public partial class CreatureParts3D : Node3D
     //
     //   Build        Builds and poses every part of a design.
     //   BuildPart    One placed part on a pivot that rides the swim wave.
-    //   BuildMouth   A filter mouth with baleen or a beak at the nose.
-    //   BuildShell   Overlapping armor bands over the back.
+    //   PLACEMENTS / BuildPlaced   New modelled parts: a table row says how the model sits on the body.
+    //   BuildMouth   The mouth model around the snout: shark jaw, whale mouth or beak.
+    //   AttachHugging   A model that hugs the body (spines, shell), stretched to the body there.
     //   BuildWings   A pair of membrane or feather wings on the back.
     //   BuildEye     One eye on the flank, pupil forward and outwards.
     //   AddPivot     A pivot at a spine X, moved by the swim wave.
@@ -65,10 +68,17 @@ public partial class CreatureParts3D : Node3D
         [CreatureCategory.Wings]   = 1.8f,
     };
 
-    /// <summary>Kinds that leave the size of their tab: the shell hugs the body, so it is built in body scale.</summary>
+    /// <summary>Kinds that leave the size of their tab: what hugs the body (shell, spines, mouths, gills) is built in body scale.</summary>
     private static readonly IReadOnlyDictionary<CreaturePartKind, float> BASE_KIND_SIZES = new Dictionary<CreaturePartKind, float>
     {
         [CreaturePartKind.Shell]       = 1f,
+        [CreaturePartKind.Eye]         = 1f,             // the tab size never showed on eyes (the blink reset it), 1 keeps their known look
+        [CreaturePartKind.Spines]      = 1f,
+        [CreaturePartKind.Jaw]         = 1f,
+        [CreaturePartKind.FilterMouth] = 1f,
+        [CreaturePartKind.Beak]        = 1f,
+        [CreaturePartKind.Gills]       = 1f,
+        [CreaturePartKind.Lure]        = 1.2f,
         [CreaturePartKind.PoisonGland] = 1.4f,
     };
 
@@ -76,6 +86,7 @@ public partial class CreatureParts3D : Node3D
 
     private readonly List<Attached> _attached = new();
     private readonly List<Node3D> _eyes = new();
+    private readonly Dictionary<Node3D, Vector3> _eyeScales = new();     // the posed size of every eye, the blink squeezes it
     private readonly List<MeshInstance3D> _spouts = new();
     private readonly CreaturePartPoser _poser = new();
     private CreatureDesign _design;
@@ -101,7 +112,9 @@ public partial class CreatureParts3D : Node3D
             // Posed by side, size, shift and turn; an eye of a dropped half blinks no more
             CreaturePart  part    = design.Parts[index];
             List<Node3D>  pivots  = _attached.Skip(firstPivot).Select(attached => attached.Pivot).ToList();
-            float         size    = BASE_KIND_SIZES.TryGetValue(part.Kind, out float kindSize) ? kindSize : BASE_PART_SIZES[part.Info.Category];
+            // A kind of PLACEMENTS brings its size in its row, it is built in body scale
+            float         size    = PLACEMENTS.ContainsKey(part.Kind) ? 1f
+                : BASE_KIND_SIZES.TryGetValue(part.Kind, out float kindSize) ? kindSize : BASE_PART_SIZES[part.Info.Category];
             List<Node3D>  dropped = _poser.Pose(index, part, pivots, size);
             foreach (Node3D piece in dropped)
             {
@@ -121,17 +134,43 @@ public partial class CreatureParts3D : Node3D
                 _limbs.Remember(index, flank, piece, points);
             }
         }
+        foreach (Node3D eye in _eyes)
+        {
+            _eyeScales[eye] = eye.Scale;
+        }
     }
 
     private void BuildPart(CreatureDesign design, CreaturePart part, Color color)
     {
-        var                finSkin = new Dictionary<string, Material> { ["Fin"] = CreatureModels.FinMaterial(design, color) };
+        // Materials that follow the design: the fin webbing, BackSkin (the color of the painted back)
+        // and Skin, the plain clay of the body, so a snout or a tail is one piece with it
+        Color              back    = CreaturePattern.None == design.Pattern ? color : design.PatternColor ?? color.Darkened(0.45f);
+        var                finSkin = new Dictionary<string, Material>
+        {
+            ["Fin"]      = CreatureModels.FinMaterial(design, color),
+            ["BackSkin"] = CellVisual3D.Material(back, 0f, 0.6f),
+            ["Skin"]     = _knuckleClay,
+        };
         Color              outline = color.Darkened(0.5f);
         float              x       = design.XAt(part.T);
         float              radius  = design.RadiusAt(x);
         float              top     = design.TopAt(x);
         float              flank   = design.FlankAt(x);
         float              finSize = 0.6f + design.MeanGirth * 0.5f;
+
+        // Every sculpted limb, with or without a foot or a hand on its tip: a clay tube through its joints, on both flanks
+        if (part.Info.IsSculpted || part.Info.IsEnd)
+        {
+            _limbs.Build(AddPivot(_limbs.RootOn(design, part, 1).X), design, part, color);
+            return;
+        }
+
+        // A model placed by its row in PLACEMENTS
+        if (PLACEMENTS.TryGetValue(part.Kind, out Placement placement))
+        {
+            BuildPlaced(design, part, placement, color, finSkin);
+            return;
+        }
 
         switch (part.Kind)
         {
@@ -147,20 +186,27 @@ public partial class CreatureParts3D : Node3D
                 Node3D sail = CreatureModels.Attach(AddPivot(x), part.Kind, color, new Vector3(0f, top - 0.03f, 0f), 0.5f + radius * 0.6f, 1f, overrides: finSkin);
                 PartModels.PlayLoop(sail, CreatureModels.MODELS[part.Kind].Animation, 0.3f, FLUTTER_RATE);
                 break;
+            // Spines of a puffer fish: they stand out from back and flanks all around the body there
             case CreaturePartKind.Spines:
-                for (int i = -2; i <= 2; i++)
+                AttachHugging(AddPivot(x), part.Kind, color, new Vector3(Mathf.Min(design.Length * SPINES_SPREAD, SPINES_MAX_SPREAD), top, flank));
+                break;
+
+            // Top of the head: the lantern of an angler fish arches forward and sways
+            case CreaturePartKind.Lure:
+                Node3D lantern    = AddPivot(x);
+                float  lureLength = 0.4f + radius * 0.5f;
+                Node3D lure       = CreatureModels.Attach(lantern, part.Kind, color, new Vector3(0f, top * 0.92f, 0f), lureLength, 1f);
+                CreatureClay.AddFillet(lantern, new Vector3(0f, top * 0.92f, 0f), lureLength * CreatureClay.STALK_FILLET, _knuckleClay);
+                PartModels.PlayLoop(lure, CreatureModels.MODELS[part.Kind].Animation, 0f, SWAY_RATE);
+                break;
+
+            // Gills: three slits with red frills on both flanks behind the head, wherever they were placed inside
+            case CreaturePartKind.Gills:
+                float  gillX = design.XAt(GILLS_SHARE);
+                Node3D gills = AddPivot(gillX);
+                foreach (float side in new[] { -1f, 1f })
                 {
-                    float   spineX = x + i * 0.09f;
-                    Node3D  pivot  = AddPivot(spineX);
-                    MeshInstance3D spine = CellVisual3D.AddMesh(pivot, CellVisual3D.ConeMesh(), CellVisual3D.Material(color.Lightened(0.4f), 0f, 0.35f),
-                        new Vector3(0f, design.TopAt(spineX) + 0.08f, 0f), new Vector3(0.6f, 0.55f, 0.6f));
-                    spine.Rotation = new Vector3(0f, 0f, 0.35f);   // swept back a little
-                    foreach (float side in new[] { -1f, 1f })
-                    {
-                        MeshInstance3D flankSpine = CellVisual3D.AddMesh(pivot, CellVisual3D.ConeMesh(), CellVisual3D.Material(color.Lightened(0.4f), 0f, 0.35f),
-                            new Vector3(0f, design.TopAt(spineX) * 0.3f, side * (design.FlankAt(spineX) + 0.06f)), new Vector3(0.5f, 0.45f, 0.5f));
-                        flankSpine.Rotation = new Vector3(side * Mathf.Pi * 0.4f, 0f, 0f);
-                    }
+                    CreatureModels.Attach(gills, part.Kind, color, new Vector3(0f, design.TopAt(gillX) * 0.05f, side * design.FlankAt(gillX) * 0.96f), design.TopAt(gillX) * 0.95f, side);
                 }
                 break;
             case CreaturePartKind.Blowhole:
@@ -223,21 +269,6 @@ public partial class CreatureParts3D : Node3D
                 }
                 break;
 
-            // Sculpted limb: a clay tube through its joints, on both flanks
-            case CreaturePartKind.StubLimb:
-            case CreaturePartKind.BentLimb:
-            case CreaturePartKind.Limb:
-            case CreaturePartKind.Tentacle:
-            // Feet and hands: a sculpted limb with the foot or hand model on its tip
-            case CreaturePartKind.Legs:
-            case CreaturePartKind.StubbyLegs:
-            case CreaturePartKind.ClawLegs:
-            case CreaturePartKind.CrabLegs:
-            case CreaturePartKind.Hands:
-            case CreaturePartKind.Claws:
-                _limbs.Build(AddPivot(_limbs.RootOn(design, part, 1).X), design, part, color);
-                break;
-
             // Skull: two folded pink lobes bulging from the top of the head
             case CreaturePartKind.SmallBrain:
             case CreaturePartKind.BigBrain:
@@ -273,33 +304,16 @@ public partial class CreatureParts3D : Node3D
                 }
                 break;
 
-            // Nose: a dark mouth slit with a row of teeth
+            // Nose: the chomping jaw of a shark, the baleen mouth of a whale or a hooked beak
             case CreaturePartKind.Jaw:
-                float  noseX = design.NoseTipX;
-                float  mouthX = noseX - Mathf.Max(0.1f, (noseX - design.SpineEndX) * 0.45f);
-                Node3D jaw   = AddPivot(mouthX);
-                float  mouthTop   = design.TopAt(mouthX);
-                float  mouthFlank = design.FlankAt(mouthX);
-                CellVisual3D.AddMesh(jaw, CellVisual3D.SphereMesh(), CellVisual3D.Material(new Color(0.25f, 0.06f, 0.08f)),
-                    new Vector3(0.02f, -mouthTop * 0.25f, 0f), new Vector3(0.16f, 0.035f, mouthFlank * 0.95f));
-                for (int i = -2; i <= 2; i++)
-                {
-                    float          along = i / 2f;
-                    MeshInstance3D tooth = CellVisual3D.AddMesh(jaw, CellVisual3D.ConeMesh(), CellVisual3D.Material(new Color(0.97f, 0.95f, 0.88f), 0.1f, 0.3f),
-                        new Vector3(0.08f - Mathf.Abs(along) * 0.08f, -mouthTop * 0.25f + 0.02f, along * mouthFlank * 0.8f), new Vector3(0.35f, 0.15f, 0.35f));
-                    tooth.Rotation = new Vector3(Mathf.Pi, 0f, 0f);   // tip down
-                }
-                break;
-
-            // Nose: a wide gape with a comb of baleen, or a horny beak over the nose tip
             case CreaturePartKind.FilterMouth:
             case CreaturePartKind.Beak:
-                BuildMouth(design, part.Kind);
+                BuildMouth(design, part.Kind, color, finSkin);
                 break;
 
-            // Back: armor bands from flank to flank
+            // Back: the shell of a turtle around the body, head and tail poke out of it
             case CreaturePartKind.Shell:
-                BuildShell(design, x, color);
+                AttachHugging(AddPivot(x), part.Kind, color, new Vector3(design.Length * SHELL_LENGTH, top * 1.12f, flank * 1.16f));
                 break;
 
             // Poison gland: glowing pustules high on both flanks, wherever it was placed inside
@@ -320,65 +334,150 @@ public partial class CreatureParts3D : Node3D
         }
     }
 
-    private const int BALEEN_COUNT = 9;
     private const float BEAK_OVERHANG = 0.18f;       // the beak reaches this far past the nose tip
-    private const float CONE_HEIGHT = 0.6f;          // CellVisual3D.ConeMesh: height and bottom radius
-    private const float CONE_RADIUS = 0.13f;
-    private const int SHELL_BANDS = 2;               // bands to each side of the middle one
-    private static readonly Color BALEEN_COLOR = new(0.93f, 0.9f, 0.78f);
-    private static readonly Color BEAK_COLOR = new(0.96f, 0.68f, 0.22f);
+    private const float CHOMP_RATE = 0.5f;           // bites of the jaw per second
+    private const float SPINES_SPREAD = 0.3f;        // the spines cover this share of the spine to each side of their spot
+    private const float SPINES_MAX_SPREAD = 0.2f;    // on a long body the spines stay a patch around their spot instead of covering it all
+    private const float SHELL_LENGTH = 0.36f;        // the shell covers this share of the spine to each side of its spot
+    private const float MOUTH_START = 0.12f;         // the mouth starts this share of the head cap behind the last vertebra
+    private const float GILLS_SHARE = 0.72f;         // gills sit at this share of the spine, behind the head
     private static readonly Color POISON_COLOR = new(0.62f, 0.25f, 0.78f);
 
-    /// <summary>The plant mouths at the nose: a wide gape with hanging baleen (filter mouth) or two horny cones (beak).</summary>
-    private void BuildMouth(CreatureDesign design, CreaturePartKind kind)
+    /*
+      The mouth models are a horseshoe around the snout (Visual/CreatureModels.cs): the
+      pivot sits where the mouth ends at the flanks (just behind the head cap, so the
+      mouth runs around the whole snout), the model is stretched forward to the nose tip,
+      sideways to the flanks there and to three quarters of the height of the head.
+      > Jaw:           two gums full of teeth, the lower one chomps
+      > Filter mouth:  the same horseshoe a little wider, baleen hanging from the lip
+      > Beak:          a hooked horn over the whole nose, reaching past its tip
+    */
+    /// <summary>The mouth at the nose: shark jaw, whale mouth or beak.</summary>
+    private void BuildMouth(CreatureDesign design, CreaturePartKind kind, Color color, IReadOnlyDictionary<string, Material> skins)
     {
         float  noseX      = design.NoseTipX;
-        float  mouthX     = noseX - Mathf.Max(0.1f, (noseX - design.SpineEndX) * 0.45f);
+        float  mouthX     = design.SpineEndX + (noseX - design.SpineEndX) * MOUTH_START;
         float  mouthTop   = design.TopAt(mouthX);
         float  mouthFlank = design.FlankAt(mouthX);
-        Node3D mouth      = AddPivot(mouthX);
+        float  reach      = noseX - mouthX;
+        Node3D mouth      = CreatureModels.NewModel(kind, color, skins);       // BackSkin: lips in the color of the painted back
+        AddPivot(mouthX).AddChild(mouth);
 
-        if (CreaturePartKind.FilterMouth == kind)
+        // The beak is modelled half as wide as it is long: twice the body there covers the whole face
+        if (CreaturePartKind.Beak == kind)
         {
-            // A gape wider than the jaw, the baleen hang from the upper lip like a comb
-            float lipY = -mouthTop * 0.22f;
-            CellVisual3D.AddMesh(mouth, CellVisual3D.SphereMesh(), CellVisual3D.Material(new Color(0.2f, 0.07f, 0.1f)),
-                new Vector3(0.02f, lipY, 0f), new Vector3(0.13f, 0.035f, mouthFlank * 0.8f));
-            for (int i = 0; i < BALEEN_COUNT; i++)
-            {
-                float along  = i / (BALEEN_COUNT - 1f) * 2f - 1f;                 // -1 left .. 1 right
-                float bristle = 0.14f - Mathf.Abs(along) * 0.05f;
-                CellVisual3D.AddMesh(mouth, CellVisual3D.RodMesh(), CellVisual3D.Material(BALEEN_COLOR, 0.05f, 0.5f),
-                    new Vector3(0.15f - Mathf.Abs(along) * 0.1f, lipY - bristle * 0.5f - 0.02f, along * mouthFlank * 0.76f), new Vector3(0.016f, bristle, 0.016f));
-            }
+            mouth.Position = new Vector3(reach * 0.35f, -mouthTop * 0.12f, 0f);
+            mouth.Scale    = new Vector3(reach * 0.65f + BEAK_OVERHANG, mouthTop * 1.2f, mouthFlank * 1.3f);
             return;
         }
-
-        // Beak: both cones start at the mouth and meet past the nose tip, the upper one hooks over the lower
-        float length    = noseX - mouthX + BEAK_OVERHANG;
-        float width     = mouthFlank * 0.5f / CONE_RADIUS;                     // across the nose
-        float height    = mouthTop * 0.3f / CONE_RADIUS;                       // each half is flat
-        foreach (float half in new[] { 1f, -1f })
+        float width = mouthFlank * (CreaturePartKind.FilterMouth == kind ? 1.05f : 1.02f);
+        mouth.Position = new Vector3(0f, -mouthTop * 0.18f, 0f);
+        mouth.Scale    = new Vector3(reach * 1.03f, mouthTop * 0.75f, width);
+        if (null != CreatureModels.MODELS[kind].Animation)
         {
-            float          size = half > 0f ? 1f : 0.8f;
-            MeshInstance3D horn = CellVisual3D.AddMesh(mouth, CellVisual3D.ConeMesh(), CellVisual3D.Material(half > 0f ? BEAK_COLOR : BEAK_COLOR.Darkened(0.15f), 0f, 0.3f),
-                new Vector3(length * size * 0.5f, half * mouthTop * 0.16f - mouthTop * 0.15f, 0f),
-                new Vector3(height, length * size / CONE_HEIGHT, width));
-            horn.Rotation = new Vector3(0f, 0f, -Mathf.Pi * 0.5f - half * 0.14f);   // tip forward (local X is then up), the halves lean together
+            PartModels.PlayLoop(mouth, CreatureModels.MODELS[kind].Animation, 0f, CHOMP_RATE);
         }
     }
 
-    /// <summary>Armor bands over the back, each a dome from flank to flank that pokes out of the body, the middle ones highest.</summary>
-    private void BuildShell(CreatureDesign design, float x, Color color)
+    private const float MODEL_RATE = 0.8f;           // loops per second of the animation of a placed model
+
+    /// <summary>The model spaces a part model can be built in (tools/blender, see Visual/CreatureModels.cs).</summary>
+    private enum ModelSpace { Snout, Hug, FlankPair, Top, Belly, Tail }
+
+    /// <summary>How the model of a kind sits on the body.</summary>
+    /// <param name="Space">The space the model is built in, it decides the pivot and the stretch.</param>
+    /// <param name="Size">(Optional) Size on top of the body there, 1 = as modelled. Defaults to 1.</param>
+    /// <param name="Reach">(Optional) Hug: share of the spine the model covers to each side of its spot. Defaults to 0.3.</param>
+    /// <param name="Share">(Optional) Fixed share of the spine it sits at (inner parts shown outside), negative for the spot of the part. Defaults to -1.</param>
+    private sealed record Placement(ModelSpace Space, float Size = 1f, float Reach = 0.3f, float Share = -1f);
+
+    /*
+      New modelled parts get a row here instead of a case in BuildPart:
+      - Snout:      a horseshoe around the snout, stretched from behind the head cap to the nose tip
+      - Hug:        around the body, stretched to its height and width at the spot
+      - FlankPair:  on the skin of both flanks, as tall as the body there
+      - Top:        on the back, standing up
+      - Belly:      under the belly, hanging down
+      - Tail:       behind the tail tip, reaching back
+    */
+    private static readonly IReadOnlyDictionary<CreaturePartKind, Placement> PLACEMENTS = new Dictionary<CreaturePartKind, Placement>
     {
-        for (int i = -SHELL_BANDS; i <= SHELL_BANDS; i++)
+        [CreaturePartKind.SharkTail]    = new(ModelSpace.Tail),
+        [CreaturePartKind.NewtTail]     = new(ModelSpace.Tail),
+        [CreaturePartKind.MantleFins]   = new(ModelSpace.Tail),
+        [CreaturePartKind.FanTail]      = new(ModelSpace.Tail),
+        [CreaturePartKind.CurlTail]     = new(ModelSpace.Tail),
+        [CreaturePartKind.SharkFin]     = new(ModelSpace.Top),
+        [CreaturePartKind.TallFin]      = new(ModelSpace.Top),
+        [CreaturePartKind.Flipper]      = new(ModelSpace.FlankPair),
+        [CreaturePartKind.Paddle]       = new(ModelSpace.FlankPair),
+        [CreaturePartKind.NeedleMaw]    = new(ModelSpace.Snout),
+        [CreaturePartKind.PufferMouth]  = new(ModelSpace.Snout),
+        [CreaturePartKind.TubeSnout]    = new(ModelSpace.Snout),
+        [CreaturePartKind.Carapace]     = new(ModelSpace.Hug, Size: 1.12f, Reach: 0.72f),
+        [CreaturePartKind.FeatherGills] = new(ModelSpace.FlankPair, Size: 0.8f),
+        [CreaturePartKind.Siphon]       = new(ModelSpace.Belly),
+    };
+
+    /// <summary>Builds the model of a kind listed in PLACEMENTS on its pivot and starts its animation.</summary>
+    private void BuildPlaced(CreatureDesign design, CreaturePart part, Placement placement, Color color, IReadOnlyDictionary<string, Material> finSkin)
+    {
+        float x      = placement.Share < 0f ? design.XAt(part.T) : design.XAt(placement.Share);
+        float top    = design.TopAt(x);
+        float flank  = design.FlankAt(x);
+        float size   = (0.4f + design.RadiusAt(x) * 0.5f) * placement.Size;
+        var   models = new List<Node3D>();
+        switch (placement.Space)
         {
-            float bandX = x + i * 0.11f;
-            float rise  = 1.18f - Mathf.Abs(i) * 0.05f;
-            Color tone  = 0 == i % 2 ? color.Darkened(0.4f) : color.Darkened(0.28f);
-            CellVisual3D.AddMesh(AddPivot(bandX), CellVisual3D.SphereMesh(), CellVisual3D.Material(tone, 0f, 0.3f),
-                new Vector3(0f, design.TopAt(bandX) * 0.2f, 0f), new Vector3(0.2f, design.TopAt(bandX) * rise * 0.82f, design.FlankAt(bandX) * rise * 0.95f));
+            case ModelSpace.Snout:
+                float  mouthX = design.SpineEndX + (design.NoseTipX - design.SpineEndX) * MOUTH_START;
+                float  width  = design.FlankAt(mouthX) * 1.03f * placement.Size;
+                Node3D snout  = CreatureModels.NewModel(part.Kind, color, finSkin);
+                snout.Position = new Vector3(0f, -design.TopAt(mouthX) * 0.18f, 0f);
+                snout.Scale    = new Vector3((design.NoseTipX - mouthX) * 1.03f, design.TopAt(mouthX) * 0.75f * placement.Size, width);
+                AddPivot(mouthX).AddChild(snout);
+                models.Add(snout);
+                break;
+            case ModelSpace.Hug:
+                Node3D hug = CreatureModels.NewModel(part.Kind, color, finSkin);
+                hug.Scale = new Vector3(design.Length * placement.Reach, top * placement.Size, flank * placement.Size);
+                AddPivot(x).AddChild(hug);
+                models.Add(hug);
+                break;
+            case ModelSpace.FlankPair:
+                Node3D flanks = AddPivot(x);
+                foreach (float side in new[] { -1f, 1f })
+                {
+                    models.Add(CreatureModels.Attach(flanks, part.Kind, color, new Vector3(0f, top * 0.05f, side * flank * 0.96f), top * placement.Size, side, overrides: finSkin));
+                }
+                break;
+            case ModelSpace.Top:
+                models.Add(CreatureModels.Attach(AddPivot(x), part.Kind, color, new Vector3(0f, top * 0.92f, 0f), size, 1f, overrides: finSkin));
+                break;
+            case ModelSpace.Belly:
+                models.Add(CreatureModels.Attach(AddPivot(x), part.Kind, color, new Vector3(0f, -top * 0.92f, 0f), size, 1f, overrides: finSkin));
+                break;
+            case ModelSpace.Tail:
+                models.Add(CreatureModels.Attach(AddPivot(design.TailTipX + 0.06f), part.Kind, color, Vector3.Zero,
+                    (0.6f + design.MeanGirth * 0.5f) * placement.Size, 1f, overrides: finSkin));
+                break;
+            default:
+                throw new System.ArgumentOutOfRangeException(nameof(placement), $"placement must use a known ModelSpace, got '{placement.Space}'.");
         }
+
+        string animation = CreatureModels.MODELS[part.Kind].Animation;
+        for (int i = 0; null != animation && i < models.Count; i++)
+        {
+            PartModels.PlayLoop(models[i], animation, i * 0.15f, MODEL_RATE);
+        }
+    }
+
+    /// <summary>A model that hugs the body (spines, shell): built around a unit sphere, stretched to the body at its pivot.</summary>
+    private static void AttachHugging(Node3D pivot, CreaturePartKind kind, Color color, Vector3 scale)
+    {
+        Node3D model = CreatureModels.NewModel(kind, color);
+        model.Scale = scale;
+        pivot.AddChild(model);
     }
 
     /// <summary>A pair of wing models on the back, flapping together.</summary>
@@ -448,7 +547,8 @@ public partial class CreatureParts3D : Node3D
     {
         foreach (Node3D eye in _eyes)
         {
-            eye.Scale = new Vector3(1f, isBlinking ? 0.15f : 1f, 1f);
+            Vector3 open = _eyeScales.TryGetValue(eye, out Vector3 posed) ? posed : Vector3.One;
+            eye.Scale = new Vector3(open.X, open.Y * (isBlinking ? 0.15f : 1f), open.Z);
         }
     }
 

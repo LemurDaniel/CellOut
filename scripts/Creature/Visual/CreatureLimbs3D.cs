@@ -84,7 +84,7 @@ public sealed class CreatureLimbs3D
             }
             if (hasEnd)
             {
-                AttachEnd(piece, part.Kind, color, path, side);
+                AttachEnd(piece, part.Kind, color, path, side, _knuckleClay);
             }
             _built.Add((piece, (int)side));
         }
@@ -124,9 +124,10 @@ public sealed class CreatureLimbs3D
       - Feet stand flat, toes forward (+X), whatever the last segment does.
       - Hands follow the last segment: +X along it, the palm facing down.
     */
-    private static void AttachEnd(Node3D piece, CreaturePartKind kind, Color color, IReadOnlyList<Vector3> path, float side)
+    private static void AttachEnd(Node3D piece, CreaturePartKind kind, Color color, IReadOnlyList<Vector3> path, float side, Material clay)
     {
-        Node3D  end = CreatureModels.NewModel(kind, color);
+        // The skin of the hand or foot is the clay of its limb, so both are one piece
+        Node3D  end = CreatureModels.NewModel(kind, color, new Dictionary<string, Material> { ["Skin"] = clay });
         Vector3 tip = path[^1];
         Basis   turn = Basis.Identity;
         if (CreatureCategory.Hands == CreatureCatalog.Get(kind).Category)

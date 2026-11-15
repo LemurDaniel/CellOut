@@ -79,6 +79,7 @@ public static class Plane3D
     //   Curve      1 / (2 * planet radius), 0 = flat. Set by Main with the shader global.
     //   Origin     Plane point around which the world stays flat (the camera).
     //   SetCurve   Sets both here and as shader globals planet_curve / planet_origin.
+    //   SetSky     Shader globals sky_open / sky_unit: how open the sky is, how big the coast.
     //   Drop       How far a plane point sinks below the flat plane.
     //   SeaDrop    How far swimming bodies sink below the plane, so they stay under the low
     //              sea of the third person view. Set by Main, 0 in the top view.
@@ -99,6 +100,15 @@ public static class Plane3D
         CurveOrigin = new Vector2(origin.X, origin.Z);
         RenderingServer.GlobalShaderParameterSet("planet_curve", curve);
         RenderingServer.GlobalShaderParameterSet("planet_origin", origin);
+    }
+
+    /// <summary>Tells the scenery shaders how open the sky is and how big the coast is (cloud shadows, sheen, planet.gdshaderinc).</summary>
+    /// <param name="open">(Required) 0 under water .. 1 under the open sky of the third person view.</param>
+    /// <param name="unit">(Required) World units of one Unit of the coast.</param>
+    public static void SetSky(float open, float unit)
+    {
+        RenderingServer.GlobalShaderParameterSet("sky_open", open);
+        RenderingServer.GlobalShaderParameterSet("sky_unit", unit);
     }
 
     /// <summary>How far a plane point sinks below the plane through the curvature.</summary>

@@ -1,19 +1,17 @@
 // NOTE:
-//   The buttons that float over the turntable of the creature editor: + and - for
-//   vertebrae and the symmetry switch bottom left, the spray can with undo and wipe at
-//   the left edge, the body colors top center, below them the pattern pills and the
-//   second color. A view: it only reports clicks (events) and shows the state of the
-//   session (Refresh). Laid over the whole stage, the mouse passes through between the
-//   buttons.
+//   The tool column right of the turntable of the creature editor, from top to bottom:
+//   the body colors, the pattern pills with the second color, the spray can with undo
+//   and wipe, the symmetry switch and - and + for vertebrae. A view: it only reports
+//   clicks (events) and shows the state of the session (Refresh).
 //
 //   var toolbar = new CreatureToolbar();
 //   toolbar.Setup(session);
 //   toolbar.ColorPicked += PickColor;
-//   stage.AddChild(toolbar);
+//   frame.AddWorkbench(palette, stage, toolbar);
 
 //
 //   Chapters:
-//     BUILD TOOLBAR     Vertebra buttons, symmetry, spray column, swatches and pattern pills.
+//     BUILD TOOLBAR     Color swatches, pattern pills, spray can, symmetry and vertebra buttons.
 //     REFRESH TOOLBAR   Texts, pressed and picked states.
 //
 
@@ -23,7 +21,7 @@ using Godot;
 
 namespace CellOut;
 
-public partial class CreatureToolbar : Control
+public partial class CreatureToolbar : PanelContainer
 {
     // ===========================================================================
     // ============================   BUILD TOOLBAR   ============================
@@ -38,14 +36,14 @@ public partial class CreatureToolbar : Control
     //   ColorPicked             A body color was clicked (null = coral default).
     //   PatternPicked           A pattern pill was clicked.
     //   PatternColorPicked      A second color was clicked (null = dark shade of the body).
-    //   Setup                   Builds every row.
-    //   BuildSculptButtons      + and - for vertebrae and the symmetry switch.
-    //   BuildSprayColumn        Spray can, undo and wipe.
+    //   Setup                   The panel and its sections from top to bottom.
     //   BuildColorRows          Body colors, pattern pills and the second color.
+    //   BuildSprayButtons       Spray can, undo and wipe.
+    //   BuildSculptButtons      The symmetry switch and - and + for vertebrae.
+    //   NewSeparator            A thin line between two sections.
     //
 
-    private const float PATTERN_ROW_OFFSET = 44f;    // below the color swatches
-    private const float PAINT_ROW_OFFSET = 82f;      // second color below the pattern pills
+    private const float TOOLBAR_WIDTH = 250f;
 
     public event System.Action AddVertebraPressed;
     public event System.Action RemoveVertebraPressed;
@@ -58,85 +56,47 @@ public partial class CreatureToolbar : Control
     public event System.Action<Color?> PatternColorPicked;
 
     private CreatureEditorSession _session;
+    private VBoxContainer _sections;
     private Button _addButton;
     private Button _removeButton;
     private Button _symmetryButton;
     private Button _sprayButton;
     private Button _undoSprayButton;
     private Button _clearSprayButton;
-    private HBoxContainer _swatchRow;
+    private HFlowContainer _swatchRow;
     private readonly List<(Color? Color, Button Swatch)> _swatches = new();
-    private HBoxContainer _patternRow;
-    private HBoxContainer _paintRow;
+    private HFlowContainer _patternRow;
+    private HFlowContainer _paintRow;
     private readonly List<(CreaturePattern Pattern, Button Button)> _patternButtons = new();
     private readonly List<(Color? Color, Button Swatch)> _patternSwatches = new();
 
-    /// <summary>Builds the toolbar, call once before it is added to the stage.</summary>
+    /// <summary>Builds the column, call once before it enters the tree.</summary>
     /// <param name="session">(Required) The sitting whose modes and paint the buttons show.</param>
     public void Setup(CreatureEditorSession session)
     {
-        _session    = session;
-        MouseFilter = MouseFilterEnum.Ignore;
-        SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
-        BuildSculptButtons();
-        BuildSprayColumn();
+        _session          = session;
+        CustomMinimumSize = new Vector2(TOOLBAR_WIDTH, 0f);
+        StyleBoxFlat style = EditorStyle.Pill(new Color(0.04f, 0.09f, 0.13f, 0.82f), new Color(EditorStyle.RIM_COLOR, 0.45f));
+        style.SetContentMarginAll(14);
+        AddThemeStyleboxOverride("panel", style);
+
+        _sections = new VBoxContainer();
+        _sections.AddThemeConstantOverride("separation", 12);
+        AddChild(_sections);
         BuildColorRows();
-    }
-
-    private void BuildSculptButtons()
-    {
-        // + and - for vertebrae and the symmetry switch, bottom left over the turntable
-        var buttons = new HBoxContainer { MouseFilter = MouseFilterEnum.Ignore };
-        buttons.SetAnchorsAndOffsetsPreset(LayoutPreset.BottomLeft, LayoutPresetMode.Minsize, 10);
-        buttons.GrowVertical = GrowDirection.Begin;
-        buttons.AddThemeConstantOverride("separation", 10);
-        AddChild(buttons);
-        _addButton    = CreatureEditorUi.NewPillButton(new Vector2(0, 40), 16);
-        _removeButton = CreatureEditorUi.NewPillButton(new Vector2(0, 40), 16);
-        _addButton.Pressed    += () => AddVertebraPressed?.Invoke();
-        _removeButton.Pressed += () => RemoveVertebraPressed?.Invoke();
-        foreach (Button button in new[] { _removeButton, _addButton })
-        {
-            EditorStyle.ApplyButton(button, EditorStyle.RIM_COLOR);
-            buttons.AddChild(button);
-        }
-        _symmetryButton            = CreatureEditorUi.NewPillButton(new Vector2(0, 40), 16);
-        _symmetryButton.ToggleMode = true;
-        _symmetryButton.Toggled   += isSymmetric => SymmetryToggled?.Invoke(isSymmetric);
-        buttons.AddChild(_symmetryButton);
-    }
-
-    private void BuildSprayColumn()
-    {
-        // Spray can, undo and wipe as a compact column at the left edge (the tail end, the head stays free);
-        // undo and wipe only show while the spray can is on (Refresh)
-        var sprayRow = new VBoxContainer { MouseFilter = MouseFilterEnum.Ignore };
-        sprayRow.SetAnchorsAndOffsetsPreset(LayoutPreset.CenterLeft, LayoutPresetMode.Minsize, 10);
-        sprayRow.GrowVertical = GrowDirection.Both;
-        sprayRow.AddThemeConstantOverride("separation", 8);
-        AddChild(sprayRow);
-        _sprayButton            = CreatureEditorUi.NewPillButton(new Vector2(0, 34), 14);
-        _sprayButton.ToggleMode = true;
-        _sprayButton.Toggled   += isSpraying => SprayToggled?.Invoke(isSpraying);
-        _undoSprayButton        = CreatureEditorUi.NewPillButton(new Vector2(0, 34), 14);
-        _undoSprayButton.Pressed += () => UndoSprayPressed?.Invoke();
-        _clearSprayButton       = CreatureEditorUi.NewPillButton(new Vector2(0, 34), 14);
-        _clearSprayButton.Pressed += () => ClearSprayPressed?.Invoke();
-        foreach (Button button in new[] { _sprayButton, _undoSprayButton, _clearSprayButton })
-        {
-            EditorStyle.ApplyButton(button, EditorStyle.RIM_COLOR);
-            sprayRow.AddChild(button);
-        }
+        _sections.AddChild(NewSeparator());
+        BuildSprayButtons();
+        _sections.AddChild(NewSeparator());
+        BuildSculptButtons();
     }
 
     private void BuildColorRows()
     {
-        // Color swatches, top center over the turntable: coral default first, translucent last
-        _swatchRow = new HBoxContainer { MouseFilter = MouseFilterEnum.Ignore };
-        _swatchRow.SetAnchorsAndOffsetsPreset(LayoutPreset.CenterTop, LayoutPresetMode.Minsize, 10);
-        _swatchRow.GrowHorizontal = GrowDirection.Both;
-        _swatchRow.AddThemeConstantOverride("separation", 8);
-        AddChild(_swatchRow);
+        // Body colors: coral default first, translucent last, wrapping into rows
+        _swatchRow = new HFlowContainer();
+        _swatchRow.AddThemeConstantOverride("h_separation", 8);
+        _swatchRow.AddThemeConstantOverride("v_separation", 8);
+        _sections.AddChild(_swatchRow);
         var swatchColors = new List<Color?> { null };
         foreach (Color color in EditorStyle.BODY_SWATCHES)
         {
@@ -151,15 +111,13 @@ public partial class CreatureToolbar : Control
             _swatchRow.AddChild(swatch);
             _swatches.Add((swatchColor, swatch));
         }
+        _sections.AddChild(NewSeparator());
 
-        // Paint rows below: one pill per pattern, under it the second color (opaque swatches, dark shade first)
-        _patternRow = new HBoxContainer { MouseFilter = MouseFilterEnum.Ignore };
-        _patternRow.SetAnchorsAndOffsetsPreset(LayoutPreset.CenterTop, LayoutPresetMode.Minsize, 10);
-        _patternRow.OffsetTop     += PATTERN_ROW_OFFSET;
-        _patternRow.OffsetBottom  += PATTERN_ROW_OFFSET;
-        _patternRow.GrowHorizontal = GrowDirection.Both;
-        _patternRow.AddThemeConstantOverride("separation", 6);
-        AddChild(_patternRow);
+        // Paint: one pill per pattern, under them the second color (opaque swatches, dark shade first)
+        _patternRow = new HFlowContainer();
+        _patternRow.AddThemeConstantOverride("h_separation", 6);
+        _patternRow.AddThemeConstantOverride("v_separation", 6);
+        _sections.AddChild(_patternRow);
         foreach (CreaturePattern pattern in System.Enum.GetValues<CreaturePattern>())
         {
             Button pill = CreatureEditorUi.NewPillButton(new Vector2(0, 30), 14);
@@ -167,13 +125,10 @@ public partial class CreatureToolbar : Control
             _patternRow.AddChild(pill);
             _patternButtons.Add((pattern, pill));
         }
-        _paintRow = new HBoxContainer { MouseFilter = MouseFilterEnum.Ignore };
-        _paintRow.SetAnchorsAndOffsetsPreset(LayoutPreset.CenterTop, LayoutPresetMode.Minsize, 10);
-        _paintRow.OffsetTop     += PAINT_ROW_OFFSET;
-        _paintRow.OffsetBottom  += PAINT_ROW_OFFSET;
-        _paintRow.GrowHorizontal = GrowDirection.Both;
-        _paintRow.AddThemeConstantOverride("separation", 6);
-        AddChild(_paintRow);
+        _paintRow = new HFlowContainer();
+        _paintRow.AddThemeConstantOverride("h_separation", 6);
+        _paintRow.AddThemeConstantOverride("v_separation", 6);
+        _sections.AddChild(_paintRow);
         var paintColors = new List<Color?> { null };
         foreach (Color color in EditorStyle.BODY_SWATCHES.Where(color => color.A >= 0.99f))
         {
@@ -188,6 +143,51 @@ public partial class CreatureToolbar : Control
             _paintRow.AddChild(swatch);
             _patternSwatches.Add((paintColor, swatch));
         }
+    }
+
+    private void BuildSprayButtons()
+    {
+        // Undo and wipe only show while the spray can is on (Refresh)
+        _sprayButton            = CreatureEditorUi.NewPillButton(new Vector2(0, 38), 16);
+        _sprayButton.ToggleMode = true;
+        _sprayButton.Toggled   += isSpraying => SprayToggled?.Invoke(isSpraying);
+        _undoSprayButton        = CreatureEditorUi.NewPillButton(new Vector2(0, 34), 14);
+        _undoSprayButton.Pressed += () => UndoSprayPressed?.Invoke();
+        _clearSprayButton       = CreatureEditorUi.NewPillButton(new Vector2(0, 34), 14);
+        _clearSprayButton.Pressed += () => ClearSprayPressed?.Invoke();
+        foreach (Button button in new[] { _sprayButton, _undoSprayButton, _clearSprayButton })
+        {
+            EditorStyle.ApplyButton(button, EditorStyle.RIM_COLOR);
+            _sections.AddChild(button);
+        }
+    }
+
+    private void BuildSculptButtons()
+    {
+        _symmetryButton            = CreatureEditorUi.NewPillButton(new Vector2(0, 38), 16);
+        _symmetryButton.ToggleMode = true;
+        _symmetryButton.Toggled   += isSymmetric => SymmetryToggled?.Invoke(isSymmetric);
+        _sections.AddChild(_symmetryButton);
+
+        // - and + for vertebrae side by side, each takes half the width
+        var vertebrae = new HBoxContainer();
+        vertebrae.AddThemeConstantOverride("separation", 8);
+        _sections.AddChild(vertebrae);
+        _addButton    = CreatureEditorUi.NewPillButton(new Vector2(0, 38), 16);
+        _removeButton = CreatureEditorUi.NewPillButton(new Vector2(0, 38), 16);
+        _addButton.Pressed    += () => AddVertebraPressed?.Invoke();
+        _removeButton.Pressed += () => RemoveVertebraPressed?.Invoke();
+        foreach (Button button in new[] { _removeButton, _addButton })
+        {
+            button.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+            EditorStyle.ApplyButton(button, EditorStyle.RIM_COLOR);
+            vertebrae.AddChild(button);
+        }
+    }
+
+    private static HSeparator NewSeparator()
+    {
+        return new HSeparator { MouseFilter = MouseFilterEnum.Ignore };
     }
 
     // ===========================================================================
@@ -227,9 +227,9 @@ public partial class CreatureToolbar : Control
             button.Text = Tr($"CREATURE_PATTERN_{pattern}".ToUpperInvariant());
             EditorStyle.ApplyButton(button, pattern == draft.Pattern ? accent : EditorStyle.RIM_COLOR);
         }
+        _paintRow.Visible = CreaturePattern.None != draft.Pattern || _session.IsSpraying;
         foreach ((Color? paintColor, Button swatch) in _patternSwatches)
         {
-            swatch.Visible = CreaturePattern.None != draft.Pattern || _session.IsSpraying;
             EditorStyle.ApplySwatch(swatch, paintColor ?? _session.DraftColor.Darkened(0.45f), paintColor == draft.PatternColor);
         }
         foreach ((Color? swatchColor, Button swatch) in _swatches)

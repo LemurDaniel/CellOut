@@ -29,9 +29,9 @@ public partial class FollowCamera : Node
     private const float CAM_FOV = 50f;
     private const float CAM_TILT = 0.5f;            // tilt from vertical in radians
     private const float CAM_DISTANCE = 14f;         // camera distance in player sizes
-    private static readonly Color SKY_AMBIENT = new(0.78f, 0.84f, 0.92f);
+    private static readonly Color SKY_AMBIENT = new(0.64f, 0.77f, 0.98f);     // cool sky light fills the shadows of the warm sun
     private const float SOUP_AMBIENT_ENERGY = 0.6f;
-    private const float SKY_AMBIENT_ENERGY = 0.6f;
+    private const float SKY_AMBIENT_ENERGY = 0.62f;
 
     // ===========================================================================
     // =============================   BUILD SCENE   =============================
@@ -51,6 +51,7 @@ public partial class FollowCamera : Node
     private Godot.Environment _environment;
     private Backdrop _backdrop;
     private SoupLens _lens;
+    private LandPollen _pollen;
     private CameraAttributesPractical _attributes;
 
     private Player Player => _session.Player;
@@ -81,8 +82,8 @@ public partial class FollowCamera : Node
         _sun = new DirectionalLight3D
         {
             Basis         = Basis.LookingAt(new Vector3(0.35f, -1f, 0.45f), Vector3.Up),
-            LightColor    = new Color(1f, 0.97f, 0.9f),
-            LightEnergy   = 1.1f,
+            LightColor    = SOUP_SUN_COLOR,
+            LightEnergy   = SUN_ENERGY,
             ShadowEnabled = true,
             ShadowOpacity = 0.6f,
         };
@@ -97,6 +98,8 @@ public partial class FollowCamera : Node
         AddChild(_backdrop);
         _lens = new SoupLens();
         AddChild(_lens);
+        _pollen = new LandPollen();
+        AddChild(_pollen);
 
         ApplyGraphics();
         GraphicsQuality.Changed += ApplyGraphics;
@@ -127,7 +130,8 @@ public partial class FollowCamera : Node
     //   YawBehind      Camera yaw behind a facing.
     //   FollowFacing   Swings the third person camera behind the walking creature.
     //   PanStrategy    WASD and arrows pan the strategy view over the island.
-    //   Advance        Eases view, distance and focus, then moves camera, planet, sky and backdrop.
+    //   FocusOn        Moves the strategy view over a plane point (back to the village).
+    //   Advance       Eases view, distance and focus, then moves camera, planet, sky and backdrop.
     //   UpdateWater    Colors of the stage, the fade into the depth, depth of field and the lens.
     //   UpdateSky      From the dark soup to sky, sunlight and haze over the open sea.
     //
@@ -320,6 +324,18 @@ public partial class FollowCamera : Node
         _strategyFocus += pan.LimitLength(1f).Rotated(-_camYaw) * _camDistance * RTS_PAN_SPEED * dt;
     }
 
+    /// <summary>Plane point the strategy view looks at.</summary>
+    public Vector2 StrategyFocus => _strategyFocus;
+
+    /// <summary>Moves the strategy view over a plane point, the camera glides there. Without effect before the tribe.</summary>
+    /// <param name="point">(Required) Plane point to look at.</param>
+    /// <example><code>followCamera.FocusOn(pack.Nest.Position);</code></example>
+    public void FocusOn(Vector2 point)
+    {
+        _strategyFocus = point;
+        Log.Verbose("FollowCamera", $"Strategy view moves over {point}.");
+    }
+
     /*
       1. View      Blends towards third person once the player is a land animal; the
                    blend starts with the camera yaw behind the creature, then swings
@@ -398,6 +414,7 @@ public partial class FollowCamera : Node
         // Planet
         Plane3D.SetCurve(_view / (2f * PLANET_RADIUS * unit), position);
         Plane3D.SeaDrop = _view * playerSize * TP_SEA_SINK;
+        Plane3D.SetSky(_view, unit);
 
         // Scenery: light, contact shadows and backdrop grow along, so shadows and motes fit at every size
         _sun.DirectionalShadowMaxDistance = Mathf.Lerp(_camDistance * 3f, playerSize * TP_SHADOW_DISTANCE, _view);
@@ -405,6 +422,7 @@ public partial class FollowCamera : Node
         UpdateWater(dt, playerSize);
         UpdateSky(playerSize);
         _backdrop.IsMotesShown = _view < 0.5f;
+        _pollen.Follow(_camFocus, playerSize, _view > 0.5f && _strategy < 0.5f);     // too small to see from the strategy view
         _backdrop.Follow(new Vector2(_camFocus.X, _camFocus.Z), playerSize, ViewRadius());
     }
 
@@ -416,7 +434,7 @@ public partial class FollowCamera : Node
     private const float FOCUS_NEAR = 0.55f;          // blobs between camera and cell blur in front of this share
     private const float FOCUS_NEAR_BLEND = 0.3f;
     private const float LAND_CONTRAST = 1.1f;        // third person: color grading of the open land
-    private const float LAND_SATURATION = 1.25f;
+    private const float LAND_SATURATION = 1.08f;     // more made the skin of the creatures garish under the strong sun
     private const float TP_FOCUS_FAR = 60f;          // third person: sharp this many player sizes deep, only the far islands soften
 
     private SoupPalette _palette = SoupPalette.PRIMORDIAL;
@@ -452,8 +470,16 @@ public partial class FollowCamera : Node
     private static readonly Color SKY_TOP = new(0.24f, 0.5f, 0.86f);
     private static readonly Color SKY_HORIZON = new(0.7f, 0.84f, 0.95f);
     private static readonly Color SEA_BELOW = new(0.07f, 0.3f, 0.42f);
-    private const float FOG_DENSITY = 0.0007f;       // per player size, half the light at ~1000 sizes: only far islands haze
-    private ProceduralSkyMaterial _sky;
+    private static readonly Color SKY_HAZE = new(1f, 0.93f, 0.8f);       // warm band right above the horizon
+    private static readonly Color SUN_COLOR = new(1f, 0.93f, 0.8f);      // third person: warm sun against the cool sky light
+    private static readonly Color SOUP_SUN_COLOR = new(1f, 0.97f, 0.9f);
+    private static readonly Shader SKY_SHADER = GD.Load<Shader>("res://shaders/sky.gdshader");
+    private const float FOG_DENSITY = 0.0022f;       // per player size: trees a hill away keep their color, the next island pales
+    private const float FOG_SUN_SCATTER = 0.25f;     // the haze glows towards the sun
+    private const float STRATEGY_FOG_SHARE = 0.2f;   // share of the haze left in the strategy view
+    private const float SUN_ENERGY = 1.1f;
+    private const float LAND_SUN_ENERGY = 1.35f;     // third person: stronger sun, the cool ambient fills the shadows
+    private ShaderMaterial _sky;
 
     /// <summary>Background, ambient light and haze between the soup (view 0) and the open sky (view 1).</summary>
     private void UpdateSky(float playerSize)
@@ -470,24 +496,32 @@ public partial class FollowCamera : Node
             _environment.FogSunScatter      = 0f;
             _environment.AmbientLightColor  = _palette.Ambient;
             _environment.AmbientLightEnergy = SOUP_AMBIENT_ENERGY;
+            _sun.LightColor                 = SOUP_SUN_COLOR;
+            _sun.LightEnergy                = SUN_ENERGY;
             return;
         }
 
+        // The sky is only a backdrop (ambient is a color, no reflections): a small radiance map is enough
         if (null == _sky)
         {
-            _sky = new ProceduralSkyMaterial { SunAngleMax = 20f };
-            _environment.Sky = new Sky { SkyMaterial = _sky };
+            _sky = new ShaderMaterial { Shader = SKY_SHADER };
+            _environment.Sky = new Sky { SkyMaterial = _sky, RadianceSize = Sky.RadianceSizeEnum.Size32 };
         }
-        _sky.SkyTopColor                = _palette.Background.Lerp(SKY_TOP, _view);
-        _sky.SkyHorizonColor            = _palette.Background.Lerp(SKY_HORIZON, _view);
-        _sky.GroundHorizonColor         = _palette.Background.Lerp(SKY_HORIZON, _view);
-        _sky.GroundBottomColor          = _palette.Background.Lerp(SEA_BELOW, _view);
+        _sky.SetShaderParameter("top_color", _palette.Background.Lerp(SKY_TOP, _view));
+        _sky.SetShaderParameter("horizon_color", _palette.Background.Lerp(SKY_HORIZON, _view));
+        _sky.SetShaderParameter("below_color", _palette.Background.Lerp(SEA_BELOW, _view));
+        _sky.SetShaderParameter("haze_color", SKY_HAZE);
+        _sky.SetShaderParameter("amount", _view);
+        _sun.LightColor                 = SOUP_SUN_COLOR.Lerp(SUN_COLOR, _view);
+        _sun.LightEnergy                = Mathf.Lerp(SUN_ENERGY, LAND_SUN_ENERGY, _view);
         _environment.BackgroundMode     = Godot.Environment.BGMode.Sky;
         _environment.FogEnabled         = true;
         _environment.FogLightColor      = SKY_HORIZON;
-        _environment.FogDensity         = FOG_DENSITY * _view / playerSize;
+        // The strategy view looks down from far above: with the full haze the village would pale
+        _environment.FogDensity         = FOG_DENSITY * _view * Mathf.Lerp(1f, STRATEGY_FOG_SHARE, _strategy) / playerSize;
         _environment.FogHeightDensity   = 0f;
         _environment.FogSkyAffect       = 0f;
+        _environment.FogSunScatter      = FOG_SUN_SCATTER * _view;
         _environment.AmbientLightColor  = _palette.Ambient.Lerp(SKY_AMBIENT, _view);
         _environment.AmbientLightEnergy = Mathf.Lerp(SOUP_AMBIENT_ENERGY, SKY_AMBIENT_ENERGY, _view);
     }
@@ -553,7 +587,10 @@ public partial class FollowCamera : Node
     //
     //   ViewRadius     Visible radius on the plane at the current camera distance.
     //   ViewRadiusAt   Visible radius on the plane at any camera distance (title menu).
+    //   ViewFootprint  The ground the screen shows, as four plane points (the world map).
     //
+
+    private const float FOOTPRINT_MAX_REACH = 4f;    // a ray towards the horizon is cut off after this many camera distances
 
     /// <summary>Radius of the visible area on the plane at the current camera distance, in third person a fixed reach, in the strategy view the whole view again.</summary>
     public float ViewRadius()
@@ -568,5 +605,25 @@ public partial class FollowCamera : Node
         Vector2 viewport = GetViewport().GetVisibleRect().Size;
         float   aspect   = viewport.X / Mathf.Max(viewport.Y, 1f);
         return distance * Mathf.Tan(Mathf.DegToRad(CAM_FOV * 0.5f)) * Mathf.Sqrt(1f + aspect * aspect) * 1.25f;
+    }
+
+    /// <summary>Where the rays through the four screen corners hit the ground at the height of the focus.</summary>
+    /// <returns>Plane points in the order top left, top right, bottom right, bottom left.</returns>
+    /// <example><code>Vector2[] view = followCamera.ViewFootprint();</code></example>
+    public Vector2[] ViewFootprint()
+    {
+        Vector2 size      = GetViewport().GetVisibleRect().Size;
+        var     corners   = new[] { Vector2.Zero, new Vector2(size.X, 0f), size, new Vector2(0f, size.Y) };
+        var     footprint = new Vector2[corners.Length];
+        for (int i = 0; i < corners.Length; i++)
+        {
+            Vector3 origin = Camera.ProjectRayOrigin(corners[i]);
+            Vector3 normal = Camera.ProjectRayNormal(corners[i]);
+            // A ray that points at the horizon or above never reaches the ground
+            float reach = normal.Y < -0.01f ? (origin.Y - _camFocus.Y) / -normal.Y : float.MaxValue;
+            Vector3 hit = origin + normal * Mathf.Min(reach, _camDistance * FOOTPRINT_MAX_REACH);
+            footprint[i] = new Vector2(hit.X, hit.Z);
+        }
+        return footprint;
     }
 }

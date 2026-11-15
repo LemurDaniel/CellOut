@@ -4,6 +4,9 @@
 //   Paint: a second color laid on as a pattern (stripes, spots, patches, saddle), on the
 //   back and flanks, the belly stays light (CreatureDesign.Pattern). On top the spray paint:
 //   up to 160 dots (CreatureDesign.MAX_SPLATS) with a speckled rim like a spray can.
+//   Under the open sky of the land the skin is matt and glows less (sky_open).
+global uniform float sky_open;       // 0 under water .. 1 under the open sky, set by Plane3D.SetSky
+
 uniform vec4 clay_color : source_color = vec4(0.8, 0.55, 0.45, 1.0);
 uniform float seed = 0.0;
 uniform float knead = 1.0;           // 1 fresh clay, 0 smooth living skin
@@ -147,14 +150,20 @@ void fragment() {
 	ALPHA = clamp(mix(clay_color.a, 1.0, fres) + inner_line * 0.25 + speck * 0.05, 0.0, 1.0);
 #else
 	// Soft living skin: light wraps around the edges and shines through thin parts
-	// (necks, limbs, fins), a soft rim separates the silhouette from the dark water
+	// (necks, limbs, fins), a soft rim separates the silhouette from the dark water.
+	// Under the open sky (sky_open) the strong sun would make that glow garish: there the
+	// skin is matt with fine pores and the glow of rim and backlight is taken back, so the
+	// body sits in the landscape instead of shining out of it. The color itself stays, the
+	// limbs and fins (own materials) carry the same one
 	float rim = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 2.5);
+	float pores = noise(local_pos * 60.0 + vec3(seed * 3.0));
+	col *= 1.0 - 0.1 * smoothstep(0.45, 0.8, pores) * sky_open;
 	ALBEDO = col;
-	ROUGHNESS = mix(0.4, 0.8, knead);
-	SPECULAR = mix(0.5, 0.25, knead);
-	RIM = 0.55;
+	ROUGHNESS = mix(mix(0.4, 0.72, sky_open), 0.8, knead);
+	SPECULAR = mix(mix(0.5, 0.28, sky_open), 0.25, knead);
+	RIM = mix(0.55, 0.2, sky_open);
 	RIM_TINT = 0.35;
-	BACKLIGHT = col * 0.3 + vec3(0.15, 0.05, 0.03);
-	EMISSION = col * rim * 0.16 + vec3(1.0, 0.3, 0.3) * flash * 0.35;
+	BACKLIGHT = mix(col * 0.3 + vec3(0.15, 0.05, 0.03), col * 0.1, sky_open);
+	EMISSION = col * rim * 0.16 * (1.0 - 0.85 * sky_open) + vec3(1.0, 0.3, 0.3) * flash * 0.35;
 #endif
 }

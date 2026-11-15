@@ -150,15 +150,14 @@ public sealed class CreatureStats
 
         // ---------------------------------------------------------------------------
         // Body
-        //   Type, girth and length set speed and health, the volume the weight.
+        //   Girth and length set speed and health, the volume the weight. The body type
+        //   (fish or marine mammal) is cosmetic and changes none of them.
         // ---------------------------------------------------------------------------
 
         float girth = design.MeanGirth;
         int   extra = design.Girths.Count - BASE_VERTEBRAE;
-        float typeHealth = CreatureType.MarineMammal == design.Type ? body.MammalHealth : 1f;
-        float typeSwim   = CreatureType.Fish == design.Type ? body.FishSwimSpeed : 1f;
-        stats.Health    = typeHealth * (body.HealthBase + body.HealthPerGirth * girth) * (1f + body.HealthPerVertebra * extra);
-        stats.SwimSpeed = typeSwim * (body.SwimBase - body.SwimPerGirth * girth) * (1f + body.SwimPerVertebra * extra);
+        stats.Health    = (body.HealthBase + body.HealthPerGirth * girth) * (1f + body.HealthPerVertebra * extra);
+        stats.SwimSpeed = (body.SwimBase - body.SwimPerGirth * girth) * (1f + body.SwimPerVertebra * extra);
         stats.Weight    = design.Volume() * body.Density;
 
         // ---------------------------------------------------------------------------
@@ -183,30 +182,47 @@ public sealed class CreatureStats
             switch (part.Kind)
             {
                 // Fins
+                // The crescent of a shark, the seam tail of a newt and the mantle fins of a squid push like a tail fin
                 case CreaturePartKind.CaudalFin:
+                case CreaturePartKind.SharkTail:
+                case CreaturePartKind.NewtTail:
+                case CreaturePartKind.MantleFins:
                     stats.SwimSpeed *= effects.CaudalFinSwim;
+                    break;
+                // A fan tail turns on the spot but adds no speed, the curl tail of a seahorse only grasps
+                case CreaturePartKind.FanTail:
+                    stats.Acceleration *= effects.FlukeAcceleration;
+                    break;
+                case CreaturePartKind.CurlTail:
                     break;
                 case CreaturePartKind.Fluke:
                     stats.SwimSpeed    *= effects.FlukeSwim;
                     stats.Acceleration *= effects.FlukeAcceleration;
                     break;
                 case CreaturePartKind.DorsalFin:
+                case CreaturePartKind.SharkFin:
+                case CreaturePartKind.TallFin:
                     stats.Acceleration *= effects.DorsalFinAcceleration;
                     break;
                 case CreaturePartKind.PectoralFin:
+                case CreaturePartKind.Flipper:
+                case CreaturePartKind.Paddle:
                     stats.Acceleration *= Scaled(effects.PectoralFinAcceleration);
                     break;
                 // Mouths: the jaw bites forward, the filter mouth sieves plankton from far around,
                 // the beak grinds plants
                 case CreaturePartKind.Jaw:
+                case CreaturePartKind.NeedleMaw:
                     stats._jawAngles.Add(0f);
                     stats.DigestMeat *= effects.JawDigestMeat;
                     break;
                 case CreaturePartKind.FilterMouth:
+                case CreaturePartKind.TubeSnout:
                     stats.MagnetBonus += effects.FilterMouthMagnet;
                     stats.DigestPlant *= effects.FilterMouthDigestPlant;
                     break;
                 case CreaturePartKind.Beak:
+                case CreaturePartKind.PufferMouth:
                     stats.DigestPlant *= effects.BeakDigestPlant;
                     break;
                 // Defense: spines hurt at both flanks and the back, the shell damps hits from there,
@@ -215,6 +231,7 @@ public sealed class CreatureStats
                     stats._spikeAngles.AddRange(BACK_AND_FLANKS);
                     break;
                 case CreaturePartKind.Shell:
+                case CreaturePartKind.Carapace:
                     stats._plateAngles.AddRange(BACK_AND_FLANKS);
                     stats.Health    *= effects.ShellHealth;
                     stats.SwimSpeed *= effects.ShellSwim;
@@ -231,6 +248,10 @@ public sealed class CreatureStats
                     break;
                 case CreaturePartKind.StalkEye:
                     stats.MagnetBonus += effects.StalkEyeMagnet * share;
+                    break;
+                // The lantern of an angler fish lures food from far away
+                case CreaturePartKind.Lure:
+                    stats.MagnetBonus += effects.LureMagnet;
                     break;
                 // Sculpted limb: reaching the ground it is a leg (carries, LAND below), else an arm that grabs
                 case CreaturePartKind.StubLimb:
@@ -265,6 +286,15 @@ public sealed class CreatureStats
                     if (part.Side >= 0) stats._spikeAngles.Add(CLAW_ANGLE);
                     if (part.Side <= 0) stats._spikeAngles.Add(-CLAW_ANGLE);
                     break;
+                // Pincers pinch at the front flanks like claws, the sucker arm only pulls food in
+                case CreaturePartKind.Pincers:
+                    stats.MagnetBonus += effects.PincersMagnet * share;
+                    if (part.Side >= 0) stats._spikeAngles.Add(CLAW_ANGLE);
+                    if (part.Side <= 0) stats._spikeAngles.Add(-CLAW_ANGLE);
+                    break;
+                case CreaturePartKind.Suckers:
+                    stats.MagnetBonus += effects.SuckersMagnet * share;
+                    break;
                 // Brain: more evolution points per level, the big one also steers better
                 case CreaturePartKind.SmallBrain:
                     stats.EpPerLevelBonus += effects.SmallBrainEp;
@@ -281,6 +311,12 @@ public sealed class CreatureStats
                     break;
                 case CreaturePartKind.BigLung:
                     stats.Health *= effects.BigLungHealth;
+                    break;
+                // Gills: more oxygen under water, no air on land
+                case CreaturePartKind.Gills:
+                case CreaturePartKind.FeatherGills:
+                case CreaturePartKind.Siphon:
+                    stats.SwimSpeed *= effects.GillsSwim;
                     break;
                 // Wings: lift for later, a little flapping help on land, drag in the water
                 case CreaturePartKind.MembraneWings:

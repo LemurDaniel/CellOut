@@ -37,20 +37,67 @@ Every part is placed freely on the membrane in the cell editor (around, on top, 
 
 Shaped in the creature editor: bend and stretch the spine, pull limbs out by their joints, branch them, stick feet and hands on the tips, paint patterns and spray your own. Results may vary. 🧪
 
+The editor opens with a library of ready-made animals, each one built from the same parts you can buy yourself. Four of them:
+
 | | |
 |:---:|:---:|
-| ![Squid](docs/creatures/squid.png) | ![Crab](docs/creatures/crab.png) |
-| **Squid** 🦑<br>Four tentacles that fork into eight, eyes the size of its worries. | **Crab** 🦀<br>Six pointy crab feet for sideways sprints, two claws per arm because one is never enough. |
-| ![Giraffe sausage](docs/creatures/giraffe-sausage.png) | ![Muscle whale](docs/creatures/muscle-whale.png) |
-| **Giraffe sausage** 🦒🌭<br>A neck pulled up for the high plankton, paws for the beach, one very curious stalk eye. | **Muscle whale** 💪🐳<br>Never skips arm day. Big brain, bigger grin, sprayed-on racing stripes. |
+| ![Sea turtle](docs/creatures/turtle.png) | ![Angler fish](docs/creatures/angler.png) |
+| **Sea turtle** 🐢<br>A shell of honest hexagons, paddles for long calm strokes, the face of someone who has seen it all. | **Angler fish** 🏮<br>Mostly mouth. Brings its own night light, which is also the last thing its dinner sees. |
+| ![Shark](docs/creatures/shark.png) | ![Puffer fish](docs/creatures/puffer.png) |
+| **Shark** 🦈<br>Grey on top, white below, a grin with too many teeth. Everyone knows what the fin means. | **Puffer fish** 🐡<br>A ball of spikes with a permanent pout. Not fast, but nobody has ever asked twice. |
 
 ## ▶️ Getting started
 
-1. Install [Godot 4.7 **.NET**](https://godotengine.org/download) and the [.NET SDK 8+](https://dotnet.microsoft.com/download)
-2. In Godot: **Import** → select `project.godot` in this folder
-3. Press **F5** (builds the C# project automatically)
+There is no download build yet, so testers and developers both run the game from source.
 
-Without the editor: `dotnet build`, then `godot --path .` with the .NET binary.
+> [!IMPORTANT]
+> The game is written in C#. You need the **.NET** build of Godot (winget: `GodotEngine.GodotEngine.Mono`). The standard build (`GodotEngine.GodotEngine`) opens the project but cannot run it.
+
+### 🧪 For testers: just play
+
+1. Install Godot 4.7.2 .NET and the .NET SDK 8:
+
+   ```powershell
+   winget install GodotEngine.GodotEngine.Mono
+   winget install Microsoft.DotNet.SDK.8
+   ```
+
+   On other systems: [Godot 4.7 **.NET**](https://godotengine.org/download) and the [.NET SDK 8+](https://dotnet.microsoft.com/download).
+2. Get the code: `git clone` this repo, or **Code → Download ZIP** on GitHub and unpack it.
+3. Start Godot, choose **Import** and select `project.godot` in this folder.
+4. Press **F5**. The first start builds the C# project and imports the assets, which takes a moment.
+
+**F10** opens a cheat menu that jumps straight to any stage, handy for testing the later ones.
+
+### 🛠️ For developers
+
+Same installs as above, plus [PowerShell 7](https://learn.microsoft.com/powershell/scripting/install/installing-powershell) for the scripts in `tools/`. Open a new terminal afterwards so `dotnet` is on the PATH.
+
+Build and run without the editor:
+
+```powershell
+# winget unpacks Godot here. Its "godot" alias only exists after an install with admin rights.
+$godotDir = "$env:LOCALAPPDATA\Microsoft\WinGet\Packages\GodotEngine.GodotEngine.Mono_Microsoft.Winget.Source_8wekyb3d8bbwe\Godot_v4.7.2-stable_mono_win64"
+
+dotnet build
+& "$godotDir\Godot_v4.7.2-stable_mono_win64.exe" --path .
+```
+
+Run the checks after every change (build, unit tests, import, headless smoke test):
+
+```powershell
+$env:GODOT = "$godotDir\Godot_v4.7.2-stable_mono_win64_console.exe"
+./tools/Test-CellOut.ps1
+```
+
+Use the `*_console.exe` on Windows, the normal exe prints no output. The unit tests alone need no Godot: `dotnet test tests/unit/CellOut.Tests.csproj`.
+
+Only needed when you change generated assets:
+
+| Asset | Tool | Command |
+|---|---|---|
+| Fonts (`fonts/`) | Node.js | `npm install`, then `npm run build` in `tools/font` |
+| Models (`assets/models/`) | Blender | `./tools/blender/Build-Models.ps1`, see `tools/blender/README.md` |
 
 ## 🎮 Controls
 

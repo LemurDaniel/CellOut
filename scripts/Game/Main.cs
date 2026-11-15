@@ -57,6 +57,7 @@ public partial class Main : Node2D
     private BuildingPlacer _placer;
     private TribePanel _tribePanel;
     private readonly System.Collections.Generic.List<CanvasLayer> _tribeHud = new();     // TribePanel and TribeHub
+    private TribeHub _hub;
     private CutsceneDirector _cutscenes;
     private StartFlow _startFlow;
     private Node2D _fxLayer;
@@ -168,11 +169,11 @@ public partial class Main : Node2D
         tribePanel.GiftPressed     += rival => _rivals.Gift(rival);
         AddChild(tribePanel);
 
-        var hub = new TribeHub();
-        _tribeHud.Add(hub);
-        hub.Watch(_session, _pack, _tribe, _rivals);
-        hub.BuilderPressed += () => OpenBuildingEditor();
-        AddChild(hub);
+        _hub = new TribeHub();
+        _tribeHud.Add(_hub);
+        _hub.Watch(_session, _pack, _tribe, _rivals, _followCamera);
+        _hub.BuilderPressed += () => OpenBuildingEditor();
+        AddChild(_hub);
 
         _cutscenes = new CutsceneDirector();
         _cutscenes.Setup(_session, _followCamera.Camera);
@@ -645,7 +646,9 @@ public partial class Main : Node2D
     //   Tribe        The tribe: selection, stock, huts (Tribe/Village/TribeCommander.cs).
     //   Rivals       The neighbor tribes (Tribe/Rivals/RivalKeeper.cs).
     //   BuildingEditor   The village builder (Tribe/Building/Editor/BuildingEditor.cs).
-    //   CheatTo      F10 menu: jumps forward to a stage, the coast or more points.
+    //   Hub          The hub bar: map, home button, counters (Tribe/TribeHub.cs).
+    //   FollowCamera     The camera, for the strategy focus (World/FollowCamera.cs).
+    //   CheatTo     F10 menu: jumps forward to a stage, the coast or more points.
     //
     //   The coast itself is kept by World/CoastKeeper.cs.
     //
@@ -663,6 +666,10 @@ public partial class Main : Node2D
     public BuildingEditor BuildingEditor => _buildingEditor;
 
     public BuildingPlacer Placer => _placer;
+
+    public TribeHub Hub => _hub;
+
+    public FollowCamera FollowCamera => _followCamera;
 
     /// <summary>An archipelago ahead of the player (its facing), the landing island first.</summary>
     /// <param name="isNear">(Required) Right in front (cheat) instead of just outside the view.</param>

@@ -2,13 +2,13 @@
 //   Frame of the creature editor: the grey-out over the paused game and the full screen
 //   panel (animated water with a membrane edge) that slides in from the left. It holds
 //   the title and stacks the rows the CreatureEditor hands it; the workbench is the row
-//   that only shows while sculpting (palette, turntable, stats).
+//   that only shows while sculpting (palette, turntable, tool column).
 //
 //   var frame = new CreatureEditorFrame();
 //   frame.Setup(session);
 //   AddChild(frame);
 //   frame.AddRow(tabs);
-//   frame.AddWorkbench(palette, stage, stats);
+//   frame.AddWorkbench(palette, stage, toolbar);
 //   frame.Visible = true;
 //   frame.SlideTo(1f);
 
@@ -96,8 +96,8 @@ public partial class CreatureEditorFrame : Control
     }
 
     /// <summary>Adds the sculpting row, it fills the height left and hides during the type choice.</summary>
-    /// <param name="parts">(Required) Its parts from left to right: tile palette, turntable, stats.</param>
-    /// <example><code>frame.AddWorkbench(palette, stage, stats);</code></example>
+    /// <param name="parts">(Required) Its parts from left to right: tile palette, turntable, tool column.</param>
+    /// <example><code>frame.AddWorkbench(palette, stage, toolbar);</code></example>
     public void AddWorkbench(params Control[] parts)
     {
         _workbench = new HBoxContainer { SizeFlagsVertical = SizeFlags.ExpandFill };

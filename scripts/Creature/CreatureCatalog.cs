@@ -8,7 +8,7 @@
 //   CREATURE_<KIND>_DESC, the tabs as CREATURE_CATEGORY_<CATEGORY>.
 //
 //   CreaturePartInfo info = CreatureCatalog.Get(CreaturePartKind.Fluke);
-//   bool isOffered        = info.IsFor(CreatureType.MarineMammal);   // true
+//   bool isOffered        = info.IsFor(CreatureType.Fish);           // true, the body type is cosmetic
 
 //
 //   Chapters:
@@ -25,7 +25,7 @@ namespace CellOut;
 // ================================   TYPES   ================================
 // ===========================================================================
 //
-//   CreatureType       Fish (side to side) or marine mammal (up and down, breathes air).
+//   CreatureType       Fish (side to side) or marine mammal (up and down): only look and swim motion, no effect on traits or parts.
 //   CreatureCategory   Tab of the editor palette, in tab order.
 //   CreatureMount      Where a part sits: tail end, nose, skull, back, flanks, limbs or inside.
 //   CreaturePartKind   Every placeable creature part.
@@ -47,22 +47,24 @@ public enum CreaturePartKind
 {
     // Fins
     CaudalFin, Fluke, DorsalFin, PectoralFin,
+    // More tails (one per tail tip), back fins and flippers of the template animals
+    SharkTail, NewtTail, MantleFins, FanTail, CurlTail, SharkFin, TallFin, Flipper, Paddle,
     // Mouths: one per head, the mouth sets the diet
-    Jaw, FilterMouth, Beak,
+    Jaw, FilterMouth, Beak, NeedleMaw, PufferMouth, TubeSnout,
     // Defense
-    Spines, Shell, PoisonGland,
+    Spines, Shell, PoisonGland, Carapace,
     // Eyes
-    PitEye, Eye, StalkEye,
+    PitEye, Eye, StalkEye, Lure,
     // Limbs: sculpted, 1 to 4 joints
     StubLimb, BentLimb, Limb, Tentacle,
     // Feet
     Legs, StubbyLegs, ClawLegs, CrabLegs,
     // Hands
-    Hands, Claws,
+    Hands, Claws, Pincers, Suckers,
     // Brain
     SmallBrain, BigBrain,
     // Lungs
-    Lung, Blowhole, BigLung,
+    Lung, Blowhole, BigLung, Gills, FeatherGills, Siphon,
     // Wings
     MembraneWings, FeatherWings,
 }
@@ -73,7 +75,7 @@ public enum CreaturePartKind
 /// <param name="Cost">Evolution points to place it, refunded on removal.</param>
 /// <param name="Weight">Added to the body weight (kg in design scale), pairs count once.</param>
 /// <param name="Mount">Where it sits, tail, head and skull hold one part each, flank and limb parts come in pairs (or single halves with symmetry off).</param>
-/// <param name="OnlyFor">Body type that may use it, null for both.</param>
+/// <param name="OnlyFor">Body type that may use it, null for both. No part is bound to a type since the type is cosmetic (2026-11-15).</param>
 /// <param name="Carry">(Optional) Weight a pair of legs carries on land. Defaults to 0.</param>
 /// <param name="Stride">(Optional) Walking speed of a leg kind, 1 = normal legs. Defaults to 0.</param>
 /// <param name="Lift">(Optional) Weight a pair of wings lifts. Defaults to 0.</param>
@@ -145,22 +147,36 @@ public static class CreatureCatalog
     private static readonly CreaturePartInfo[] PARTS =
     {
         // Fins
-        Part(CreaturePartKind.CaudalFin,     CreatureCategory.Fins,    CreatureMount.Tail,  CreatureType.Fish),
-        Part(CreaturePartKind.Fluke,         CreatureCategory.Fins,    CreatureMount.Tail,  CreatureType.MarineMammal),
+        Part(CreaturePartKind.CaudalFin,     CreatureCategory.Fins,    CreatureMount.Tail,  null),
+        Part(CreaturePartKind.Fluke,         CreatureCategory.Fins,    CreatureMount.Tail,  null),
         Part(CreaturePartKind.DorsalFin,     CreatureCategory.Fins,    CreatureMount.Top,   null),
         Part(CreaturePartKind.PectoralFin,   CreatureCategory.Fins,    CreatureMount.Limb,  null),
+        Part(CreaturePartKind.SharkTail,     CreatureCategory.Fins,    CreatureMount.Tail,  null),
+        Part(CreaturePartKind.NewtTail,      CreatureCategory.Fins,    CreatureMount.Tail,  null),
+        Part(CreaturePartKind.MantleFins,    CreatureCategory.Fins,    CreatureMount.Tail,  null),
+        Part(CreaturePartKind.FanTail,       CreatureCategory.Fins,    CreatureMount.Tail,  null),
+        Part(CreaturePartKind.CurlTail,      CreatureCategory.Fins,    CreatureMount.Tail,  null),
+        Part(CreaturePartKind.SharkFin,      CreatureCategory.Fins,    CreatureMount.Top,   null),
+        Part(CreaturePartKind.TallFin,       CreatureCategory.Fins,    CreatureMount.Top,   null),
+        Part(CreaturePartKind.Flipper,       CreatureCategory.Fins,    CreatureMount.Limb,  null),
+        Part(CreaturePartKind.Paddle,        CreatureCategory.Fins,    CreatureMount.Limb,  null),
         // Mouths: the head holds one, so the mouth is the choice between meat, plankton and plants
         Part(CreaturePartKind.Jaw,           CreatureCategory.Mouths,  CreatureMount.Head,  null),
         Part(CreaturePartKind.FilterMouth,   CreatureCategory.Mouths,  CreatureMount.Head,  null),
         Part(CreaturePartKind.Beak,          CreatureCategory.Mouths,  CreatureMount.Head,  null),
+        Part(CreaturePartKind.NeedleMaw,     CreatureCategory.Mouths,  CreatureMount.Head,  null),
+        Part(CreaturePartKind.PufferMouth,   CreatureCategory.Mouths,  CreatureMount.Head,  null),
+        Part(CreaturePartKind.TubeSnout,     CreatureCategory.Mouths,  CreatureMount.Head,  null),
         // Defense: spines hurt, the shell takes hits, the gland poisons whatever the spines or the jaw hit
-        Part(CreaturePartKind.Spines,        CreatureCategory.Defense, CreatureMount.Top,   CreatureType.Fish),
+        Part(CreaturePartKind.Spines,        CreatureCategory.Defense, CreatureMount.Top,   null),
         Part(CreaturePartKind.Shell,         CreatureCategory.Defense, CreatureMount.Top,   null),
         Part(CreaturePartKind.PoisonGland,   CreatureCategory.Defense, CreatureMount.Inner, null),
+        Part(CreaturePartKind.Carapace,      CreatureCategory.Defense, CreatureMount.Top,   null),
         // Eyes
         Part(CreaturePartKind.PitEye,        CreatureCategory.Eyes,    CreatureMount.Flank, null),
         Part(CreaturePartKind.Eye,           CreatureCategory.Eyes,    CreatureMount.Flank, null),
         Part(CreaturePartKind.StalkEye,      CreatureCategory.Eyes,    CreatureMount.Flank, null),
+        Part(CreaturePartKind.Lure,          CreatureCategory.Eyes,    CreatureMount.Top,   null),
         // Limbs: sculpted by their joints (1 to 4), a limb reaching the ground carries (CreatureStats)
         Part(CreaturePartKind.StubLimb,      CreatureCategory.Limbs,   CreatureMount.Limb,  null),
         Part(CreaturePartKind.BentLimb,      CreatureCategory.Limbs,   CreatureMount.Limb,  null),
@@ -174,13 +190,18 @@ public static class CreatureCatalog
         // Hands
         Part(CreaturePartKind.Hands,         CreatureCategory.Hands,   CreatureMount.Limb,  null),
         Part(CreaturePartKind.Claws,         CreatureCategory.Hands,   CreatureMount.Limb,  null),
+        Part(CreaturePartKind.Pincers,       CreatureCategory.Hands,   CreatureMount.Limb,  null),
+        Part(CreaturePartKind.Suckers,       CreatureCategory.Hands,   CreatureMount.Limb,  null),
         // Brain
         Part(CreaturePartKind.SmallBrain,    CreatureCategory.Brain,   CreatureMount.Skull, null),
         Part(CreaturePartKind.BigBrain,      CreatureCategory.Brain,   CreatureMount.Skull, null),
         // Lungs
-        Part(CreaturePartKind.Lung,          CreatureCategory.Lungs,   CreatureMount.Inner, CreatureType.Fish),
-        Part(CreaturePartKind.Blowhole,      CreatureCategory.Lungs,   CreatureMount.Top,   CreatureType.MarineMammal),
+        Part(CreaturePartKind.Lung,          CreatureCategory.Lungs,   CreatureMount.Inner, null),
+        Part(CreaturePartKind.Blowhole,      CreatureCategory.Lungs,   CreatureMount.Top,   null),
         Part(CreaturePartKind.BigLung,       CreatureCategory.Lungs,   CreatureMount.Inner, null),
+        Part(CreaturePartKind.Gills,         CreatureCategory.Lungs,   CreatureMount.Inner, null),
+        Part(CreaturePartKind.FeatherGills,  CreatureCategory.Lungs,   CreatureMount.Inner, null),
+        Part(CreaturePartKind.Siphon,        CreatureCategory.Lungs,   CreatureMount.Inner, null),
         // Wings
         Part(CreaturePartKind.MembraneWings, CreatureCategory.Wings,   CreatureMount.Top,   null),
         Part(CreaturePartKind.FeatherWings,  CreatureCategory.Wings,   CreatureMount.Top,   null),
@@ -209,7 +230,7 @@ public static class CreatureCatalog
     /// <summary>The parts of one palette tab a body type may use.</summary>
     /// <param name="type">(Required) Fish or marine mammal.</param>
     /// <param name="category">(Required) The tab.</param>
-    /// <example><code>CreatureCatalog.ForCategory(CreatureType.Fish, CreatureCategory.Lungs)   // Lung, BigLung</code></example>
+    /// <example><code>CreatureCatalog.ForCategory(CreatureType.Fish, CreatureCategory.Lungs)   // Lung, Blowhole, BigLung, Gills, ...</code></example>
     public static IReadOnlyList<CreaturePartInfo> ForCategory(CreatureType type, CreatureCategory category)
     {
         return PARTS.Where(part => category == part.Category && part.IsFor(type)).ToList();

@@ -1,0 +1,21 @@
+{
+  "key": "SHARK",
+  "order": 60,
+  "type": "Fish",
+  "girths": [0.25, 0.3, 0.42, 0.6, 0.8, 0.95, 1.0, 0.92, 0.7, 0.44, 0.25],
+  "gaps": [0.4, 0.4, 0.38, 0.36, 0.36, 0.36, 0.36, 0.34, 0.3, 0.26],
+  "lifts": [0.26, 0.2, 0.16, 0.14, 0.14, 0.14, 0.14, 0.15, 0.17, 0.2, 0.22],
+  "color": "#eef0ee",
+  "pattern": "Saddle",
+  "patternColor": "#5d6f80",
+  "parts": [
+    { "kind": "SharkTail", "t": 0, "free": true, "size": 1.45 },
+    { "kind": "Eye", "t": 0.86, "free": true, "size": 0.7, "offset": [0, 0.04, 0] },
+    { "kind": "SharkFin", "t": 0.56, "size": 1.25 },
+    { "kind": "SharkFin", "t": 0.19, "size": 0.45 },
+    { "kind": "Flipper", "t": 0.62, "size": 1.0, "offset": [0.06, -0.12, 0], "rotation": [0.2, -0.25, -0.3] },
+    { "kind": "Flipper", "t": 0.27, "size": 0.4, "offset": [0, -0.1, 0], "rotation": [0, 0, -0.5] },
+    { "kind": "Jaw", "t": 1, "size": 3, "offset": [-0.52, -0.13, 0], "rotation": [0, 0, -0.18] },
+    { "kind": "Gills", "t": 0.5 }
+  ]
+}

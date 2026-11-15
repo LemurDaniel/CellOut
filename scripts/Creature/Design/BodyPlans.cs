@@ -1,8 +1,8 @@
 // NOTE:
 //   The ready-made body plans: the clay blob of the editor, the starter body after the
-//   type choice, the examples on the type tiles and the NPC creatures of the organism
-//   stage. Reached through CreatureDesign (Blob, Starter, Example, ForCritter).
-//   Blob, Starter and Example are fixed; ForCritter rolls the hunter and the girth
+//   choice of a plain template (Design/CreatureTemplates.cs) and the NPC creatures of the organism
+//   stage. Reached through CreatureDesign (Blob, Starter, ForCritter).
+//   Blob and Starter are fixed; ForCritter rolls the hunter and the girth
 //   jitter with Core/Rand.cs (the global Godot generator).
 //
 //   CreatureDesign fish = BodyPlans.Starter(CreatureType.Fish);     // tail fin and eyes for free
@@ -10,7 +10,7 @@
 
 //
 //   Chapters:
-//     BUILD BODY PLANS   The clay blob, the starter bodies, the type examples and the NPC creatures.
+//     BUILD BODY PLANS   The clay blob, the starter bodies and the NPC creatures.
 //
 
 using Godot;
@@ -25,7 +25,6 @@ public static class BodyPlans
     //
     //   Blob         The fresh clay blob the editor starts from.
     //   Starter      The body the clay takes once the type is chosen.
-    //   Example      A finished example of a body type for the type choice tiles.
     //   ForCritter   A body plan for an NPC creature of the organism stage.
     //
 
@@ -56,25 +55,6 @@ public static class BodyPlans
             : CreatureDesign.FromGirths(type, 0.26f, 0.42f, 0.66f, 0.88f, 0.92f, 0.82f, 0.6f);
         design.TryPlace(CreatureType.Fish == type ? CreaturePartKind.CaudalFin : CreaturePartKind.Fluke, 0f, 0);
         design.TryPlace(CreaturePartKind.Eye, 0.86f, 0);
-        return design;
-    }
-
-    /// <summary>A finished example of a body type, shown on the type choice tiles.</summary>
-    /// <param name="type">(Required) Fish or marine mammal.</param>
-    /// <example><code>BodyPlans.Example(CreatureType.MarineMammal).Count(CreaturePartKind.Blowhole)   // 1</code></example>
-    public static CreatureDesign Example(CreatureType type)
-    {
-        CreatureDesign design = CreatureType.Fish == type
-            ? CreatureDesign.FromGirths(type, 0.35f, 0.6f, 0.8f, 0.85f, 0.7f, 0.5f)
-            : CreatureDesign.FromGirths(type, 0.3f, 0.55f, 0.8f, 0.95f, 0.9f, 0.75f, 0.6f);
-        design.TryPlace(CreatureType.Fish == type ? CreaturePartKind.CaudalFin : CreaturePartKind.Fluke, 0f, 0);
-        design.TryPlace(CreaturePartKind.DorsalFin, 0.5f, 0);
-        design.TryPlace(CreaturePartKind.PectoralFin, 0.68f, 0);
-        design.TryPlace(CreaturePartKind.Eye, 0.88f, 0);
-        if (CreatureType.MarineMammal == type)
-        {
-            design.TryPlace(CreaturePartKind.Blowhole, 0.78f, 0);
-        }
         return design;
     }
 

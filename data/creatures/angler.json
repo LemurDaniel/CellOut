@@ -1,0 +1,19 @@
+{
+  "key": "ANGLER",
+  "order": 70,
+  "type": "MarineMammal",
+  "girths": [0.25, 0.4, 0.82, 1.0, 1.0],
+  "gaps": [0.26, 0.22, 0.26, 0.28],
+  "lifts": [0.2, 0.1, 0, 0, -0.03],
+  "color": "#33261f",
+  "pattern": "Spots",
+  "patternColor": "#9c8a70",
+  "parts": [
+    { "kind": "FanTail", "t": 0, "free": true, "size": 0.9 },
+    { "kind": "Eye", "t": 0.9, "free": true, "size": 0.7, "offset": [0.16, 0.2, -0.13] },
+    { "kind": "NeedleMaw", "t": 1 },
+    { "kind": "Lure", "t": 1, "size": 0.9, "offset": [0.2, -0.04, 0], "rotation": [0, 0, -0.3] },
+    { "kind": "PectoralFin", "t": 0.4, "size": 0.85, "offset": [0, -0.05, 0] },
+    { "kind": "DorsalFin", "t": 0.22, "size": 0.9 }
+  ]
+}

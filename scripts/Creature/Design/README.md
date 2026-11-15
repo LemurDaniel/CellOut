@@ -9,4 +9,5 @@ The parts of a body plan. `../CreatureDesign.cs` is the coordinator: it owns the
 | `PartPlacement.cs` | Placement rules: the side a part takes, the snapped spot of a click, the part closest to a share, branches of a limb, the share a part keeps when the spine grows at an end. |
 | `LimbJoints.cs` | Joints of sculpted limbs: the default chain per kind, stretching a fresh leg to the ground, moving one joint with clamped segment length. |
 | `CreatureLook.cs` | Look of a body plan: custom color, paint pattern (`CreaturePattern`) and spray paint dots (`PaintSplat`) with strokes and undo. |
-| `BodyPlans.cs` | Ready-made plans: the clay blob, the starter bodies, the type examples and the NPC creatures per critter kind. |
+| `BodyPlans.cs` | Ready-made plans: the clay blob, the starter bodies and the NPC creatures per critter kind. |
+| `CreatureTemplates.cs` | The template library of the first shaping: twelve ready-made animals (type, spine, color, pattern, parts), tail and eyes free, every other part paid with its normal points. |

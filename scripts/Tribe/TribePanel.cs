@@ -227,7 +227,7 @@ public partial class TribePanel : CanvasLayer
         _buildColumn.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.CenterRight);
         _buildColumn.GrowVertical   = Control.GrowDirection.Both;
         _buildColumn.GrowHorizontal = Control.GrowDirection.Begin;
-        _buildColumn.Position      -= new Vector2(20, 0);
+        _buildColumn.Position      -= new Vector2(20, 80);    // raised: the dial of the Hud sits in the corner below
         _buildColumn.AddThemeConstantOverride("separation", 8);
         AddChild(_buildColumn);
 

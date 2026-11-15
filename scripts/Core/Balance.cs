@@ -298,8 +298,6 @@ public sealed record CreaturePartBalance
 public sealed record CreatureBodyBalance
 {
     public required float Density { get; init; }                 // kg per unit volume
-    public required float MammalHealth { get; init; }
-    public required float FishSwimSpeed { get; init; }
 
     // Health = HealthBase + HealthPerGirth * mean girth, times 1 + HealthPerVertebra per vertebra above five
     public required float HealthBase { get; init; }
@@ -351,6 +349,10 @@ public sealed record CreatureEffectsBalance
     public required float StalkEyeMagnet { get; init; }
     public required float HandsMagnet { get; init; }
     public required float ClawsMagnet { get; init; }
+    public required float PincersMagnet { get; init; }
+    public required float SuckersMagnet { get; init; }
+    public required float LureMagnet { get; init; }
+    public required float GillsSwim { get; init; }
 
     // Limbs: legs, sculpted limbs and wings slow the swimming per pair
     public required float LimbDrag { get; init; }

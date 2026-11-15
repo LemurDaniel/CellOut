@@ -42,23 +42,27 @@ public static class LimbJoints
       - Feet:          a leg of three joints, the foot model on the tip touches the ground
                        of the coast with the body lifted (LAND_LIFT in CreatureVisual3D.cs)
       - Hands:         an arm of three joints reaching forward, held above the ground
+                       (hand, claws, pincers); the sucker arm brings a tentacle instead
       A fresh leg-like limb already carries on land; pulled up and forward it becomes an arm.
     */
     // Before DEFAULT_JOINTS: static fields initialize in order, it reads them
     private static readonly Vector3[] LEG_JOINTS = { new(0.04f, -0.12f, 0.26f), new(0.1f, -0.36f, 0.34f), new(0.12f, -0.6f, 0.34f) };
     private static readonly Vector3[] ARM_JOINTS = { new(0.1f, -0.08f, 0.26f), new(0.26f, -0.18f, 0.34f), new(0.42f, -0.16f, 0.34f) };
+    private static readonly Vector3[] TENTACLE_JOINTS = { new(0.06f, -0.16f, 0.3f), new(0.2f, -0.42f, 0.48f), new(0.36f, -0.66f, 0.46f), new(0.52f, -0.6f, 0.3f) };
     private static readonly IReadOnlyDictionary<CreaturePartKind, Vector3[]> DEFAULT_JOINTS = new Dictionary<CreaturePartKind, Vector3[]>
     {
         [CreaturePartKind.StubLimb] = new Vector3[] { new(0.08f, -0.18f, 0.34f) },
         [CreaturePartKind.BentLimb] = new Vector3[] { new(0.06f, -0.34f, 0.32f), new(0.16f, -0.82f, 0.38f) },
         [CreaturePartKind.Limb]     = new Vector3[] { new(0.04f, -0.12f, 0.28f), new(0.12f, -0.46f, 0.42f), new(0.2f, -0.82f, 0.42f) },
-        [CreaturePartKind.Tentacle] = new Vector3[] { new(0.06f, -0.16f, 0.3f), new(0.2f, -0.42f, 0.48f), new(0.36f, -0.66f, 0.46f), new(0.52f, -0.6f, 0.3f) },
+        [CreaturePartKind.Tentacle] = TENTACLE_JOINTS,
         [CreaturePartKind.Legs]       = LEG_JOINTS,
         [CreaturePartKind.StubbyLegs] = LEG_JOINTS,
         [CreaturePartKind.ClawLegs]   = LEG_JOINTS,
         [CreaturePartKind.CrabLegs]   = LEG_JOINTS,
         [CreaturePartKind.Hands]      = ARM_JOINTS,
         [CreaturePartKind.Claws]      = ARM_JOINTS,
+        [CreaturePartKind.Pincers]    = ARM_JOINTS,
+        [CreaturePartKind.Suckers]    = TENTACLE_JOINTS,
     };
 
     public const float MIN_LIMB_SEGMENT = 0.08f;
@@ -70,7 +74,13 @@ public static class LimbJoints
     /// <example><code>LimbJoints.DefaultFor(CreaturePartKind.Tentacle).Count   // 4</code></example>
     public static IReadOnlyList<Vector3> DefaultFor(CreaturePartKind kind)
     {
-        return DEFAULT_JOINTS.TryGetValue(kind, out Vector3[] joints) ? joints : null;
+        if (DEFAULT_JOINTS.TryGetValue(kind, out Vector3[] joints))
+        {
+            return joints;
+        }
+        // A foot or hand kind without a row of its own brings the usual leg or arm
+        CreaturePartInfo info = CreatureCatalog.Get(kind);
+        return CreatureCategory.Feet == info.Category ? LEG_JOINTS : CreatureCategory.Hands == info.Category ? ARM_JOINTS : null;
     }
 
     /*

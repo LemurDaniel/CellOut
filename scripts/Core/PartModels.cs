@@ -66,6 +66,43 @@ public static class PartModels
         return root;
     }
 
+    private static readonly Dictionary<Color, StandardMaterial3D> _skins = new();
+
+    /*
+      The skin of a part model has to match the clay body it grows from (shaders/clay.gdshaderinc):
+      the same color, not darkened, with the soft rim and the light shining through thin
+      parts that make the clay look bright. Without them a snout or a pincer in the body
+      color came out a shade darker and duller than the body.
+    */
+    /// <summary>The skin of a part model in the body color, lit like the clay body.</summary>
+    private static StandardMaterial3D Skin(Color bodyColor)
+    {
+        if (_skins.TryGetValue(bodyColor, out StandardMaterial3D cached))
+        {
+            return cached;
+        }
+        var skin = new StandardMaterial3D
+        {
+            AlbedoColor      = bodyColor,
+            Roughness        = 0.55f,
+            MetallicSpecular = 0.4f,
+            RimEnabled       = true,
+            Rim              = 0.4f,
+            RimTint          = 0.35f,
+            BacklightEnabled = true,
+            Backlight        = bodyColor * 0.25f,
+            EmissionEnabled  = true,
+            Emission         = bodyColor,
+            EmissionEnergyMultiplier = 0.06f,
+        };
+        if (bodyColor.A < 0.99f)
+        {
+            skin.Transparency = BaseMaterial3D.TransparencyEnum.Alpha;
+        }
+        _skins[bodyColor] = skin;
+        return skin;
+    }
+
     /// <summary>Material names of the Blender generator to game materials, unknown names are skin.</summary>
     private static Material MaterialFor(string name, Color bodyColor)
     {
@@ -93,6 +130,12 @@ public static class PartModels
             "Venom"       => CellVisual3D.Material(new Color(0.75f, 1f, 0.35f), 1.2f),
             "Iris"        => CellVisual3D.Material(new Color(0.25f, 0.55f, 0.85f), 0.3f, 0.2f),
             "Dark"        => CellVisual3D.Material(new Color(0.12f, 0.04f, 0.06f)),
+            "Beak"        => CellVisual3D.Material(new Color(0.96f, 0.68f, 0.22f), 0f, 0.3f),
+            "Shell"       => CellVisual3D.Material(bodyColor.Darkened(0.42f), 0f, 0.35f),
+            "ShellRim"    => CellVisual3D.Material(bodyColor.Darkened(0.22f), 0f, 0.35f),
+            "Gill"        => CellVisual3D.Material(new Color(0.85f, 0.25f, 0.3f), 0.15f, 0.5f),
+            "Lantern"     => CellVisual3D.Material(new Color(0.45f, 0.95f, 0.7f), 0.9f, 0.3f),
+            "BackSkin"    => CellVisual3D.Material(bodyColor.Darkened(0.3f), 0f, 0.6f),     // without a design: a darker back
             "Mito"        => CellVisual3D.Material(new Color(0.95f, 0.45f, 0.3f, 0.6f), 0.25f, 0.2f),
             "Cristae"     => CellVisual3D.Material(new Color(0.7f, 0.2f, 0.15f), 0.15f),
             "Starch"      => CellVisual3D.Material(new Color(0.96f, 0.92f, 0.78f), 0.1f, 0.8f),
@@ -121,7 +164,7 @@ public static class PartModels
             "FruitRed"    => CellVisual3D.Material(new Color(0.85f, 0.3f, 0.25f), 0f, 0.6f),
             "FruitGold"   => CellVisual3D.Material(new Color(0.95f, 0.75f, 0.25f), 0f, 0.6f),
             "FruitGreen"  => CellVisual3D.Material(new Color(0.5f, 0.7f, 0.3f), 0f, 0.6f),
-            _             => CellVisual3D.Material(bodyColor.Darkened(0.1f), 0f, 0.7f),
+            _             => Skin(bodyColor),
         };
     }
 

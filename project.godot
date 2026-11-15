@@ -53,3 +53,11 @@ planet_origin={
 "type": "vec3",
 "value": Vector3(0, 0, 0)
 }
+sky_open={
+"type": "float",
+"value": 0.0
+}
+sky_unit={
+"type": "float",
+"value": 14.0
+}

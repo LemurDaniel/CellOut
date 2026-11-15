@@ -67,19 +67,33 @@ public sealed class CreatureSpine
 
     public float MeanGirth => _girths.Count > 0 ? _girths.Average() : 0f;
 
-    /// <summary>Replaces the spine with a straight one: the given girths, evenly spaced and centered.</summary>
+    /// <summary>Replaces the spine with a straight one: the given girths, evenly spaced (or by the given gaps) and centered.</summary>
     /// <param name="girths">(Required) Girth per vertebra, tail first, taken as they are.</param>
+    /// <param name="gaps">(Optional) Distance between neighbors, one less than girths, clamped to MIN_GAP..MAX_GAP. Defaults to SPACING everywhere.</param>
     /// <example><code>spine.Reset(new[] { 0.62f, 0.9f, 1f, 0.9f, 0.62f });   // the clay blob</code></example>
-    public void Reset(IReadOnlyList<float> girths)
+    public void Reset(IReadOnlyList<float> girths, IReadOnlyList<float> gaps = null)
     {
+        if (null != gaps && gaps.Count != girths.Count - 1)
+        {
+            throw new System.ArgumentException($"gaps must hold one distance between every two girths ({girths.Count - 1}), got {gaps.Count}.", nameof(gaps));
+        }
         _girths.Clear();
         _lifts.Clear();
         _xs.Clear();
         _girths.AddRange(girths);
         _lifts.AddRange(new float[girths.Count]);   // a straight spine
+
+        // Evenly spaced, or by the given distances (short ones make a ball), then centered
+        float x = 0f;
         for (int i = 0; i < girths.Count; i++)
         {
-            _xs.Add((i - (girths.Count - 1) * 0.5f) * SPACING);   // evenly spaced, centered
+            _xs.Add(x);
+            x += i < girths.Count - 1 ? (null == gaps ? SPACING : Mathf.Clamp(gaps[i], MIN_GAP, MAX_GAP)) : 0f;
+        }
+        float middle = _xs[^1] * 0.5f;
+        for (int i = 0; i < _xs.Count; i++)
+        {
+            _xs[i] -= middle;
         }
     }
 

@@ -1,0 +1,17 @@
+{
+  "key": "TURTLE",
+  "order": 120,
+  "type": "MarineMammal",
+  "girths": [0.25, 0.52, 0.64, 0.58, 0.42, 0.5],
+  "lifts": [-0.06, 0, 0, 0, 0.05, 0.14],
+  "color": "#a3ad68",
+  "pattern": "Spots",
+  "patternColor": "#46522e",
+  "parts": [
+    { "kind": "Eye", "t": 0.95, "free": true, "size": 1 },
+    { "kind": "Shell", "t": 0.4 },
+    { "kind": "Beak", "t": 1 },
+    { "kind": "Paddle", "t": 0.68, "size": 2.6, "offset": [0, -0.06, 0.12], "rotation": [0, -0.25, 0] },
+    { "kind": "Paddle", "t": 0.14, "size": 1.6, "offset": [0, -0.06, 0.2], "rotation": [0, -0.8, 0] }
+  ]
+}

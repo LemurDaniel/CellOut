@@ -36,7 +36,7 @@ public sealed class CreatureDesign
     //   Geometry     Length, profile radius, spine height and slope, cross section, volume and the inside test.
     //   Look         Custom body color, the paint pattern and its color, spray paint.
     //   Copies       Copy from another design.
-    //   Body plans   The clay blob, the starter bodies, the type examples and the NPC creatures.
+    //   Body plans   The clay blob, the starter bodies and the NPC creatures.
     //
 
     // ---------------------------------------------------------------------------
@@ -56,7 +56,7 @@ public sealed class CreatureDesign
 
     private readonly CreatureSpine _spine = new();
 
-    /// <summary>Fish swim side to side, marine mammals up and down.</summary>
+    /// <summary>Fish swim side to side, marine mammals up and down. Look and motion only, no effect on traits or parts.</summary>
     public CreatureType Type { get; set; } = CreatureType.Fish;
 
     /// <summary>Girth per vertebra, tail first, MIN_GIRTH..MAX_GIRTH.</summary>
@@ -395,7 +395,7 @@ public sealed class CreatureDesign
         Version++;
     }
 
-    public const float MIN_PART_SIZE = 0.6f;
+    public const float MIN_PART_SIZE = 0.35f;        // small enough for the mean little eyes of an angler fish
     public const float MAX_PART_SIZE = 3f;
 
     /// <summary>Sets the visual size of one placed part, clamped.</summary>
@@ -421,10 +421,8 @@ public sealed class CreatureDesign
     /// <summary>Pairs of limbs that reach the ground (bare or with a foot), they carry the body on land.</summary>
     public int LegPairs => _parts.Count(IsWalkingLimb);
 
-    /// <summary>A marine mammal breathes air from the start, a fish needs a lung.</summary>
-    public bool BreathesAir => CreatureType.MarineMammal == Type
-        || Count(CreaturePartKind.Lung) > 0
-        || Count(CreaturePartKind.BigLung) > 0;
+    /// <summary>Every body needs a lung to breathe air, whatever its type (the type is cosmetic).</summary>
+    public bool BreathesAir => Count(CreaturePartKind.Lung) > 0 || Count(CreaturePartKind.BigLung) > 0;
 
     // ---------------------------------------------------------------------------
     // Geometry
@@ -449,11 +447,14 @@ public sealed class CreatureDesign
 
     public float NoseTipX => _spine.NoseTipX;
 
-    /// <summary>Height of a ring per profile radius.</summary>
-    public float HeightScale => CreatureType.Fish == Type ? 1f : 0.88f;
+    private const float VOLUME_HEIGHT_SCALE = 1f;    // cross section the volume is measured with, the same for every type
+    private const float VOLUME_WIDTH_SCALE = 0.72f;
 
-    /// <summary>Width of a ring per profile radius.</summary>
-    public float WidthScale => CreatureType.Fish == Type ? 0.72f : 0.95f;
+    /// <summary>Height of a ring per profile radius: a fish is tall, a marine mammal a little flatter (look only).</summary>
+    public float HeightScale => CreatureType.Fish == Type ? VOLUME_HEIGHT_SCALE : 0.88f;
+
+    /// <summary>Width of a ring per profile radius: a fish is slim, a marine mammal round (look only).</summary>
+    public float WidthScale => CreatureType.Fish == Type ? VOLUME_WIDTH_SCALE : 0.95f;
 
     /// <summary>X of a spine share, 0 = last vertebra at the tail, 1 = first at the nose (outside on the caps).</summary>
     public float XAt(float t)
@@ -505,11 +506,15 @@ public sealed class CreatureDesign
         return RadiusAt(x) * WidthScale;
     }
 
-    /// <summary>Volume of the lofted body in unit space: elliptic slices from tail tip to nose tip.</summary>
+    /// <summary>
+    /// Volume of the lofted body in unit space: elliptic slices from tail tip to nose tip.
+    /// The weight comes from it, so it is measured with one cross section for every body
+    /// type (the slim one of the fish): the type is cosmetic and must not make a body heavier.
+    /// </summary>
     /// <example><code>CreatureDesign.Blob().Volume()   // about 1.3</code></example>
     public float Volume()
     {
-        return _spine.Volume(HeightScale, WidthScale);
+        return _spine.Volume(VOLUME_HEIGHT_SCALE, VOLUME_WIDTH_SCALE);
     }
 
     /// <summary>Whether a point in unit space lies inside the body (the swim wave and the ring tilt ignored).</summary>
@@ -627,7 +632,7 @@ public sealed class CreatureDesign
 
     // ---------------------------------------------------------------------------
     // Body plans
-    //   The clay blob, the starter bodies, the type examples and the NPC creatures.
+    //   The clay blob, the starter bodies and the NPC creatures.
     // ---------------------------------------------------------------------------
 
     /// <summary>A design with a straight spine of the given girths, evenly spaced and centered, no parts.</summary>
@@ -636,8 +641,18 @@ public sealed class CreatureDesign
     /// <example><code>CreatureDesign.FromGirths(CreatureType.Fish, 0.4f, 0.7f, 0.8f, 0.6f).Girths.Count   // 4</code></example>
     public static CreatureDesign FromGirths(CreatureType type, params float[] girths)
     {
+        return FromGirths(type, girths, null);
+    }
+
+    /// <summary>A design with a straight spine of the given girths and distances between them, centered, no parts.</summary>
+    /// <param name="type">(Required) Fish or marine mammal.</param>
+    /// <param name="girths">(Required) Girth per vertebra, tail first.</param>
+    /// <param name="gaps">(Optional) Distance between neighbors, one less than girths, clamped to MIN_GAP..MAX_GAP. Null spaces them evenly.</param>
+    /// <example><code>CreatureDesign.FromGirths(CreatureType.Fish, new[] { 0.6f, 1f, 1f, 0.8f }, new[] { 0.2f, 0.2f, 0.2f })   // a ball</code></example>
+    public static CreatureDesign FromGirths(CreatureType type, float[] girths, float[] gaps)
+    {
         var design = new CreatureDesign { Type = type };
-        design._spine.Reset(girths);
+        design._spine.Reset(girths, gaps);
         return design;
     }
 
@@ -653,13 +668,6 @@ public sealed class CreatureDesign
     public static CreatureDesign Starter(CreatureType type)
     {
         return BodyPlans.Starter(type);
-    }
-
-    /// <summary>A finished example of a body type, shown on the type choice tiles (BodyPlans.Example).</summary>
-    /// <param name="type">(Required) Fish or marine mammal.</param>
-    public static CreatureDesign Example(CreatureType type)
-    {
-        return BodyPlans.Example(type);
     }
 
     /// <summary>A body plan for an NPC creature of the organism stage (BodyPlans.ForCritter).</summary>

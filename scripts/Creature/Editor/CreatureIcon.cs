@@ -1,5 +1,5 @@
 // NOTE:
-//   Live 3D icons of the creature editor: a whole example creature for the type cards,
+//   Live 3D icons of the creature editor: a whole creature for the template cards,
 //   or one part alone for palette tiles and the drag icon. Each icon renders in its own
 //   small studio (Cell/Editor/PartIcon.NewStudio). The counterpart of PartIcon for cells.
 //
@@ -10,6 +10,7 @@
 //     BUILD ICON   The icon and the little body that carries a single part.
 //
 
+using System.Linq;
 using Godot;
 
 namespace CellOut;
@@ -26,12 +27,16 @@ public static class CreatureIcon
 
     private const float CARD_CAMERA_DISTANCE = 3.6f;
     private const float TILE_CAMERA_DISTANCE = 2.9f;
+    private const float ICON_FOV = 40f;
+    private const float CARD_FIN_ROOM = 1.1f;        // a tail fin and a snout reach this far past the body, in unit space
+    private const float CARD_TALL_ROOM = 1.5f;       // more room for limbs, wings and stalks
+    private const float CARD_MARGIN = 0.75f;         // below 1: the camera looks at the body from the front flank, which shortens it
 
     /// <summary>A live creature in its own small studio, seen from the front flank.</summary>
     /// <param name="design">(Required) The creature shown.</param>
     /// <param name="color">(Required) Body color.</param>
     /// <param name="pixels">(Required) Edge length of the square icon.</param>
-    /// <param name="isTurning">(Required) Turns slowly on the spot (type cards).</param>
+    /// <param name="isTurning">(Required) Turns slowly on the spot (template cards).</param>
     /// <param name="isPartsOnly">(Optional) Only the parts without the body, the camera frames them. Defaults to false.</param>
     /// <returns>The icon, it ignores the mouse.</returns>
     public static Control New(CreatureDesign design, Color color, int pixels, bool isTurning, bool isPartsOnly = false)
@@ -55,9 +60,17 @@ public static class CreatureIcon
             spin.TweenProperty(visual, "rotation:y", -0.5f, 3f).SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.InOut);
         }
 
-        // Cards look at the whole creature, a parts-only tile lets the visual frame its part
-        Vector3 offset = new Vector3(0.35f, 0.55f, 1f).Normalized() * (isTurning ? CARD_CAMERA_DISTANCE : TILE_CAMERA_DISTANCE);
-        var camera = new Camera3D { Fov = 40f, Current = true };
+        // Cards look at the whole creature: the camera backs off until a long body with its
+        // tail fin fits the width. A parts-only tile lets the visual frame its part
+        // Limbs, wings and stalks reach far up or down: the camera backs off some more for them
+        bool  isTall   = design.Parts.Any(part => part.Info.IsSculpted || part.Info.IsEnd || part.Info.IsWing
+            || CreaturePartKind.Lure == part.Kind || CreaturePartKind.StalkEye == part.Kind
+            || CreaturePartKind.Flipper == part.Kind || CreaturePartKind.Paddle == part.Kind || CreaturePartKind.FilterMouth == part.Kind);
+        float span     = design.NoseTipX - design.TailTipX + CARD_FIN_ROOM + (isTall ? CARD_TALL_ROOM : 0f);
+        float fitting  = span * 0.5f / Mathf.Tan(Mathf.DegToRad(ICON_FOV * 0.5f)) * CARD_MARGIN;
+        float distance = isTurning ? Mathf.Max(CARD_CAMERA_DISTANCE, fitting) : TILE_CAMERA_DISTANCE;
+        Vector3 offset = new Vector3(0.35f, 0.55f, 1f).Normalized() * distance;
+        var camera = new Camera3D { Fov = ICON_FOV, Current = true };
         camera.Transform = new Transform3D(Basis.LookingAt(-offset, Vector3.Up), offset);
         viewport.AddChild(camera);
         if (isPartsOnly)

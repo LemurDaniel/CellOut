@@ -1,0 +1,18 @@
+{
+  "key": "WHALE",
+  "order": 90,
+  "type": "MarineMammal",
+  "girths": [0.25, 0.32, 0.48, 0.68, 0.86, 0.97, 1.0, 1.0, 1.0, 1.0],
+  "lifts": [0.58, 0.4, 0.26, 0.17, 0.14, 0.14, 0.14, 0.14, 0.14, 0.14],
+  "color": "#e8e4d4",
+  "pattern": "Saddle",
+  "patternColor": "#4f6f9f",
+  "parts": [
+    { "kind": "Fluke", "t": 0, "free": true, "size": 1.9 },
+    { "kind": "Eye", "t": 0.64, "free": true, "size": 0.8, "offset": [0, 0.08, 0] },
+    { "kind": "FilterMouth", "t": 1 },
+    { "kind": "Blowhole", "t": 0.8 },
+    { "kind": "Flipper", "t": 0.56, "size": 1.5, "offset": [0, -0.22, 0], "rotation": [0.55, -0.25, -0.65] },
+    { "kind": "DorsalFin", "t": 0.28, "size": 0.6 }
+  ]
+}
