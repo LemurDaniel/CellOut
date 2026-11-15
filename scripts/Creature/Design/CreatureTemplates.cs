@@ -31,6 +31,7 @@
 //       { "kind": "Legs", "t": 0.3,
 //         "side": 0,                   (optional) 0 pair, 1 right half, -1 left half
 //         "size": 1.2,                 (optional) visual size, 0.6 to 3
+//         "stretch": [1.5, 1, 0.6],    (optional) extra factor per axis on top of size, 0.3 to 3 (x along the body, y up, z out of the flank)
 //         "offset": [0, 0.1, 0],       (optional) shift in unit space (x forward, y up, z out of the right flank)
 //         "rotation": [0, 0, 0.3],     (optional) euler turn in radians
 //         "joints": [[0.04, -0.12, 0.26], [0.1, -0.36, 0.34], [0.12, -0.6, 0.34]] },   (optional) sculpted limbs: every joint from the shoulder outwards
@@ -72,6 +73,7 @@ public sealed record CreatureTemplatePart
     public bool Free { get; init; }
     public int Side { get; init; }
     public float Size { get; init; } = 1f;
+    public float[] Stretch { get; init; }
     public float[] Offset { get; init; }
     public float[] Rotation { get; init; }
     public float[][] Joints { get; init; }
@@ -131,7 +133,8 @@ public static class CreatureTemplates
     /// <summary>What a template may bring for free, like the starter bodies: whatever sits at the tail tip, and the eyes.</summary>
     private static bool IsFreeKind(CreaturePartKind kind)
     {
-        return CreaturePartKind.Eye == kind || CreatureMount.Tail == CreatureCatalog.Get(kind).Mount;
+        CreaturePartInfo info = CreatureCatalog.Get(kind);
+        return CreatureMount.Tail == info.Mount || (CreatureCategory.Eyes == info.Category && CreaturePartKind.Lure != kind);
     }
 
     private static IReadOnlyList<CreatureTemplate> _all;
@@ -192,7 +195,7 @@ public static class CreatureTemplates
         {
             if (!IsFreeKind(part.Kind))
             {
-                throw new InvalidOperationException($"Template {file.Key}: only a tail part and the eyes (Eye) may be free, got '{part.Kind}'.");
+                throw new InvalidOperationException($"Template {file.Key}: only a tail part and a pair of eyes may be free, got '{part.Kind}'.");
             }
         }
         if (file.Parts.Count(part => part.Free) > 2)
@@ -286,6 +289,10 @@ public static class CreatureTemplates
             }
             int index = design.Parts.Count - 1;
             design.SetPartSize(index, part.Size);
+            if (null != part.Stretch)
+            {
+                design.SetPartStretch(index, ToVector(file, part.Stretch));
+            }
             if (null != part.Offset || null != part.Rotation)
             {
                 design.SetPartPose(index, ToVector(file, part.Offset), ToVector(file, part.Rotation));

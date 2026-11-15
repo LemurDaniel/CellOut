@@ -1,22 +1,27 @@
 # NOTE:
-#   New parts for the seahorse of the organism stage: the curled grasping tail that
-#   replaces a tail fin and the tube snout that replaces a mouth. Not registered in
-#   build.models.py yet, previewed with Show-Model.ps1.
+#   New parts for the seahorse and the moray eel of the organism stage: the curled
+#   grasping tail, the tube snout and the turret eye of the seahorse, the gaping maw
+#   and the fin ribbon of the eel. Registered in build.models.py.
 #   Model spaces (Visual/CreatureModels.cs):
 #   > Curl tail:   Tail, root at the origin at the tail tip, reaching back (-X), about 1 unit.
-#   > Tube snout:  Snout, a horseshoe around the snout: ends at x = 0, z = -1 and 1,
-#                  the nose tip at x = 1. The tube reaches far past the nose tip.
+#   > Tube snout:  Snout, x = 0 at the mouth corners, x = 1 at the nose tip. The tube reaches far past the nose tip.
+#   > Turret eye:  Eye, an eyeball of radius 1 at the origin on the right flank, +Z out of the head.
+#   > Gape maw:    Snout, teeth along the opening data/mouths.json carves for GapeMaw.
+#   > Fin ribbon:  Hug, x -0.5 .. 0.5 along the body (half its length), y = 1 the back, z = 1 the flank.
 #
 #   ./tools/blender/Show-Model.ps1 -Module new_seahorse -Call 'build_curltail(scene)' -Name curltail
 #   ./tools/blender/Show-Model.ps1 -Module new_seahorse -Call 'build_tubesnout(scene)' -Name tubesnout
 
 #
 #   Chapters:
-#     SEAHORSE PARTS   Curled tail and tube snout.
+#     SEAHORSE PARTS   Curled tail, tube snout and turret eye.
+#     EEL PARTS        Gaping maw and fin ribbon.
 #
 
 import math
 
+import bmesh
+import bpy
 from mathutils import Matrix, Vector
 
 from models.helpers import (
@@ -24,8 +29,11 @@ from models.helpers import (
     FPS,
     G,
     animate,
+    apply_modifiers,
     bind,
+    cone,
     ellipsoid,
+    link_mesh,
     rig,
     tube,
     wave,
@@ -39,7 +47,8 @@ from models.helpers import (
 #   spiral_point      A point of the tail spiral and its distance to the spiral center.
 #   build_curltail    Grasping tail: hangs down behind the body and curls forward into a spiral, bony rings.
 #   tilted_disc       A flat ellipsoid standing across a direction in the XY plane.
-#   build_tubesnout   Tube snout: a muzzle over the nose, a long pipe and a small trumpet mouth.
+#   build_tubesnout   Tube snout: a muzzle over the nose, a tapering pipe and a small mouth.
+#   build_turreteye   Turret eye: a cone of skin with a golden eye in its tip, a bony spike above.
 #
 #   The tail curls tighter and loosens again in two seconds ("Curl"), the snout stands still.
 #
@@ -55,12 +64,12 @@ CURL_TAPER = 0.62                    # the tube thins with the spiral radius to 
 CURL_BONE_DEGREES = (0.0, 100.0, 200.0, 310.0, 430.0, CURL_DEGREES)
 
 SNOUT_PATH = (                       # (x, y, radius) from the muzzle over the nose to the mouth
-    (0.15, 0.0, 0.84),
-    (0.6, -0.02, 0.72),
-    (1.0, -0.08, 0.44),
-    (1.5, -0.17, 0.3),
-    (2.4, -0.37, 0.27),
-    (3.2, -0.55, 0.29),
+    (0.1, 0.0, 0.88),
+    (0.6, -0.02, 0.78),
+    (1.1, -0.08, 0.56),
+    (1.7, -0.16, 0.42),
+    (2.3, -0.24, 0.36),
+    (2.8, -0.3, 0.4),
 )
 SNOUT_END_GIRTH = 0.12               # the pipe closes to this inside the lip, so its round cap stays hidden
 
@@ -134,7 +143,7 @@ def build_tubesnout(scene):
     tube(scene, 'Pipe', points, radii, [(i, i + 1) for i in range(len(points) - 1)], 'Skin')
 
     # Trumpet mouth: a lip ring across the pipe and the dark hole in it
-    tilted_disc(scene, 'Lip', points[-2] + forward * 0.08, forward, 0.17, 0.45, 'ShellRim')
+    tilted_disc(scene, 'Lip', points[-2] + forward * 0.08, forward, 0.17, 0.5, 'ShellRim')
     tilted_disc(scene, 'Hole', points[-2] + forward * 0.2, forward, 0.1, 0.29, 'Dark')
 
     # Two bony bumps on the bridge of the snout, like the nose spine of a seahorse
@@ -144,3 +153,115 @@ def build_tubesnout(scene):
         (x0, y0, r0), (x1, y1, r1) = SNOUT_PATH[low], SNOUT_PATH[low + 1]
         mix = (x - x0) / (x1 - x0)
         ellipsoid(scene, f'Bump{index}', G(x, y0 + (y1 - y0) * mix + (r0 + (r1 - r0) * mix) * 0.95, 0.0), (0.14, 0.14, 0.12), 'ShellRim', subdivisions=2)
+
+
+TURRET_PATH = ((-0.5, 1.15), (0.2, 1.0), (0.65, 0.72))   # (z out of the head, radius) of the cone of skin
+TURRET_KNOBS = 6                     # bony knobs around the foot of the cone
+
+
+def build_turreteye(scene):
+    # Turret: a cone of skin growing out of the head, the eye sits in its tip
+    tube(scene, 'Turret', [G(0.0, 0.0, z) for z, _ in TURRET_PATH], [radius for _, radius in TURRET_PATH], [(0, 1), (1, 2)], 'Skin')
+    for index in range(TURRET_KNOBS):
+        angle = math.tau * (index + 0.5) / TURRET_KNOBS
+        ellipsoid(scene, f'Knob{index}', G(math.cos(angle) * 1.0, math.sin(angle) * 1.0, 0.15), (0.16, 0.16, 0.16), 'ShellRim', subdivisions=2)
+
+    # Eye: a golden iris peeking out of the tip, a big pupil looking out and a little forward
+    ellipsoid(scene, 'Iris', G(0.0, 0.0, 1.0), (0.62, 0.62, 0.62), 'Beak')
+    ellipsoid(scene, 'Pupil', G(0.1, 0.0, 1.32), (0.4, 0.4, 0.4), 'Pupil')
+    ellipsoid(scene, 'Glint', G(0.26, 0.2, 1.63), (0.1, 0.1, 0.1), 'Glint', subdivisions=2)
+
+    # Eye spine: a bony spike above the eye, leaning back
+    cone(scene, 'Spine', G(-0.1, 0.75, 0.3), G(-0.4, 1.6, 0.6), 0.26, 'ShellRim')
+
+
+# ===========================================================================
+# ==============================   EEL PARTS   ==============================
+# ===========================================================================
+#
+#   maw_edge          Height of the upper or lower edge of the carved opening at a spot.
+#   maw_outline       Spots along the lips from one mouth corner around the nose to the other.
+#   build_gapemaw     Gaping maw of a moray: needle teeth on both lips, two nostril tubes on the nose.
+#   build_finribbon   A low fin seam along the back with a wavy edge, one piece covers half the body.
+#
+#   The maw follows the opening the body carves for GapeMaw (data/mouths.json): the
+#   numbers below repeat that line and must change with it.
+#
+
+MAW_LENGTH = 1.5                     # mouths.json: length
+MAW_SMILE = 0.1                      # mouths.json: smile
+MAW_GAPE = 0.26                      # mouths.json: gape
+MAW_Y_SCALE = 0.75                   # the game stretches model y to this share of the head height
+MAW_INSET = 0.9                      # the teeth stand this share of the head width from the middle
+MAW_SIDE_TEETH = 4                   # teeth per flank behind the head cap
+MAW_FRONT_TEETH = 9                  # teeth around the head cap
+
+RIBBON_BASE = 0.8                    # the seam starts inside the back
+RIBBON_HEIGHT = 2.0                  # mean height of its edge, 1 = the back
+RIBBON_WAVE = 0.1                    # how far the edge waves up and down
+RIBBON_WAVES = 7                     # waves along one piece
+RIBBON_COLUMNS = 56
+RIBBON_ROWS = 4
+RIBBON_THICKNESS = 0.12              # across the body, in flank widths
+RIBBON_END = 0.05                    # the edge sinks to the back over this share at both ends
+
+
+def maw_edge(x, side):
+    """Model y of the upper (side 1) or lower (side -1) lip at x (0 corners .. 1 nose tip), as CreatureClay carves it."""
+    ramp = max(0.0, min(1.0, x / 0.3))
+    opening = MAW_GAPE * ramp * ramp * (3.0 - 2.0 * ramp)
+    return (MAW_SMILE * (1.0 - x) ** 2 + side * opening) / MAW_Y_SCALE
+
+
+def maw_outline():
+    """(x, z) spots for teeth: along the right flank, around the head cap, back along the left flank."""
+    cap_start = 1.0 - 1.0 / MAW_LENGTH
+    side = [(0.32 + (cap_start - 0.32) * i / MAW_SIDE_TEETH, MAW_INSET) for i in range(MAW_SIDE_TEETH)]
+    front = []
+    for i in range(MAW_FRONT_TEETH):
+        angle = math.radians(80.0 - 160.0 * i / (MAW_FRONT_TEETH - 1))
+        front.append((cap_start + (1.0 - cap_start) * math.cos(angle) * 0.93, math.sin(angle) * MAW_INSET))
+    return side + front + [(x, -z) for x, z in reversed(side)]
+
+
+def build_gapemaw(scene):
+    # Needle teeth: long ones hanging from the upper lip, shorter ones standing between them on the lower lip
+    spots = maw_outline()
+    for index, (x, z) in enumerate(spots):
+        length = 0.3 if 0 == index % 2 else 0.2
+        cone(scene, f'Upper{index}', G(x, maw_edge(x, 1) + 0.05, z), G(x, maw_edge(x, 1) - length, z * 0.94), 0.04)
+    for index in range(len(spots) - 1):
+        (x0, z0), (x1, z1) = spots[index], spots[index + 1]
+        x, z = (x0 + x1) / 2, (z0 + z1) / 2
+        cone(scene, f'Lower{index}', G(x, maw_edge(x, -1) - 0.05, z), G(x, maw_edge(x, -1) + 0.2, z * 0.92), 0.035)
+
+    # Nostril tubes: two short pipes on the tip of the nose, pointing forward and up
+    for side in (-1, 1):
+        tube(scene, f'Nostril{side}', [G(0.74, 0.9, side * 0.3), G(0.8, 1.12, side * 0.32), G(0.86, 1.26, side * 0.34)],
+             (0.075, 0.065, 0.06), [(0, 1), (1, 2)], 'Skin')
+
+
+def build_finribbon(scene):
+    # Seam: a quad strip standing on the back, its edge waving, sinking to the back at both ends
+    bm = bmesh.new()
+    grid = []
+    for column in range(RIBBON_COLUMNS + 1):
+        share = column / RIBBON_COLUMNS
+        ends = min(1.0, share / RIBBON_END, (1.0 - share) / RIBBON_END)
+        top = RIBBON_HEIGHT + RIBBON_WAVE * math.sin(share * math.tau * RIBBON_WAVES)
+        height = RIBBON_BASE + (top - RIBBON_BASE) * math.sin(ends * math.pi / 2)
+        grid.append([bm.verts.new(G(share - 0.5, RIBBON_BASE + (height - RIBBON_BASE) * row / RIBBON_ROWS, 0.0)) for row in range(RIBBON_ROWS + 1)])
+    for column in range(RIBBON_COLUMNS):
+        for row in range(RIBBON_ROWS):
+            bm.faces.new([grid[column][row], grid[column + 1][row], grid[column + 1][row + 1], grid[column][row + 1]])
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+    mesh = bpy.data.meshes.new('Seam')
+    bm.to_mesh(mesh)
+    bm.free()
+    seam = link_mesh(scene, 'Seam', mesh, 'Fin')
+    solidify = seam.modifiers.new('Thick', 'SOLIDIFY')
+    solidify.thickness = RIBBON_THICKNESS
+    solidify.offset = 0.0
+    apply_modifiers(seam)
+    for polygon in seam.data.polygons:
+        polygon.use_smooth = True

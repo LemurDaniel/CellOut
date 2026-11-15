@@ -3,7 +3,8 @@
 //   the first unit test runs: the tests pin the formulas, so retuning data/balance.json
 //   never breaks them. BalanceTests checks that the real file of the game still loads.
 //   The creature templates of the game (data/creatures) are loaded as they are: they are
-//   content, CreatureTemplateTests checks that every one of them builds.
+//   content, CreatureTemplateTests checks that every one of them builds. The same goes for
+//   the mouth openings (data/mouths.json, MouthShapeTests).
 //   Requires: the tests run from inside the repository.
 //
 //   dotnet test tests/unit/CellOut.Tests.csproj
@@ -22,6 +23,7 @@ internal static class TestSetup
     public const string FIXTURE_FILE = "tests/unit/balance.fixture.json";
     public const string TEMPLATE_FOLDER = "data/creatures";
     public const string TRANSLATION_FILE = "locale/translations.csv";
+    public const string MOUTH_FILE = "data/mouths.json";
 
     /// <summary>Content of a file of the repository, found by walking up from the test binaries.</summary>
     /// <param name="file">(Required) Path relative to the repository root, GAME_FILE or FIXTURE_FILE.</param>
@@ -57,6 +59,7 @@ internal static class TestSetup
     internal static void LoadBalance()
     {
         Balance.Use(ReadRepoFile(FIXTURE_FILE));
+        MouthShapes.Use(ReadRepoFile(MOUTH_FILE));
         CreatureTemplates.Use(ReadRepoFolder(TEMPLATE_FOLDER));
     }
 }

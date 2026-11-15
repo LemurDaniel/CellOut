@@ -8,7 +8,7 @@
   "patternColor": "#b8433f",
   "parts": [
     { "kind": "MantleFins", "t": 0, "free": true, "size": 1.25 },
-    { "kind": "Eye", "t": 0.84, "free": true, "size": 1.6 },
+    { "kind": "SquidEye", "t": 0.84, "free": true, "size": 2.0, "offset": [0.0, -0.05, 0.0] },
     { "kind": "Tentacle", "t": 0.92, "size": 0.75, "offset": [0.05, 0.1, -0.12],
       "joints": [[0.13, 0.0, 0.03], [0.51, 0.0, 0.19], [0.91, -0.03, 0.27], [1.23, -0.11, 0.19]] },
     { "kind": "Tentacle", "onPart": 2, "onJoint": 0, "size": 0.75,
@@ -17,6 +17,7 @@
       "joints": [[0.32, -0.16, 0.08], [0.67, -0.29, 0.19], [0.99, -0.4, 0.21], [1.2, -0.56, 0.13]] },
     { "kind": "Suckers", "onPart": 2, "onJoint": 0, "size": 0.6,
       "joints": [[0.5, -0.25, 0.17], [0.97, -0.55, 0.38], [1.38, -0.72, 0.42], [1.67, -0.62, 0.3]] },
-    { "kind": "Siphon", "t": 0.78, "size": 0.9 }
+    { "kind": "Siphon", "t": 0.78, "size": 0.9 },
+    { "kind": "SquidBeak", "t": 1 }
   ]
 }

@@ -81,6 +81,7 @@ public partial class CreatureEditor : CanvasLayer
     //   MovePickedPart  Shifts the picked part (gizmo arrows), free of charge, looks only.
     //   TurnPickedPart  Turns the picked part (gizmo rings), free of charge, looks only.
     //   SetPartSize     Size of the picked part, free of charge, looks only.
+    //   StretchPickedPart  Stretches the picked part along one axis, free of charge, looks only.
     //   SetGirth        Thickness of one vertebra, free of charge.
     //   SetLift         Height of one vertebra (bends the spine), free of charge.
     //   PickVertebra    Picks a vertebra for the gizmo, -1 for none.
@@ -318,6 +319,9 @@ public partial class CreatureEditor : CanvasLayer
     public bool MovePickedVertebra(Vector3 delta) => _session.MovePickedVertebra(delta);
 
     /// <summary>Scales the girth of the picked vertebra, free of charge.</summary>
+    /// <inheritdoc cref="CreatureEditorSession.StretchPickedPart"/>
+    public bool StretchPickedPart(Vector3 axis, float factor) => _session.StretchPickedPart(axis, factor);
+
     /// <inheritdoc cref="CreatureEditorSession.ScalePickedVertebra"/>
     public bool ScalePickedVertebra(float factor) => _session.ScalePickedVertebra(factor);
 

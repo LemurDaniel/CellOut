@@ -377,6 +377,7 @@ public sealed class CreatureEditorSession
     //   MovePickedPart  Shifts the picked part (gizmo arrows), free of charge, looks only.
     //   TurnPickedPart  Turns the picked part (gizmo rings), free of charge, looks only.
     //   SetPartSize     Size of the picked part, free of charge, looks only.
+    //   StretchPickedPart  Stretches the picked part along one axis (gizmo cubes), free of charge, looks only.
     //
 
     /// <summary>Picks a placed part for gizmo and size slider. Raises Changed.</summary>
@@ -459,6 +460,22 @@ public sealed class CreatureEditorSession
             return false;
         }
         Draft.SetPartSize(PickedPart, size);
+        return true;
+    }
+
+    /// <summary>Stretches the picked part along one body axis, clamped by the design. Both halves of a pair follow.</summary>
+    /// <param name="axis">(Required) Vector3.Right (along the body), Vector3.Up or Vector3.Back (out of the flank).</param>
+    /// <param name="factor">(Required) Above 1 longer, below 1 shorter, multiplied onto the stretch of that axis.</param>
+    /// <returns>False when no part is picked.</returns>
+    /// <example><code>session.StretchPickedPart(Vector3.Right, 1.2f);</code></example>
+    public bool StretchPickedPart(Vector3 axis, float factor)
+    {
+        if (PickedPart < 0)
+        {
+            return false;
+        }
+        Vector3 grown = Vector3.One + axis.Abs() * (factor - 1f);
+        Draft.SetPartStretch(PickedPart, Draft.Parts[PickedPart].Proportion * grown);
         return true;
     }
 

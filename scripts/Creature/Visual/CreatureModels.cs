@@ -48,6 +48,8 @@ public static class CreatureModels
       - Spines, shell: around a unit sphere at the origin, stretched to the body there.
       - Gills:      on the skin of the right flank, out of the body is +Z, slits upright.
       - Lantern:    base at the origin, arching forward over the head. "Sway", 3 s.
+      - Eye models: an eyeball of radius 1 at the origin on the right flank, +Z out of the head, +X forward:
+                    the pupil looks out and a little forward. The game scales it to the eye size and blinks it (y).
       Parts on the right flank (+Z) are used as they are, the left ones mirrored on Z.
     */
     public const string MODEL_DIR = "res://assets/models/creature/";
@@ -93,6 +95,26 @@ public static class CreatureModels
             [CreaturePartKind.Carapace]      = ("creature.carapace.glb", null),
             [CreaturePartKind.FeatherGills]  = ("creature.feathergills.glb", "Sway"),
             [CreaturePartKind.Siphon]        = ("creature.siphon.glb", "Puff"),
+            // Round 3 (eyes, mouths, fins): no fixed animation name, a rigged one plays its only loop (CreatureParts3D.BuildPlaced)
+            [CreaturePartKind.SickleFin]     = ("creature.sicklefin.glb", "Flutter"),
+            [CreaturePartKind.RoundFlipper]  = ("creature.roundflipper.glb", "Flutter"),
+            [CreaturePartKind.HindPaddle]    = ("creature.hindpaddle.glb", "Stroke"),
+            [CreaturePartKind.FinRibbon]     = ("creature.finribbon.glb", null),
+            [CreaturePartKind.SharkMaw]      = ("creature.sharkmaw.glb", null),
+            [CreaturePartKind.OrcaMaw]       = ("creature.orcamaw.glb", null),
+            [CreaturePartKind.GapeMaw]       = ("creature.gapemaw.glb", null),
+            [CreaturePartKind.SquidBeak]     = ("creature.squidbeak.glb", null),
+            [CreaturePartKind.CrabMouth]     = ("creature.crabmouth.glb", null),
+            [CreaturePartKind.Smile]         = ("creature.smile.glb", null),
+            [CreaturePartKind.BeadEye]       = ("creature.beadeye.glb", null),
+            [CreaturePartKind.GhostEye]      = ("creature.ghosteye.glb", null),
+            [CreaturePartKind.BulgeEye]      = ("creature.bulgeeye.glb", null),
+            [CreaturePartKind.PatchEye]      = ("creature.patcheye.glb", null),
+            [CreaturePartKind.SquidEye]      = ("creature.squideye.glb", null),
+            [CreaturePartKind.PegEye]        = ("creature.pegeye.glb", null),
+            [CreaturePartKind.LidEye]        = ("creature.lideye.glb", null),
+            [CreaturePartKind.TurretEye]     = ("creature.turreteye.glb", null),
+            [CreaturePartKind.FrogEye]       = ("creature.frogeye.glb", null),
         };
 
     /// <summary>A new instance of a creature part model, recolored (Core/PartModels.cs).</summary>

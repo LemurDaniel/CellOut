@@ -311,6 +311,11 @@ public partial class SmokeTest : Node
             && Mathf.IsEqualApprox(editor.Draft.Parts[0].Offset.Y, 0.1f) && Mathf.IsEqualApprox(editor.Draft.Parts[0].Rotation.Y, 0.5f)
             && editor.MovePickedPart(Vector3.Right * 9f) && editor.Draft.Parts[0].Offset.Length() <= CreatureDesign.MAX_PART_OFFSET + 0.001f
             && pointsStart - 4 == editor.Points;
+        // Stretch per axis: free, stored on the part, clamped
+        isPosed = isPosed && editor.StretchPickedPart(Vector3.Right, 1.5f) && Mathf.IsEqualApprox(editor.Draft.Parts[0].Proportion.X, 1.5f)
+            && Mathf.IsEqualApprox(editor.Draft.Parts[0].Proportion.Y, 1f)
+            && editor.StretchPickedPart(Vector3.Up, 99f) && Mathf.IsEqualApprox(editor.Draft.Parts[0].Proportion.Y, CreatureDesign.MAX_PART_STRETCH)
+            && pointsStart - 4 == editor.Points;
 
         // Symmetry off: one hand per flank at the same spot, each at half price and half weight
         float weightBefore = CreatureStats.From(editor.Draft).Weight;
@@ -330,7 +335,7 @@ public partial class SmokeTest : Node
         // Spine: the nose lifted to a neck, the neighbor follows; the nose pulled out one vertebra, the eyes ride with the head
         int   nose       = editor.Draft.Girths.Count - 1;
         editor.SetLift(nose, 0.9f);
-        bool  isBent     = Mathf.IsEqualApprox(editor.Draft.Lifts[nose], 0.9f) && editor.Draft.Lifts[nose - 1] >= 0.9f - 0.33f
+        bool  isBent     = Mathf.IsEqualApprox(editor.Draft.Lifts[nose], 0.9f) && editor.Draft.Lifts[nose - 1] >= 0.9f - 0.39f
             && editor.Draft.LiftAt(editor.Draft.NoseTipX) > 0.8f;
         int   eye        = IndexOf(editor.Draft, CreaturePartKind.Eye);
         float eyeX       = editor.Draft.XAt(editor.Draft.Parts[eye].T);

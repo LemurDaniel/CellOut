@@ -8,8 +8,8 @@
   "pattern": "Saddle",
   "patternColor": "#4f6f9f",
   "parts": [
-    { "kind": "Fluke", "t": 0, "free": true, "size": 1.9 },
-    { "kind": "Eye", "t": 0.64, "free": true, "size": 0.8, "offset": [0, 0.08, 0] },
+    { "kind": "Fluke", "t": 0, "free": true, "size": 1.7, "stretch": [1, 1, 1.35] },
+    { "kind": "Eye", "t": 0.64, "free": true, "size": 0.6, "offset": [0, 0.1, 0] },
     { "kind": "FilterMouth", "t": 1 },
     { "kind": "Blowhole", "t": 0.8 },
     { "kind": "Flipper", "t": 0.56, "size": 1.5, "offset": [0, -0.22, 0], "rotation": [0.55, -0.25, -0.65] },

@@ -12,6 +12,8 @@
 
 import math
 
+from mathutils import Matrix
+
 from models.helpers import (
     AXIS_OUT,
     FPS,
@@ -31,8 +33,10 @@ from models.helpers import (
 #
 #   around             A point on the horseshoe around the snout.
 #   build_jaw          Shark jaw: two gums full of teeth around a dark maw, the lower one chomps.
-#   on_snout           A point on the skin of the snout, around the nose and back along the flanks.
-#   build_filtermouth  Whale mouth: a long grinning mouth line, a comb of baleen, a heavy lower lip, throat pleats.
+#   on_mouth           A point on the skin of the head, relative to the carved mouth line.
+#   mouth_stations     Stations from one mouth corner around the nose to the other.
+#   squash             Brings parts built round into the stretched model space.
+#   build_filtermouth  Whale mouth: baleen in the carved grin, knobs on the upper jaw, throat pleats.
 #   build_beak         A hooked upper beak over a short lower one.
 #
 
@@ -106,87 +110,95 @@ def build_jaw(scene):
     })
 
 
-# The snout of a marine mammal in the model space of the mouth (CreatureParts3D.BuildMouth):
-# a half ellipsoid in front of the last vertebra, behind it the head runs on about as thick
-SNOUT_START = -0.13                  # x of the last vertebra
-SNOUT_REACH = 1.10                   # from there to the nose tip
-SNOUT_CENTER = 0.24                  # height of the spine
-SNOUT_HALF_HEIGHT = 1.34
-SNOUT_HALF_WIDTH = 0.96
+# The opening the game carves for a mouth kind (data/mouths.json, Visual/CreatureClay.cs CarveMouth).
+# The numbers here must match the line of the kind in data/mouths.json, or the model leaves its opening.
+FILTER_MOUTH = {'length': 2.8, 'level': -0.2, 'smile': 0.28, 'gape': 0.16}
 
-WHALE_MOUTH_BACK = 1.9               # the mouth line runs this far back along the flanks, past the horseshoe
-WHALE_SMILE = 0.45                   # the corners of the mouth rise this far: a grin up to the eyes
-WHALE_GAP = 0.62                     # height of the open mouth at the nose
-WHALE_PLEATS = (0.2, 0.33, 0.46, 0.59, 0.72, 0.85)   # throat pleats: how far each one runs below the lower lip
+MOUTH_FIT = 1.03                     # the game stretches the model this far past the nose tip and the flanks
+MOUTH_HEIGHT = 0.75                  # model y = 1 is this share of the head height
+MOUTH_Y_UNIT = 0.66                  # a model y unit in head widths: parts are built round and squashed at the end
+WHALE_PLEATS = (0.2, 0.36, 0.52, 0.68, 0.84, 1.0)   # throat pleats: how far each one runs below the lower lip, model y
 
 
-def on_snout(degrees, back, height, push=1.0):
+def on_mouth(shape, degrees, back, gapes=0.0, extra=0.0, push=1.0):
     """
-    A point on the skin of the snout at a height. degrees runs around the nose (0 the
-    tip, -90 and 90 the flanks), back continues from the flanks towards the tail.
-    push > 1 stands out of the skin, < 1 sinks into it.
+    A point on the skin of a round head, relative to the carved mouth line of a shape.
+    degrees runs around the nose (0 the tip, -90 and 90 the flanks), back continues from
+    the flanks towards the mouth corners (model x units). gapes moves the point up from
+    the mouth line in half openings (1 = upper edge, -1 = lower edge), extra in model y.
+    push > 1 stands out of the skin. Returns the point in round head units (see squash)
+    and s, 0 at the mouth corners .. 1 at the nose tip.
     """
-    level = math.sqrt(max(0.02, 1.0 - ((height - SNOUT_CENTER) / SNOUT_HALF_HEIGHT) ** 2)) * push
+    length = shape['length']
+    cap = 1.0 / length / MOUTH_FIT
+    cap_start = (length - 1.0) / length / MOUTH_FIT
+    center = -shape['level'] / MOUTH_HEIGHT
     angle = math.radians(degrees)
-    return G(SNOUT_START + SNOUT_REACH * level * math.cos(angle) - back, height, SNOUT_HALF_WIDTH * level * math.sin(angle))
+    height, s, level = 0.0, 1.0, 1.0
+    for _ in range(5):
+        level = math.sqrt(max(0.02, 1.0 - ((height - center) * MOUTH_HEIGHT) ** 2))
+        s = max(0.0, min(1.0, (cap_start + cap * level * math.cos(angle) - back) * MOUTH_FIT))
+        ramp = max(0.0, min(1.0, s / 0.3))
+        opening = max(shape['gape'] * ramp * ramp * (3.0 - 2.0 * ramp), 0.045) / MOUTH_HEIGHT
+        height = shape['smile'] * (1.0 - s) ** 2 / MOUTH_HEIGHT + gapes * opening + extra
+    x = cap_start + cap * level * push * math.cos(angle) - back
+    return G(x * length * MOUTH_FIT, height * MOUTH_Y_UNIT, level * push * math.sin(angle) / (MOUTH_FIT + 0.01)), s
+
+
+def mouth_stations(shape, flank_count, front_count):
+    """(degrees, back) from the left mouth corner around the nose to the right one."""
+    reach = max(0.0, (shape['length'] - 1.0) / shape['length'] / MOUTH_FIT)
+    flank = [(90.0, reach * (1.0 - i / flank_count)) for i in range(flank_count)] if reach > 0.0 else []
+    front = [(90.0 - i * 180.0 / (front_count - 1), 0.0) for i in range(front_count)]
+    return [(-degrees, back) for degrees, back in flank] + [(-degrees, 0.0) for degrees, _ in front] + flank[::-1]
+
+
+def squash(scene, shape):
+    """Parts were built round in head units: brings every mesh into the model space the game stretches."""
+    fit = Matrix.Diagonal((1.0 / (shape['length'] * MOUTH_FIT), 1.0, 1.0 / MOUTH_Y_UNIT, 1.0))
+    for obj in scene.objects:
+        if 'MESH' == obj.type:
+            obj.data.transform(fit)
 
 
 def build_filtermouth(scene):
-    # Stations from the left corner of the mouth around the nose to the right corner:
-    # (degrees, back, open) with open 0 at the corners and 1 around the nose
-    steps = 8
-    flank = [(90.0, WHALE_MOUTH_BACK * (1.0 - i / steps), i / steps) for i in range(steps)]
-    front = [(90.0 - i * 15.0, 0.0, 1.0) for i in range(13)]
-    right = flank[::-1]
-    stations = [(-degrees, back, share) for degrees, back, share in flank] + [(-degrees, 0.0, 1.0) for degrees, _, _ in front] \
-        + right
-    chain = [(i, i + 1) for i in range(len(stations) - 1)]
+    """
+    What the carved opening cannot do for a baleen whale: the fringe of baleen hanging
+    in the long grin, the knobs of a humpback on the upper jaw and the throat pleats
+    below the lower lip.
+    """
+    shape = FILTER_MOUTH
+    stations = mouth_stations(shape, 16, 27)
 
-    def upper_y(share):
-        return WHALE_SMILE * (1.0 - share) ** 1.7
+    # Baleen: thin plates hanging from the upper edge of the opening, all along the mouth line
+    for i, (degrees, back) in enumerate(stations):
+        center, s = on_mouth(shape, degrees, back, 0.1, 0.0, 0.95)
+        upper, _ = on_mouth(shape, degrees, back, 1.0, 0.0, 0.95)
+        if s < 0.06:
+            continue
+        ellipsoid(scene, f'Baleen{i}', center, (0.028, 0.028, max(0.02, (upper - center).length)), 'Claw', subdivisions=1)
 
-    def gap(share):
-        return WHALE_GAP * share ** 0.55
-
-    # Lips: the upper one thin, the lower one heavy and jutting out like the jaw of a rorqual,
-    # both meet in the corners high on the flanks
-    tube(scene, 'UpperLip', [on_snout(d, b, upper_y(s), 1.0) for d, b, s in stations],
-         [0.07 + 0.04 * s for _, _, s in stations], chain, 'BackSkin')
-    tube(scene, 'LowerLip', [on_snout(d, b, upper_y(s) - gap(s), 1.0 + 0.07 * s) for d, b, s in stations],
-         [0.08 + 0.08 * s for _, _, s in stations], chain, 'Skin')
-
-    # Maw: a dark band between the lips, sunk into the skin
-    open_stations = [(d, b, s) for d, b, s in stations if gap(s) > 0.1]
-    tube(scene, 'Maw', [on_snout(d, b, upper_y(s) - gap(s) / 2, 1.0 - 0.55 * gap(s)) for d, b, s in open_stations],
-         [gap(s) * 0.48 for _, _, s in open_stations], [(i, i + 1) for i in range(len(open_stations) - 1)], 'Dark', subdivisions=1)
-
-    # Baleen: a comb of plates hanging from the upper lip all along the mouth line
-    combs = [(-90.0 + i * 180.0 / 18, 0.0, 1.0) for i in range(19)]
-    for side in (-1.0, 1.0):
-        combs += [(side * 90.0, WHALE_MOUTH_BACK * i / 11, 1.0 - i / 11) for i in range(1, 9)]
-    for i, (degrees, back, share) in enumerate(combs):
-        length = gap(share) * 0.4
-        ellipsoid(scene, f'Baleen{i}', on_snout(degrees, back, upper_y(share) - 0.06 - length, 1.04), (0.055, 0.05, length), 'Claw', subdivisions=1)
+    # Knobs of a humpback on the upper jaw, in the color of the back
+    for i, (degrees, back) in enumerate(mouth_stations(shape, 4, 9)):
+        center, s = on_mouth(shape, degrees, back, 1.0, 0.3 + 0.2 * (i % 2), 1.0)
+        if s > 0.25:
+            ellipsoid(scene, f'Knob{i}', center, (0.06, 0.06, 0.06), 'BackSkin', subdivisions=2)
 
     # Throat pleats: grooves that follow the jaw line below the lower lip, around the chin
     # and back along the throat. The low ones do not fit under the chin: they only run along the flanks.
-    floor = SNOUT_CENTER - SNOUT_HALF_HEIGHT * 0.93
+    floor = (-shape['level'] / MOUTH_HEIGHT - 0.93 / MOUTH_HEIGHT) * MOUTH_Y_UNIT
     for i, drop in enumerate(WHALE_PLEATS):
         run = []
-        for degrees, back, share in stations + [(0.0, 0.0, None)]:
-            height = None if share is None or share <= 0.1 * (i + 1) else upper_y(share) - gap(share) - drop
-            if height is not None and height > floor:
-                run.append((on_snout(degrees, back, height, 1.03), 0.03 + 0.03 * share))
+        for index, (degrees, back) in enumerate(stations + [(0.0, None)]):
+            point, s = on_mouth(shape, degrees, back, -1.0, -drop, 1.02) if back is not None else (None, 0.0)
+            if point is not None and s > 0.07 * (i + 1) and point.z > floor:
+                run.append(point)
                 continue
             if len(run) > 2:
-                tube(scene, f'Pleat{i}_{degrees}_{back}', [point for point, _ in run], [radius for _, radius in run],
-                     [(j, j + 1) for j in range(len(run) - 1)], 'ShellRim', subdivisions=1)
+                tube(scene, f'Pleat{i}_{index}', run, [0.035] * len(run), [(j, j + 1) for j in range(len(run) - 1)], 'ShellRim', subdivisions=1)
             run = []
 
-    # Knobs of a humpback on the upper jaw, in the color of the back
-    for i in range(9):
-        degrees = -80.0 + i * 20.0
-        ellipsoid(scene, f'Knob{i}', on_snout(degrees, 0.0, 0.34 + 0.12 * (i % 2), 1.0), (0.07, 0.07, 0.09), 'BackSkin', subdivisions=2)
+    squash(scene, shape)
 
 def build_beak(scene):
     # Upper beak: a blunt horn cap over the nose tip with a small hook, the face stays free

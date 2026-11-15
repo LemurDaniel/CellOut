@@ -104,3 +104,10 @@ Evolutionsspiel, lokal in Godot: als Protozelle in der Ursuppe starten und durch
 3. **Planet aus dem All**: Kugel-Mesh mit derselben Inselkarte, Kamera-Flug beim Abheben, später weitere Planeten mit eigenem Seed.
 
 Danach: Landleben (Futterquellen wie Früchte an Bäumen, Landtiere), Stamm und Bauen.
+
+## Runde 3: Gesichter (2026-11-15)
+- Mundöffnung wird in den Körper geschnitten (`CreatureClay.CarveMouth`, Linie und Rachen im Clay-Shader über UV2), Form je Maul-Art in `data/mouths.json`. Ohne Maul-Teil: geschlossene Linie.
+- Teile je Achse streckbar (`CreaturePart.Stretch`, Gizmo-Würfel, goldener Ring = Gesamtgröße, `"stretch"` in Vorlagen).
+- 19 neue Teile: Augen (BeadEye, GhostEye, BulgeEye, PatchEye, SquidEye, PegEye, LidEye, TurretEye, FrogEye), Mäuler (SharkMaw, OrcaMaw, GapeMaw, SquidBeak, CrabMouth, Smile), Flossen (SickleFin, RoundFlipper, HindPaddle, FinRibbon).
+- Wirbelsäule: Minimum 3 Wirbel, Höhenstufe 0,38, Abstand ab 0,09.
+- Offen: Gizmo-Würfel nur per Logik getestet, nicht von Hand gezogen. Zahn-Modelle (Hai, Orca, Angler, Aal) wiederholen ihre `mouths.json`-Werte als Konstanten im Builder und passen nur auf den Kopf ihrer Vorlage. Tintenfisch-Arme laufen nicht spitz zu (prozedurale Röhre). Delfin hat nur einen kurzen Mundstrich. Krabbe hat drei statt vier Beinpaare (Kosten). Iris der Augen nutzt das Material `Beak`, eigenes `Iris`-Material fehlt. Krabbe im Hero-Bild angeschnitten. Animationen der neuen Teile nur als Standbild gesehen. Renders nur auf Standard-Grafikstufe.

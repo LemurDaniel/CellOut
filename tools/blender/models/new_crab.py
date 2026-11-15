@@ -99,3 +99,30 @@ def build_carapace(scene):
         up = CARAPACE_RIM_Y + (CARAPACE_HEIGHT - CARAPACE_RIM_Y) * (1.0 - share ** 2.3) ** 0.8
         for side in (-1, 1):
             ellipsoid(scene, f'Knob{side}_{i}', G(forward, up - size * 0.25, side * out), (size, size * 1.5, size * 0.55), 'Shell', subdivisions=2)
+
+
+def build_crabmouth(scene):
+    """
+    The mouth of a crab (model space Snout): two pale plates that close the mouth like
+    double doors, a dark seam between them, two feelers above. The opening behind them
+    is carved by the game (data/mouths.json).
+    """
+    ellipsoid(scene, 'Seam', G(0.86, 0.0, 0), (0.08, 0.1, 0.4), 'Dark', subdivisions=2)
+    for side in (-1, 1):
+        # Plate: flat, taller than wide, the lower end a little wider
+        ellipsoid(scene, f'Plate{side}', G(0.9, 0.0, side * 0.27), (0.1, 0.25, 0.4), 'Claw', subdivisions=3)
+        ellipsoid(scene, f'PlateFoot{side}', G(0.86, -0.3, side * 0.32), (0.1, 0.27, 0.17), 'Claw', subdivisions=2)
+        ellipsoid(scene, f'Palp{side}', G(0.92, 0.46, side * 0.14), (0.07, 0.1, 0.09), 'Skin', subdivisions=2)
+        tube(scene, f'Feeler{side}', [G(0.9, 0.45, side * 0.2), G(1.02, 0.7, side * 0.27), G(1.12, 0.82, side * 0.36)], (0.035, 0.028, 0.02), [(0, 1), (1, 2)], 'Skin', subdivisions=1)
+
+
+def build_pegeye(scene):
+    """
+    The eye of a crab (model space Eye): a short stalk standing up out of a socket, a
+    pale collar and a glossy dark bead on top. Blinking squashes it into its socket.
+    """
+    ellipsoid(scene, 'Socket', G(0, 0, 0), (0.8, 0.8, 0.45), 'Skin', subdivisions=2)
+    tube(scene, 'Stalk', [G(0, 0.1, 0), G(0.08, 1.1, 0)], (0.5, 0.42), [(0, 1)], 'Skin', subdivisions=1)
+    ellipsoid(scene, 'Collar', G(0.09, 1.25, 0), (0.68, 0.68, 0.3), 'EyeWhite', subdivisions=2)
+    ellipsoid(scene, 'Bead', G(0.12, 1.85, 0), (0.85, 0.85, 0.8), 'Pupil', subdivisions=3)
+    ellipsoid(scene, 'Glint', G(0.6, 2.25, 0.3), (0.24, 0.24, 0.24), 'Glint', subdivisions=2)

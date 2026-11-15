@@ -339,15 +339,15 @@ public partial class CreatureParts3D : Node3D
     private const float SPINES_SPREAD = 0.3f;        // the spines cover this share of the spine to each side of their spot
     private const float SPINES_MAX_SPREAD = 0.2f;    // on a long body the spines stay a patch around their spot instead of covering it all
     private const float SHELL_LENGTH = 0.36f;        // the shell covers this share of the spine to each side of its spot
-    private const float MOUTH_START = 0.12f;         // the mouth starts this share of the head cap behind the last vertebra
     private const float GILLS_SHARE = 0.72f;         // gills sit at this share of the spine, behind the head
     private static readonly Color POISON_COLOR = new(0.62f, 0.25f, 0.78f);
 
     /*
       The mouth models are a horseshoe around the snout (Visual/CreatureModels.cs): the
-      pivot sits where the mouth ends at the flanks (just behind the head cap, so the
-      mouth runs around the whole snout), the model is stretched forward to the nose tip,
-      sideways to the flanks there and to three quarters of the height of the head.
+      pivot sits at the mouth corners of the opening the body mesh cut for the kind
+      (Design/MouthShapes.cs, data/mouths.json), at the level of its mouth line. The model
+      is stretched forward to the nose tip, sideways to the flanks there and to three
+      quarters of the height of the head.
       > Jaw:           two gums full of teeth, the lower one chomps
       > Filter mouth:  the same horseshoe a little wider, baleen hanging from the lip
       > Beak:          a hooked horn over the whole nose, reaching past its tip
@@ -355,8 +355,10 @@ public partial class CreatureParts3D : Node3D
     /// <summary>The mouth at the nose: shark jaw, whale mouth or beak.</summary>
     private void BuildMouth(CreatureDesign design, CreaturePartKind kind, Color color, IReadOnlyDictionary<string, Material> skins)
     {
+        // The model sits in the opening the body mesh cut for this kind (Design/MouthShapes.cs)
+        MouthShape shape  = MouthShapes.Current.TryGetValue(kind, out MouthShape cut) ? cut : new MouthShape();
         float  noseX      = design.NoseTipX;
-        float  mouthX     = design.SpineEndX + (noseX - design.SpineEndX) * MOUTH_START;
+        float  mouthX     = shape.CornerX(design);
         float  mouthTop   = design.TopAt(mouthX);
         float  mouthFlank = design.FlankAt(mouthX);
         float  reach      = noseX - mouthX;
@@ -371,7 +373,7 @@ public partial class CreatureParts3D : Node3D
             return;
         }
         float width = mouthFlank * (CreaturePartKind.FilterMouth == kind ? 1.05f : 1.02f);
-        mouth.Position = new Vector3(0f, -mouthTop * 0.18f, 0f);
+        mouth.Position = new Vector3(0f, shape.Level * mouthTop, 0f);
         mouth.Scale    = new Vector3(reach * 1.03f, mouthTop * 0.75f, width);
         if (null != CreatureModels.MODELS[kind].Animation)
         {
@@ -382,7 +384,7 @@ public partial class CreatureParts3D : Node3D
     private const float MODEL_RATE = 0.8f;           // loops per second of the animation of a placed model
 
     /// <summary>The model spaces a part model can be built in (tools/blender, see Visual/CreatureModels.cs).</summary>
-    private enum ModelSpace { Snout, Hug, FlankPair, Top, Belly, Tail }
+    private enum ModelSpace { Snout, Hug, FlankPair, Top, Belly, Tail, Eye }
 
     /// <summary>How the model of a kind sits on the body.</summary>
     /// <param name="Space">The space the model is built in, it decides the pivot and the stretch.</param>
@@ -399,6 +401,7 @@ public partial class CreatureParts3D : Node3D
       - Top:        on the back, standing up
       - Belly:      under the belly, hanging down
       - Tail:       behind the tail tip, reaching back
+      - Eye:        an eyeball of radius 1 on both flanks where the plain eyes sit, +Z out of the head, it blinks
     */
     private static readonly IReadOnlyDictionary<CreaturePartKind, Placement> PLACEMENTS = new Dictionary<CreaturePartKind, Placement>
     {
@@ -417,6 +420,25 @@ public partial class CreatureParts3D : Node3D
         [CreaturePartKind.Carapace]     = new(ModelSpace.Hug, Size: 1.12f, Reach: 0.72f),
         [CreaturePartKind.FeatherGills] = new(ModelSpace.FlankPair, Size: 0.8f),
         [CreaturePartKind.Siphon]       = new(ModelSpace.Belly),
+        [CreaturePartKind.SickleFin]     = new(ModelSpace.FlankPair),
+        [CreaturePartKind.RoundFlipper]  = new(ModelSpace.FlankPair),
+        [CreaturePartKind.HindPaddle]    = new(ModelSpace.FlankPair),
+        [CreaturePartKind.FinRibbon]     = new(ModelSpace.Hug, Reach: 0.5f),
+        [CreaturePartKind.SharkMaw]      = new(ModelSpace.Snout),
+        [CreaturePartKind.OrcaMaw]       = new(ModelSpace.Snout),
+        [CreaturePartKind.GapeMaw]       = new(ModelSpace.Snout),
+        [CreaturePartKind.SquidBeak]     = new(ModelSpace.Snout),
+        [CreaturePartKind.CrabMouth]     = new(ModelSpace.Snout),
+        [CreaturePartKind.Smile]         = new(ModelSpace.Snout),
+        [CreaturePartKind.BeadEye]       = new(ModelSpace.Eye),
+        [CreaturePartKind.GhostEye]      = new(ModelSpace.Eye),
+        [CreaturePartKind.BulgeEye]      = new(ModelSpace.Eye),
+        [CreaturePartKind.PatchEye]      = new(ModelSpace.Eye),
+        [CreaturePartKind.SquidEye]      = new(ModelSpace.Eye),
+        [CreaturePartKind.PegEye]        = new(ModelSpace.Eye),
+        [CreaturePartKind.LidEye]        = new(ModelSpace.Eye),
+        [CreaturePartKind.TurretEye]     = new(ModelSpace.Eye),
+        [CreaturePartKind.FrogEye]       = new(ModelSpace.Eye),
     };
 
     /// <summary>Builds the model of a kind listed in PLACEMENTS on its pivot and starts its animation.</summary>
@@ -430,10 +452,12 @@ public partial class CreatureParts3D : Node3D
         switch (placement.Space)
         {
             case ModelSpace.Snout:
-                float  mouthX = design.SpineEndX + (design.NoseTipX - design.SpineEndX) * MOUTH_START;
+                // In the opening the body mesh cut for this kind (Design/MouthShapes.cs)
+                MouthShape shape = MouthShapes.Current.TryGetValue(part.Kind, out MouthShape cut) ? cut : new MouthShape();
+                float  mouthX = shape.CornerX(design);
                 float  width  = design.FlankAt(mouthX) * 1.03f * placement.Size;
                 Node3D snout  = CreatureModels.NewModel(part.Kind, color, finSkin);
-                snout.Position = new Vector3(0f, -design.TopAt(mouthX) * 0.18f, 0f);
+                snout.Position = new Vector3(0f, shape.Level * design.TopAt(mouthX), 0f);
                 snout.Scale    = new Vector3((design.NoseTipX - mouthX) * 1.03f, design.TopAt(mouthX) * 0.75f * placement.Size, width);
                 AddPivot(mouthX).AddChild(snout);
                 models.Add(snout);
@@ -461,12 +485,23 @@ public partial class CreatureParts3D : Node3D
                 models.Add(CreatureModels.Attach(AddPivot(design.TailTipX + 0.06f), part.Kind, color, Vector3.Zero,
                     (0.6f + design.MeanGirth * 0.5f) * placement.Size, 1f, overrides: finSkin));
                 break;
+            case ModelSpace.Eye:
+                Node3D sockets = AddPivot(x);
+                foreach (float side in new[] { -1f, 1f })
+                {
+                    Node3D eye = CreatureModels.Attach(sockets, part.Kind, color, new Vector3(0f, top * 0.3f, side * flank * 0.88f),
+                        (0.08f + design.RadiusAt(x) * 0.12f) * placement.Size, side, overrides: finSkin);
+                    models.Add(eye);
+                    _eyes.Add(eye);
+                }
+                break;
             default:
                 throw new System.ArgumentOutOfRangeException(nameof(placement), $"placement must use a known ModelSpace, got '{placement.Space}'.");
         }
 
-        string animation = CreatureModels.MODELS[part.Kind].Animation;
-        for (int i = 0; null != animation && i < models.Count; i++)
+        // Without a name in MODELS a rigged model plays its only loop, a static one stays still
+        string animation = CreatureModels.MODELS[part.Kind].Animation ?? "Loop";
+        for (int i = 0; i < models.Count; i++)
         {
             PartModels.PlayLoop(models[i], animation, i * 0.15f, MODEL_RATE);
         }

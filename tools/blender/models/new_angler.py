@@ -1,16 +1,20 @@
 # NOTE:
 #   New parts for the angler fish of the organism stage (assets/models/creature/): the
-#   needle maw, a huge underbite full of long thin fangs. Registered in build.models.py.
-#   Model space (Snout, the same as mouths.py): the mouth wraps around the snout as a
-#   horseshoe that opens to the back. Its back ends sit at x = 0, z = -1 and 1 (the
-#   flanks), its front at x = 1 (the nose tip). The game stretches x to the length of
-#   the snout and z to its width.
+#   needle maw (the fangs of a huge frowning underbite) and the ghost eye (a tiny pale
+#   deep sea eye under a mean brow). Registered in build.models.py.
+#   The needle maw is built in the model space Snout: x 0 at the mouth corners .. 1 at
+#   the nose tip, z -1 and 1 at the flanks, y 0 on the mouth line at the nose. The game
+#   carves the opening itself (data/mouths.json, line NeedleMaw), the model only adds the
+#   fangs on its edges, so MOUTH below must repeat that line.
+#   The ghost eye is built in the model space Eye: an eyeball of radius 1 at the origin
+#   on the right flank, +Z out of the head, +X forward.
 #
 #   ./tools/blender/Show-Model.ps1 -Module new_angler -Call 'build_needlemaw(scene)' -Name needlemaw
+#   ./tools/blender/Show-Model.ps1 -Module new_angler -Call 'build_ghosteye(scene)' -Name ghosteye
 
 #
 #   Chapters:
-#     ANGLER PARTS   The needle maw.
+#     ANGLER PARTS   The needle maw and the ghost eye.
 #
 
 import math
@@ -27,95 +31,96 @@ from models.helpers import (
     tube,
 )
 
-UPPER_Y = 0.65                       # height of the upper lip at the nose
-CORNER_DROOP = 0.72                  # the upper lip sags this much towards the corners: a grumpy frown
-LOWER_Y = -0.75                      # height of the lower lip at the chin
-CORNER_RISE = 0.66                   # the lower lip climbs this much towards the corners of the mouth
-UNDERBITE = 0.2                      # the chin juts this far past the nose tip
-LOWER_FANGS = (0.25, 0.5, 0.4, 0.75, 0.5, 1.05, 0.7, 1.15, 0.6, 1.15, 0.7, 1.05, 0.5, 0.75, 0.4, 0.5, 0.25)   # lengths from flank to flank, ragged on purpose
-UPPER_FANGS = (0.15, 0.3, 0.22, 0.45, 0.3, 0.6, 0.4, 0.7, 0.7, 0.4, 0.6, 0.3, 0.45, 0.22, 0.3, 0.15)
+# The opening the game carves for the kind NeedleMaw: a copy of its line in data/mouths.json
+MOUTH = {'level': -0.1, 'smile': -0.3, 'gape': 0.28, 'jut': 0.8}
+HEAD_PER_CAP = 0.85                  # height of a round head in lengths of its head cap (x unit of the model)
+MODEL_HEIGHT = 0.75                  # the game scales y of the model to this share of the head height
+LOWER_FANGS = (0.2, 0.45, 0.3, 0.7, 0.45, 0.95, 0.5, 0.95, 0.45, 0.7, 0.3, 0.45, 0.2)   # lengths from flank to flank, ragged on purpose
+UPPER_FANGS = (0.15, 0.3, 0.22, 0.5, 0.3, 0.65, 0.65, 0.3, 0.5, 0.22, 0.3, 0.15)
 
 
 # ===========================================================================
 # ============================   ANGLER PARTS   =============================
 # ===========================================================================
 #
-#   around            A point on the horseshoe around the snout.
-#   upper_lip         A point on the upper lip: sagging at the corners.
-#   lower_lip         A point on the lower lip: jutting out at the chin, climbing at the corners.
-#   build_needlemaw   Angler maw: a thin upper lip, a heavy jutting chin, long needle fangs, the chin chomps.
-#   preview_on_head   Preview only: the maw stretched like in the game, on a stand-in for a fat head.
+#   smoothstep        The smoothstep of the game (Mathf.SmoothStep).
+#   lip_point         A point on the upper or lower edge of the carved opening.
+#   build_needlemaw   The angler maw: fat lips of skin and long needles on both edges of the opening.
+#   build_ghosteye    A tiny pale eye with a glowing iris in a socket, under a mean brow.
 #
 
-def around(degrees, height, reach=1.0):
-    """0 degrees is the nose tip, -90 and 90 the flanks."""
+def smoothstep(low, high, value):
+    share = max(0.0, min(1.0, (value - low) / (high - low)))
+    return share * share * (3.0 - 2.0 * share)
+
+
+def lip_point(degrees, edge, lift=0.0, sink=0.03):
+    """
+    A point on an edge of the opening as the game carves it (CreatureClay.CarveMouth).
+    degrees: 0 is the nose tip, -90 and 90 the mouth corners. edge: 1 the upper lip,
+    -1 the lower one. lift moves the point up in model heights, sink into the head.
+    """
     angle = math.radians(degrees)
-    return G(math.cos(angle) * reach, height, math.sin(angle) * reach)
-
-
-def upper_lip(degrees, drop=0.0, reach=1.0):
-    """The upper lip at an angle, drop lowers the point below the lip."""
-    return around(degrees, UPPER_Y - CORNER_DROOP * (abs(degrees) / 90.0) ** 2 - drop, reach)
-
-
-def lower_lip(degrees, lift=0.0, pull=0.0):
-    """
-    The lower lip at an angle: lift raises the point above the lip, pull moves it
-    towards the middle of the maw (for fang tips leaning inwards).
-    """
-    share = abs(degrees) / 90.0
-    reach = 1.0 + UNDERBITE * math.cos(math.radians(degrees)) ** 2
-    return around(degrees, LOWER_Y + CORNER_RISE * share ** 2 + lift, reach - pull)
+    s = math.cos(angle)
+    gape = MOUTH['gape'] * smoothstep(0.0, 0.3, s)
+    line = MOUTH['smile'] * (1.0 - s) ** 2
+    # The head is a ball: above and below its middle the skin sits further in
+    height = MOUTH['level'] + line + edge * gape
+    reach = math.sqrt(max(0.05, 1.0 - height * height)) - sink
+    x = s * reach
+    if edge < 0:
+        # The lower jaw is pushed forward, the most at the nose
+        x += MOUTH['jut'] * HEAD_PER_CAP * smoothstep(0.0, 1.0, s) * min(1.0, gape / 0.6)
+    return G(x, (line + edge * gape) / MODEL_HEIGHT + lift, math.sin(angle) * reach)
 
 
 def build_needlemaw(scene):
-    angles = [-86 + i * 14.33 for i in range(13)]
+    # Lips: a rim of skin on both edges of the opening, the lower one fat like the scoop of a real angler
+    angles = [-82 + i * 164 / 14 for i in range(15)]
     chain = [(i, i + 1) for i in range(len(angles) - 1)]
+    upper = tube(scene, 'UpperLip', [lip_point(a, 1, 0.1, 0.0) for a in angles],
+                 [0.05 + 0.05 * math.cos(math.radians(a)) for a in angles], chain, 'Skin')
+    lower = tube(scene, 'LowerLip', [lip_point(a, -1, -0.12, 0.0) for a in angles],
+                 [0.05 + 0.1 * math.cos(math.radians(a)) for a in angles], chain, 'Skin')
+    # Maw: a dark plug deep in the opening, so the throat is black behind the fangs
+    maw = ellipsoid(scene, 'Maw', G(0.3, 0.0, 0), (0.5, 0.72, MOUTH['gape'] / MODEL_HEIGHT * 0.9), 'Dark')
+    meshes = [upper, lower, maw]
+    rigid = {'UpperLip': 'Skull', 'LowerLip': 'Skull', 'Maw': 'Skull'}
 
-    # Lips: the upper one a thin dark rim, the lower one a fat sausage that sticks out
-    rim = tube(scene, 'UpperLip', [upper_lip(a, 0.0, 1.01) for a in angles], [0.07] * len(angles), chain, 'Shell')
-    chin_lip = tube(scene, 'LowerLip', [lower_lip(a) for a in angles],
-                    [0.12 + 0.09 * math.cos(math.radians(a)) for a in angles], chain, 'Skin')
-    # Chin: a bowl of skin closing the jaw from below, the maw a dark pit between the lips
-    chin = ellipsoid(scene, 'Chin', G(0.3, LOWER_Y - 0.06, 0), (0.9, 1.0, 0.32), 'Skin')
-    maw = ellipsoid(scene, 'Maw', G(0.3, (UPPER_Y + LOWER_Y) / 2 + 0.02, 0), (0.76, 0.95, 0.66), 'Dark')
-    meshes = [rim, chin_lip, chin, maw]
-    rigid = {'UpperLip': 'Skull', 'Maw': 'Skull', 'LowerLip': 'Jaw', 'Chin': 'Jaw'}
-
-    # Lower fangs: long needles standing on the jutting chin in front of the upper lip
-    # (the underbite), leaning back towards the face, the longest ones next to the middle
+    # Lower fangs: long needles standing on the jutting lower lip, leaning back towards
+    # the face, the longest ones next to the middle
     for i, length in enumerate(LOWER_FANGS):
-        degrees = -76 + i * 152 / (len(LOWER_FANGS) - 1)
-        fang = cone(scene, f'LowerFang{i}', lower_lip(degrees, 0.04, 0.02), lower_lip(degrees, 0.04 + length, 0.05 + length * 0.12), 0.06)
+        degrees = -74 + i * 148 / (len(LOWER_FANGS) - 1)
+        fang = cone(scene, f'LowerFang{i}', lip_point(degrees, -1, -0.05, 0.06), lip_point(degrees, -1, length, 0.06 + length * 0.1), 0.055)
         meshes.append(fang)
         rigid[fang.name] = 'Jaw'
     # Upper fangs: shorter, hanging into the gaps between the lower ones
     for i, length in enumerate(UPPER_FANGS):
-        degrees = -70 + i * 140 / (len(UPPER_FANGS) - 1)
-        fang = cone(scene, f'UpperFang{i}', upper_lip(degrees, 0.03, 1.03), upper_lip(degrees, 0.03 + length, 1.04), 0.05)
+        degrees = -68 + i * 136 / (len(UPPER_FANGS) - 1)
+        fang = cone(scene, f'UpperFang{i}', lip_point(degrees, 1, 0.05, 0.07), lip_point(degrees, 1, -length, 0.1), 0.05)
         meshes.append(fang)
         rigid[fang.name] = 'Skull'
 
-    hinge = G(-0.1, LOWER_Y + CORNER_RISE, 0)
     armature = rig(scene, 'Rig', [
-        ('Skull', G(-0.1, UPPER_Y, 0), G(0.9, UPPER_Y, 0), None),
-        ('Jaw', hinge, G(1.1, LOWER_Y, 0), 'Skull'),
+        ('Skull', G(-0.1, 0.4, 0), G(0.9, 0.4, 0), None),
+        ('Jaw', G(-0.1, -0.4, 0), G(1.1, -0.4, 0), 'Skull'),
     ])
     bind(armature, meshes, rigid=rigid)
 
-    # Chomp: the chin drops wide open, hangs a moment and snaps shut
+    # Chomp: the carved jaw does not move, so the lower fangs only twitch a little
     animate(armature, 'Chomp', FPS * 2, {
-        'Jaw': (AXIS_OUT, lambda share: -16.0 * max(0.0, math.sin(share * math.tau)) ** 2),
+        'Jaw': (AXIS_OUT, lambda share: 3.0 * max(0.0, math.sin(share * math.tau)) ** 2),
     })
 
 
-def preview_on_head(scene):
-    """
-    Preview only, never exported: the maw as the game stretches it (BuildMouth of
-    CreatureParts3D.cs) on the head cap of a body with girth 1 at the last vertebra.
-    """
-    build_needlemaw(scene)
-    armature = scene.objects['Rig']
-    armature.scale = (0.57, 0.6, 0.41)
-    armature.location = G(0.0, -0.1, 0.0)
-    ellipsoid(scene, 'Head', G(-0.07, 0.0, 0.0), (0.62, 0.59, 0.55), 'Skin')
+def build_ghosteye(scene):
+    # Socket: a low mound of skin the small eye sits in
+    ellipsoid(scene, 'Socket', G(0, 0, 0.0), (1.2, 0.45, 1.2), 'Skin')
+    # Eye: a small pale ball, a glowing iris like the lantern, a pinhole pupil looking forward
+    ellipsoid(scene, 'Ball', G(0.05, -0.05, 0.3), (0.72, 0.5, 0.72), 'EyeWhite')
+    ellipsoid(scene, 'Iris', G(0.14, -0.07, 0.52), (0.5, 0.36, 0.5), 'Lantern', subdivisions=2)
+    ellipsoid(scene, 'Pupil', G(0.22, -0.08, 0.76), (0.24, 0.16, 0.24), 'Pupil', subdivisions=2)
+    ellipsoid(scene, 'Glint', G(0.34, 0.1, 0.84), (0.09, 0.06, 0.09), 'Glint', subdivisions=1)
+    # Brow: a fat ridge of skin over the eye, dropping towards the nose: a mean frown
+    tube(scene, 'Brow', [G(-0.95, 0.8, 0.15), G(-0.2, 0.7, 0.42), G(0.55, 0.42, 0.48), G(1.05, 0.14, 0.25)],
+         (0.26, 0.3, 0.27, 0.18), [(0, 1), (1, 2), (2, 3)], 'Skin')

@@ -147,7 +147,7 @@ public partial class CreatureSculptHandles : Node3D
     /// <summary>Applies a mouse motion to what is being dragged (IsDragging).</summary>
     public void Drag(InputEventMouseMotion motion)
     {
-        // Gizmo drag: arrows shift along their axis, rings turn around it
+        // Gizmo drag: arrows shift along their axis, rings turn around it, cubes stretch along it, the golden ring sizes the whole part
         // Gizmo on a vertebra: arrows push it, the golden ring scales it
         if (GizmoHandle.None != _gizmoDrag && _session.PickedVertebra >= 0)
         {
@@ -163,7 +163,16 @@ public partial class CreatureSculptHandles : Node3D
         }
         if (GizmoHandle.None != _gizmoDrag)
         {
-            if (PartGizmo.IsTurn(_gizmoDrag))
+            if (PartGizmo.IsStretch(_gizmoDrag))
+            {
+                _session.StretchPickedPart(PartGizmo.AxisOf(_gizmoDrag), _gizmo.StretchFactor(_gizmoDrag, motion.Relative));
+            }
+            else if (GizmoHandle.Scale == _gizmoDrag)
+            {
+                float size = _session.Draft.Parts[_session.PickedPart].Size;
+                _session.SetPartSize(size * _gizmo.ScaleFactor(motion.Position - motion.Relative, motion.Position));
+            }
+            else if (PartGizmo.IsTurn(_gizmoDrag))
             {
                 _session.TurnPickedPart(PartGizmo.AxisOf(_gizmoDrag), _gizmo.TurnDelta(_gizmoDrag, motion.Position - motion.Relative, motion.Position));
             }
@@ -281,7 +290,7 @@ public partial class CreatureSculptHandles : Node3D
     //            the gizmo on the picked vertebra or part.
     //
 
-    private bool _isGizmoOnVertebra;
+    private bool? _isGizmoOnVertebra;                // null until the gizmo shows for the first time
 
     /// <summary>Moves every handle to its spot, called every frame while the editor shows.</summary>
     /// <param name="time">(Required) Clock of the stage, drives the breathing of the handles.</param>
@@ -356,7 +365,7 @@ public partial class CreatureSculptHandles : Node3D
                 }
                 else
                 {
-                    _gizmo.ShowHandles(PartGizmo.PART_HANDLES);
+                    _gizmo.ShowHandles(PartGizmo.SHAPE_HANDLES);
                 }
             }
         }

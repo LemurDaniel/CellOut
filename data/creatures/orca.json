@@ -8,10 +8,10 @@
   "pattern": "Saddle",
   "patternColor": "#1c2029",
   "parts": [
-    { "kind": "Fluke", "t": 0, "free": true, "size": 1.4 },
-    { "kind": "Eye", "t": 0.84, "free": true, "size": 1, "offset": [0, 0.05, 0] },
+    { "kind": "Fluke", "t": 0, "free": true, "size": 1.3, "stretch": [0.9, 1, 1.3] },
+    { "kind": "PatchEye", "t": 0.8, "free": true, "size": 1, "offset": [0, 0.05, 0] },
     { "kind": "TallFin", "t": 0.52, "size": 1.0 },
-    { "kind": "Flipper", "t": 0.62, "size": 0.8, "offset": [0, -0.2, 0], "rotation": [0.55, -0.2, -0.6] },
-    { "kind": "Jaw", "t": 1 }
+    { "kind": "RoundFlipper", "t": 0.62, "size": 1.0, "offset": [0, -0.2, 0], "rotation": [0.4, -0.2, -0.5] },
+    { "kind": "OrcaMaw", "t": 1 }
   ]
 }

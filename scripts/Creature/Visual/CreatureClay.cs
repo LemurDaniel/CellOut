@@ -1,5 +1,6 @@
 // NOTE:
-//   The clay geometry of an organism: the body lofted along the spine of its design,
+//   The clay geometry of an organism: the body lofted along the spine of its design
+//   with the opening of its mouth part cut into the head (Design/MouthShapes.cs),
 //   the tube of a sculpted limb through its joints and the fillet where a part grows
 //   out of the skin. Builds meshes only, the materials (shaders/clay.gdshader) come
 //   from CreatureVisual3D.
@@ -23,13 +24,15 @@ public static class CreatureClay
     // ============================   LOFT THE CLAY   ============================
     // ===========================================================================
     //
-    //   BuildBodyMesh   The lofted clay body: elliptic rings along the spine.
+    //   BuildBodyMesh   The lofted clay body: elliptic rings along the spine, the mouth cut into the head.
+    //   CarveMouth      Moves one vertex for the mouth opening: cavity, lips and lower jaw.
     //   LimbMesh        The tube mesh along a smoothed joint path.
     //   AddFillet       A soft clay ball where a part grows out of the body.
     //
 
     private const int RINGS = 96;                   // rings along the body, fine enough for a smooth silhouette
     private const int SEGMENTS = 40;
+    public const float MIN_GAPE = 0.045f;           // even a closed mouth is a thin line, in heights of the head (half its width)
     private const float RING_TILT = 0.6f;           // share of the spine slope the rings tilt by: full tilt folds the inside of a bend
 
     /// <summary>
@@ -43,7 +46,8 @@ public static class CreatureClay
     /// <returns>The body mesh in unit space.</returns>
     public static ArrayMesh BuildBodyMesh(CreatureDesign design)
     {
-        var surface = new SurfaceTool();
+        MouthShape mouth   = MouthShapes.For(design);
+        var        surface = new SurfaceTool();
         surface.Begin(Mesh.PrimitiveType.Triangles);
         for (int i = 0; i <= RINGS; i++)
         {
@@ -55,8 +59,12 @@ public static class CreatureClay
             Vector3 up     = new Vector3(-design.SlopeAt(x) * RING_TILT, 1f, 0f).Normalized();
             for (int j = 0; j < SEGMENTS; j++)
             {
-                float angle = Mathf.Tau * j / SEGMENTS;
-                surface.AddVertex(center + up * (Mathf.Sin(angle) * radius * design.HeightScale) + Vector3.Back * (Mathf.Cos(angle) * radius * design.WidthScale));
+                float   angle  = Mathf.Tau * j / SEGMENTS;
+                Vector3 vertex = center + up * (Mathf.Sin(angle) * radius * design.HeightScale) + Vector3.Back * (Mathf.Cos(angle) * radius * design.WidthScale);
+                // The shader draws the mouth line per pixel from this mark, sharper than the mesh could cut it
+                // In UV2: primitive meshes sharing the clay (fillets, knuckles) bring their own UV, but no UV2
+                surface.SetUV2(null == mouth ? Vector2.Zero : CarveMouth(design, mouth, center, ref vertex));
+                surface.AddVertex(vertex);
             }
         }
         for (int i = 0; i < RINGS; i++)
@@ -77,6 +85,57 @@ public static class CreatureClay
         }
         surface.GenerateNormals();
         return surface.Commit();
+    }
+
+    /*
+      The mouth is cut into the clay itself (Design/MouthShapes.cs), from the corners to
+      the nose tip. s runs 0 at the corners .. 1 at the nose tip:
+      > Mouth line:  at the level of the shape at the nose, climbing by its smile towards the corners
+      > Opening:     a band around the line, closed at the corners, as wide as the gape at the nose
+      > Inside it:   the vertex sinks towards the spine and back into the head: the cavity
+      > Around it:   the skin bulges out a little: the lips
+      > Below it:    the lower jaw is pushed forward (jut), or back under the snout
+      All measures are heights of the head at the mouth corners.
+    */
+    /// <summary>Moves a vertex of the body loft for the mouth opening.</summary>
+    /// <param name="center">(Required) Center of the ring the vertex belongs to.</param>
+    /// <param name="vertex">The vertex in unit space, moved in place.</param>
+    /// <returns>
+    /// Where the vertex sat before it moved, for the shader (clay.gdshaderinc, mouth_mark):
+    /// x = s (0 behind the corners), y = how far below the mouth line in heights of the head.
+    /// </returns>
+    private static Vector2 CarveMouth(CreatureDesign design, MouthShape mouth, Vector3 center, ref Vector3 vertex)
+    {
+        float cornerX = mouth.CornerX(design);
+        if (vertex.X <= cornerX)
+        {
+            return Vector2.Zero;
+        }
+        float head  = design.TopAt(cornerX);
+        float s     = Mathf.Clamp((vertex.X - cornerX) / Mathf.Max(design.NoseTipX - cornerX, 0.001f), 0f, 1f);
+        float lineY = design.LiftAt(cornerX) + (mouth.Level + mouth.Smile * (1f - s) * (1f - s)) * head;
+        float below = lineY - vertex.Y;
+        var   mark  = new Vector2(s, below / Mathf.Max(head, 0.001f));
+
+        // Lower jaw: everything below the line shifts, the most at the nose
+        vertex.X += mouth.Jut * head * Mathf.SmoothStep(0f, 1f, s) * Mathf.Clamp(below / Mathf.Max(head * 0.6f, 0.001f), 0f, 1f);
+
+        float   gape    = Mathf.Max(mouth.Gape * head * Mathf.SmoothStep(0f, 0.3f, s), head * MIN_GAPE);
+        float   off     = Mathf.Abs(below) / gape;
+        Vector3 outward = new Vector3(0f, vertex.Y - center.Y, vertex.Z - center.Z);
+        outward = outward.LengthSquared() < 1e-8f ? Vector3.Zero : outward.Normalized();
+        if (off >= 1f)
+        {
+            // Lips: a soft bulge just outside the opening, gone two gapes away
+            float lip = Mathf.Clamp(2f - off, 0f, 1f) * Mathf.SmoothStep(0f, 0.2f, s);
+            vertex += outward * mouth.Lip * head * lip;
+            return mark;
+        }
+        // A closed line is only drawn (shader), sinking single vertices would fray it: the cavity grows with the gape
+        float inside = (1f - off * off) * Mathf.SmoothStep(0f, 0.15f, s) * Mathf.Clamp(mouth.Gape / 0.06f, 0f, 1f);
+        vertex -= outward * mouth.Depth * head * inside * 0.6f;
+        vertex.X -= mouth.Depth * head * inside * s;
+        return mark;
     }
 
     /*

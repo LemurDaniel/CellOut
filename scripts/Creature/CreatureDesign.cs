@@ -412,6 +412,24 @@ public sealed class CreatureDesign
         Version++;
     }
 
+    public const float MIN_PART_STRETCH = 0.3f;      // per axis on top of the size: flat fins, long snouts, squashed eyes
+    public const float MAX_PART_STRETCH = 3f;
+
+    /// <summary>Sets the stretch per axis of one placed part (scale cubes of the gizmo), every axis clamped.</summary>
+    /// <param name="index">(Required) Index in Parts.</param>
+    /// <param name="stretch">(Required) Factor per axis, 1 = unchanged: x along the body, y up, z out of the flank.</param>
+    /// <example><code>design.SetPartStretch(0, new Vector3(1.5f, 1f, 0.6f));</code></example>
+    public void SetPartStretch(int index, Vector3 stretch)
+    {
+        if (index < 0 || index >= _parts.Count)
+        {
+            throw new System.ArgumentOutOfRangeException(nameof(index), $"index must be between 0 and {_parts.Count - 1}, got '{index}'.");
+        }
+        Vector3 clamped = stretch.Clamp(Vector3.One * MIN_PART_STRETCH, Vector3.One * MAX_PART_STRETCH);
+        _parts[index] = _parts[index] with { Stretch = clamped.IsEqualApprox(Vector3.One) ? null : clamped };
+        Version++;
+    }
+
     /// <summary>Number of placed parts of one kind.</summary>
     public int Count(CreaturePartKind kind)
     {

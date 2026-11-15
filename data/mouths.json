@@ -1,0 +1,13 @@
+{
+  "Jaw":         { "length": 0.88, "level": -0.18, "smile": 0.0,  "gape": 0.12, "depth": 0.25, "lip": 0.03, "jut": 0.0 },
+  "Beak":        { "length": 0.95, "level": -0.2,  "smile": 0.14, "gape": 0.0,  "depth": 0.1,  "lip": 0.03, "jut": 0.0 },
+  "FilterMouth": { "length": 2.8,  "level": -0.2,  "smile": 0.28, "gape": 0.16, "depth": 0.22, "lip": 0.04, "jut": 0.05 },
+  "NeedleMaw":   { "length": 1.0,  "level": -0.1,  "smile": -0.3, "gape": 0.28, "depth": 0.4,  "lip": 0.03, "jut": 0.8 },
+  "PufferMouth": { "length": 0.08, "level": -0.22, "smile": 0.0,  "gape": 0.12, "depth": 0.2,  "lip": 0.04, "jut": 0.0 },
+  "SharkMaw":    { "length": 5.0,  "level": -0.38, "smile": 0.14, "gape": 0.2,  "depth": 0.3,  "lip": 0.03, "jut": -0.1 },
+  "OrcaMaw":     { "length": 1.7,  "level": -0.32, "smile": 0.2,  "gape": 0.1,  "depth": 0.22, "lip": 0.03, "jut": 0.0 },
+  "GapeMaw":     { "length": 1.5,  "level": -0.12, "smile": 0.1,  "gape": 0.26, "depth": 0.35, "lip": 0.03, "jut": 0.0 },
+  "CrabMouth":   { "length": 0.42, "level": -0.34, "smile": 0.0,  "gape": 0.22, "depth": 0.2,  "lip": 0.02, "jut": 0.0 },
+  "SquidBeak":   { "length": 0.2,  "level": 0.0,   "smile": 0.0,  "gape": 0.0,  "depth": 0.0,  "lip": 0.0,  "jut": 0.0 },
+  "Smile":       { "length": 1.35, "level": -0.24, "smile": 0.26, "gape": 0.015, "depth": 0.12, "lip": 0.07, "jut": 0.0 }
+}

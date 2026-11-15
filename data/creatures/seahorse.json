@@ -2,18 +2,18 @@
   "key": "SEAHORSE",
   "order": 40,
   "type": "Fish",
-  "girths": [0.28, 0.36, 0.56, 0.68, 0.58, 0.42, 0.38, 0.42],
-  "lifts": [-0.76, -0.48, -0.16, 0.16, 0.46, 0.7, 0.8, 0.54],
-  "gaps": [0.17, 0.17, 0.17, 0.17, 0.17, 0.2, 0.34],
+  "girths": [0.28, 0.4, 0.6, 0.68, 0.56, 0.42, 0.42],
+  "lifts": [-0.86, -0.5, -0.14, 0.24, 0.6, 0.86, 0.6],
+  "gaps": [0.12, 0.12, 0.12, 0.12, 0.16, 0.3],
   "color": "#f2b233",
   "pattern": "Stripes",
   "patternColor": "#c9781f",
   "parts": [
-    { "kind": "CurlTail", "t": 0, "free": true, "size": 1.0, "rotation": [0, 0, 0.8] },
-    { "kind": "TubeSnout", "t": 1 },
-    { "kind": "Eye", "t": 0.92, "free": true, "size": 1, "offset": [0.08, 0.08, 0.0] },
+    { "kind": "CurlTail", "t": 0, "free": true, "size": 1.0, "rotation": [0, 0, 1.1] },
+    { "kind": "TubeSnout", "t": 1, "rotation": [0, 0, -0.3] },
+    { "kind": "TurretEye", "t": 0.92, "free": true, "size": 1.3, "offset": [0.08, 0.08, 0.0] },
     { "kind": "DorsalFin", "t": 0.45, "size": 1.0 },
     { "kind": "DorsalFin", "t": 0.86, "size": 0.5 },
-    { "kind": "PectoralFin", "t": 0.76, "size": 0.6 }
+    { "kind": "PectoralFin", "t": 0.72, "size": 0.6 }
   ]
 }

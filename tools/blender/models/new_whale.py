@@ -16,6 +16,7 @@ import math
 
 from mathutils import Matrix
 
+from models.mouths import mouth_stations, on_mouth, squash
 from models.helpers import (
     AXIS_FORWARD,
     FPS,
@@ -23,6 +24,7 @@ from models.helpers import (
     MATERIAL_COLORS,
     animate,
     bind,
+    cone,
     ellipsoid,
     rig,
     tube,
@@ -45,6 +47,9 @@ TALLFIN_FLAT = 0.2                   # thickness of the back fin, share of its c
 #   flat_blade      A clay blade: a tube along a line, pressed flat, then turned.
 #   build_flipper   Long flipper of a humpback: model space FlankPair, knobs on the leading edge. "Flutter", 2 s.
 #   build_tallfin   Tall back fin of an orca: model space Top, a thick triangle. "Flutter", 2 s.
+#   build_roundflipper   Round paddle of an orca: model space FlankPair. "Flutter", 2 s.
+#   build_orcamaw   Peg teeth in the carved grin of an orca: model space Snout.
+#   build_patcheye  Small dark eye with the white eye patch of an orca: model space Eye.
 #
 
 def flat_blade(scene, name, points, radii, flatten, turn, material_name):
@@ -117,3 +122,64 @@ def build_tallfin(scene):
         'Fin1': (AXIS_FORWARD, lambda share: 4.0 * wave(share)),
         'Fin2': (AXIS_FORWARD, lambda share: 6.0 * wave(share, -0.15)),
     })
+
+
+def build_roundflipper(scene):
+    """
+    Origin on the skin of the right flank: the broad round paddle of an orca, smooth,
+    reaching out (+Z), swept back a little and hanging down. About 0.9 body heights long.
+    """
+    turn = Matrix.Rotation(math.radians(FLIPPER_DROOP), 4, 'X')
+    line = [G(0.02, 0, -0.08), G(0.0, 0, 0.2), G(-0.06, 0, 0.48), G(-0.15, 0, 0.72), G(-0.24, 0, 0.88)]
+    radii = (0.15, 0.25, 0.3, 0.24, 0.12)
+    blade = flat_blade(scene, 'Blade', line, radii, (1.0, 1.0, 0.22), turn, 'BackSkin')
+    shoulder = ellipsoid(scene, 'Shoulder', G(0.0, 0.0, 0.02), (0.2, 0.1, 0.09), 'BackSkin', subdivisions=3)
+
+    # Two bones, the paddle waves slowly up and down
+    joints = [turn @ point for point in (line[0], line[2], line[4])]
+    armature = rig(scene, 'Rig', [
+        ('Blade0', joints[0], joints[1], None),
+        ('Blade1', joints[1], joints[2], 'Blade0'),
+    ])
+    bind(armature, [blade, shoulder])
+    animate(armature, 'Flutter', FPS * 2, {
+        'Blade0': (AXIS_FORWARD, lambda share: 5.0 * wave(share)),
+        'Blade1': (AXIS_FORWARD, lambda share: 8.0 * wave(share, -0.15)),
+    })
+
+
+# The opening the game carves for the kind OrcaMaw: must match its line in data/mouths.json
+ORCA_MAW = {'length': 1.7, 'level': -0.32, 'smile': 0.2, 'gape': 0.1}
+
+
+def build_orcamaw(scene):
+    """
+    The teeth in the carved grin of an orca or dolphin: two rows of blunt pegs that
+    mesh like a zip, the upper ones hang, the lower ones stand in the gaps.
+    """
+    shape = ORCA_MAW
+    stations = mouth_stations(shape, 8, 23)
+    for i, (degrees, back) in enumerate(stations):
+        is_upper = 0 == i % 2
+        edge = 1.0 if is_upper else -1.0
+        base, s = on_mouth(shape, degrees, back, edge * 0.92, 0.0, 0.955)
+        tip, _ = on_mouth(shape, degrees, back, -edge * 0.3, 0.0, 0.965)
+        if s < 0.3:
+            continue
+        cone(scene, f'Tooth{i}', base, tip, 0.065, 'Claw')
+    squash(scene, shape)
+
+
+def build_patcheye(scene):
+    """
+    Model space Eye (eyeball of radius 1 at the origin on the right flank, +Z out, +X
+    forward): a small dark eye, and behind and above it the white oval eye patch of an orca.
+    """
+    # Patch: a flat white dome on the skin, long along the body, tilted up towards the back
+    patch = ellipsoid(scene, 'Patch', G(0, 0, 0), (1.55, 0.75, 0.62), 'EyeWhite', subdivisions=3)
+    patch.data.transform(Matrix.Translation(G(-0.75, 0.42, -0.22)) @ Matrix.Rotation(math.radians(-12.0), 4, 'Y'))
+    # Eye: a dark bead below the front end of the patch, with a lid in the color of the back and a glint
+    ellipsoid(scene, 'Ball', G(0.75, -0.38, 0.0), (0.5, 0.5, 0.5), 'EyeWhite', subdivisions=3)
+    ellipsoid(scene, 'Pupil', G(0.82, -0.38, 0.14), (0.42, 0.42, 0.42), 'Pupil', subdivisions=3)
+    ellipsoid(scene, 'Lid', G(0.72, -0.2, -0.04), (0.6, 0.5, 0.48), 'BackSkin', subdivisions=3)
+    ellipsoid(scene, 'Glint', G(0.95, -0.28, 0.5), (0.12, 0.12, 0.12), 'Glint', subdivisions=1)

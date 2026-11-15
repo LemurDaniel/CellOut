@@ -10,12 +10,12 @@
   "patternColor": "#5d6f80",
   "parts": [
     { "kind": "SharkTail", "t": 0, "free": true, "size": 1.45 },
-    { "kind": "Eye", "t": 0.86, "free": true, "size": 0.7, "offset": [0, 0.04, 0] },
+    { "kind": "BeadEye", "t": 0.84, "free": true, "size": 1.05, "offset": [0, 0.06, -0.015] },
     { "kind": "SharkFin", "t": 0.56, "size": 1.25 },
     { "kind": "SharkFin", "t": 0.19, "size": 0.45 },
-    { "kind": "Flipper", "t": 0.62, "size": 1.0, "offset": [0.06, -0.12, 0], "rotation": [0.2, -0.25, -0.3] },
-    { "kind": "Flipper", "t": 0.27, "size": 0.4, "offset": [0, -0.1, 0], "rotation": [0, 0, -0.5] },
-    { "kind": "Jaw", "t": 1, "size": 3, "offset": [-0.52, -0.13, 0], "rotation": [0, 0, -0.18] },
+    { "kind": "SickleFin", "t": 0.62, "size": 1.0, "offset": [0.04, -0.14, 0] },
+    { "kind": "SickleFin", "t": 0.27, "size": 0.38, "offset": [0, -0.1, 0] },
+    { "kind": "SharkMaw", "t": 1 },
     { "kind": "Gills", "t": 0.5 }
   ]
 }

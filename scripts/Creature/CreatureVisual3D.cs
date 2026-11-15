@@ -327,6 +327,8 @@ public partial class CreatureVisual3D : Node3D
         SetClay("knead", Knead);
         SetClay("swim_vertical", CreatureType.MarineMammal == design.Type ? 1f : 0f);
         SetClay("half_length", Mathf.Max(design.HalfLength, 0.1f));
+        SetClay("mouth_gape", MouthShapes.For(design)?.Gape ?? -1f);
+        SetClay("mouth_min_gape", CreatureClay.MIN_GAPE);
         if (!IsPartsOnly)
         {
             CellVisual3D.AddMesh(this, BuildBodyMesh(design), _clay, Vector3.Zero, Vector3.One);

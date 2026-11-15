@@ -1,5 +1,5 @@
 // NOTE:
-//   Poses the built pieces of a creature part (side, size, shift and turn from the
+//   Poses the built pieces of a creature part (side, size, stretch, shift and turn from the
 //   CreaturePart) and remembers their meshes and anchors, so the editor can pick a part
 //   by ray and put its gizmo on it. Owned by CreatureParts3D, one instance per build.
 //   Anchors are in the space of the visual, the owner turns them into global points.
@@ -45,6 +45,8 @@ public sealed class CreaturePartPoser
         moves by the offset. The left flank of a paired part takes the mirror image
         (offset Z negated, turn mirrored: MIRROR * turn * MIRROR).
       > Size grows every piece around its own origin (eyes stay on the flank, legs on the hip).
+      > Stretch scales the group per body axis around its anchor, before the turn: the turned
+        part keeps its stretched shape. A diagonal scale is its own mirror image, both flanks share it.
     */
     /// <summary>Poses the pieces of one part and remembers their meshes and anchors.</summary>
     /// <param name="index">(Required) Index of the part in Design.Parts.</param>
@@ -56,6 +58,7 @@ public sealed class CreaturePartPoser
     {
         CreaturePartInfo info         = part.Info;
         Basis            grow         = Basis.FromScale(Vector3.One * baseSize * part.Size);
+        Basis            stretch      = Basis.FromScale(part.Proportion);
         Basis            turn         = Basis.FromEuler(part.Rotation);
         Basis            turnMirrored = MIRROR * turn * MIRROR;
 
@@ -98,8 +101,8 @@ public sealed class CreaturePartPoser
             foreach ((Node3D pivot, Node3D piece, _) in group)
             {
                 Vector3 at = pivot.Position + piece.Position;
-                piece.Position = anchor + rotate * (at - anchor) + shift - pivot.Position;
-                piece.Basis    = rotate * piece.Basis * grow;
+                piece.Position = anchor + rotate * (stretch * (at - anchor)) + shift - pivot.Position;
+                piece.Basis    = rotate * stretch * piece.Basis * grow;
                 if (piece is MeshInstance3D mesh)
                 {
                     _partMeshes.Add((index, flank, mesh));

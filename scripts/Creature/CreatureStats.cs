@@ -202,17 +202,25 @@ public sealed class CreatureStats
                 case CreaturePartKind.DorsalFin:
                 case CreaturePartKind.SharkFin:
                 case CreaturePartKind.TallFin:
+                case CreaturePartKind.FinRibbon:
                     stats.Acceleration *= effects.DorsalFinAcceleration;
                     break;
                 case CreaturePartKind.PectoralFin:
                 case CreaturePartKind.Flipper:
                 case CreaturePartKind.Paddle:
+                case CreaturePartKind.SickleFin:
+                case CreaturePartKind.RoundFlipper:
+                case CreaturePartKind.HindPaddle:
                     stats.Acceleration *= Scaled(effects.PectoralFinAcceleration);
                     break;
                 // Mouths: the jaw bites forward, the filter mouth sieves plankton from far around,
                 // the beak grinds plants
                 case CreaturePartKind.Jaw:
                 case CreaturePartKind.NeedleMaw:
+                case CreaturePartKind.SharkMaw:
+                case CreaturePartKind.OrcaMaw:
+                case CreaturePartKind.GapeMaw:
+                case CreaturePartKind.SquidBeak:
                     stats._jawAngles.Add(0f);
                     stats.DigestMeat *= effects.JawDigestMeat;
                     break;
@@ -223,6 +231,8 @@ public sealed class CreatureStats
                     break;
                 case CreaturePartKind.Beak:
                 case CreaturePartKind.PufferMouth:
+                case CreaturePartKind.CrabMouth:
+                case CreaturePartKind.Smile:
                     stats.DigestPlant *= effects.BeakDigestPlant;
                     break;
                 // Defense: spines hurt at both flanks and the back, the shell damps hits from there,
@@ -241,9 +251,18 @@ public sealed class CreatureStats
                     break;
                 // Eyes: food is pulled in from farther away
                 case CreaturePartKind.PitEye:
+                case CreaturePartKind.BeadEye:
+                case CreaturePartKind.GhostEye:
                     stats.MagnetBonus += effects.PitEyeMagnet * share;
                     break;
                 case CreaturePartKind.Eye:
+                case CreaturePartKind.BulgeEye:
+                case CreaturePartKind.PatchEye:
+                case CreaturePartKind.SquidEye:
+                case CreaturePartKind.PegEye:
+                case CreaturePartKind.LidEye:
+                case CreaturePartKind.TurretEye:
+                case CreaturePartKind.FrogEye:
                     stats.MagnetBonus += effects.EyeMagnet * share;
                     break;
                 case CreaturePartKind.StalkEye:

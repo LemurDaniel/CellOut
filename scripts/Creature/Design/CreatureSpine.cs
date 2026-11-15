@@ -41,12 +41,12 @@ public sealed class CreatureSpine
     //   Girth, height and position per vertebra, a fresh straight spine, copies.
     // ---------------------------------------------------------------------------
 
-    public const int MIN_VERTEBRAE = 4;
+    public const int MIN_VERTEBRAE = 3;
     public const int MAX_VERTEBRAE = 12;
     public const float MIN_GIRTH = 0.25f;
     public const float MAX_GIRTH = 1f;
     public const float MAX_LIFT = 1.1f;             // how far a vertebra can be pulled above or below the line
-    private const float MAX_LIFT_STEP = 0.32f;      // height step between two neighbors, the spine stays a smooth curve
+    private const float MAX_LIFT_STEP = 0.38f;      // height step between two neighbors, the spine stays a smooth curve
     public const float SPACING = 0.36f;             // distance between two vertebrae
 
     private readonly List<float> _girths = new();
@@ -168,7 +168,7 @@ public sealed class CreatureSpine
       The body re-centers only when vertebrae are added or removed (Recenter), so the gizmo
       stays on the dragged vertebra.
     */
-    public const float MIN_GAP = SPACING * 0.45f;
+    public const float MIN_GAP = SPACING * 0.25f;        // 0.09: with the lift step a spine climbs at up to 77 degrees (seahorse)
     public const float MAX_GAP = SPACING * 1.8f;
 
     /// <summary>Moves one vertebra along the body, clamped between its neighbors.</summary>

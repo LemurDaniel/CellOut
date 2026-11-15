@@ -1,7 +1,8 @@
 // NOTE:
 //   Move, turn and scale gizmo of the editors: three arrows (X red, Y green, Z blue)
 //   shift along an axis, three rings turn around one, a golden ring around X scales
-//   (vertebrae). Which handles show is set per use (ShowHandles). Drawn on top
+//   (vertebrae, the whole part), a cube beyond every arrow tip stretches along its axis
+//   (creature parts). Which handles show is set per use (ShowHandles). Drawn on top
 //   of everything (no depth test) and kept at the same size on screen. The gizmo only
 //   answers questions in screen pixels (which handle is under the cursor, how far a drag
 //   moves or turns), the editor applies the result to the design.
@@ -23,7 +24,7 @@ using Godot;
 
 namespace CellOut;
 
-public enum GizmoHandle { None, MoveX, MoveY, MoveZ, TurnX, TurnY, TurnZ, Scale }
+public enum GizmoHandle { None, MoveX, MoveY, MoveZ, TurnX, TurnY, TurnZ, Scale, StretchX, StretchY, StretchZ }
 
 public partial class PartGizmo : Node3D
 {
@@ -54,9 +55,9 @@ public partial class PartGizmo : Node3D
     {
         return handle switch
         {
-            GizmoHandle.MoveX or GizmoHandle.TurnX => Vector3.Right,
-            GizmoHandle.MoveY or GizmoHandle.TurnY => Vector3.Up,
-            GizmoHandle.MoveZ or GizmoHandle.TurnZ => Vector3.Back,
+            GizmoHandle.MoveX or GizmoHandle.TurnX or GizmoHandle.StretchX => Vector3.Right,
+            GizmoHandle.MoveY or GizmoHandle.TurnY or GizmoHandle.StretchY => Vector3.Up,
+            GizmoHandle.MoveZ or GizmoHandle.TurnZ or GizmoHandle.StretchZ => Vector3.Back,
             _                                      => Vector3.Zero,
         };
     }
@@ -65,6 +66,18 @@ public partial class PartGizmo : Node3D
     {
         return GizmoHandle.TurnX == handle || GizmoHandle.TurnY == handle || GizmoHandle.TurnZ == handle;
     }
+
+    public static bool IsStretch(GizmoHandle handle)
+    {
+        return GizmoHandle.StretchX == handle || GizmoHandle.StretchY == handle || GizmoHandle.StretchZ == handle;
+    }
+
+    /// <summary>Shift, turn, stretch per axis and the scale ring: everything a creature part can do.</summary>
+    public static readonly GizmoHandle[] SHAPE_HANDLES =
+    {
+        GizmoHandle.MoveX, GizmoHandle.MoveY, GizmoHandle.MoveZ, GizmoHandle.TurnX, GizmoHandle.TurnY, GizmoHandle.TurnZ,
+        GizmoHandle.StretchX, GizmoHandle.StretchY, GizmoHandle.StretchZ, GizmoHandle.Scale,
+    };
 
     /// <summary>Every handle but the scale ring: shift and turn a part.</summary>
     public static readonly GizmoHandle[] PART_HANDLES =
@@ -102,6 +115,9 @@ public partial class PartGizmo : Node3D
     private const float ARROW_PICK_PIXELS = 12f;
     private const float RING_PICK_PIXELS = 9f;
     private const float SCALE_RING_RADIUS = 0.95f;   // outside the turn rings
+    private const float CUBE_DISTANCE = 1.2f;        // beyond the arrow tip
+    private const float CUBE_SIZE = 0.15f;
+    private const float CUBE_PICK_PIXELS = 13f;
     private static readonly Color SCALE_COLOR = new(1f, 0.78f, 0.3f);
     private const int RING_SAMPLES = 40;
     private static readonly Color X_COLOR = new(1f, 0.38f, 0.42f);
@@ -119,6 +135,7 @@ public partial class PartGizmo : Node3D
     //   _Ready        Builds the handles, hidden until the editor shows the gizmo.
     //   AddArrow      Shaft and tip along one axis.
     //   AddRing       A thin ring around one axis.
+    //   AddCube       The stretch cube beyond the tip of an arrow.
     //   NewMaterial   Unshaded, no depth test, drawn after the scene.
     //   ToAxis        Turns a Y-aligned mesh onto an axis.
     //
@@ -136,6 +153,9 @@ public partial class PartGizmo : Node3D
         AddRing(GizmoHandle.TurnY, Y_COLOR);
         AddRing(GizmoHandle.TurnZ, Z_COLOR);
         AddRing(GizmoHandle.Scale, SCALE_COLOR, SCALE_RING_RADIUS, Vector3.Right);
+        AddCube(GizmoHandle.StretchX, X_COLOR);
+        AddCube(GizmoHandle.StretchY, Y_COLOR);
+        AddCube(GizmoHandle.StretchZ, Z_COLOR);
         AddMesh(GizmoHandle.None, CellVisual3D.SphereMesh(true), NewMaterial(Colors.White), Basis.FromScale(Vector3.One * 0.07f), Vector3.Zero);
         ShowHandles(PART_HANDLES);
     }
@@ -149,6 +169,13 @@ public partial class PartGizmo : Node3D
         float   tip  = 0.22f;
         AddMesh(handle, CellVisual3D.RodMesh(), material, to * Basis.FromScale(new Vector3(SHAFT_RADIUS, ARROW_LENGTH - tip, SHAFT_RADIUS)), axis * (ARROW_LENGTH - tip) * 0.5f);
         AddMesh(handle, CellVisual3D.ConeMesh(), material, to * Basis.FromScale(new Vector3(0.7f, tip / 0.6f, 0.7f)), axis * (ARROW_LENGTH - tip * 0.5f));
+    }
+
+    private void AddCube(GizmoHandle handle, Color color)
+    {
+        StandardMaterial3D material = NewMaterial(color);
+        _materials[handle] = (material, color);
+        AddMesh(handle, new BoxMesh { Size = Vector3.One }, material, Basis.FromScale(Vector3.One * CUBE_SIZE), AxisOf(handle) * CUBE_DISTANCE);
     }
 
     /// <param name="radius">(Optional) Ring radius in gizmo units. Defaults to RING_RADIUS.</param>
@@ -208,6 +235,7 @@ public partial class PartGizmo : Node3D
     //   MoveDelta    World shift of a mouse motion along the axis of a move handle.
     //   DragAlong    World distance of a mouse motion along any axis at a point.
     //   TurnDelta    Angle of a mouse motion around the axis of a turn handle.
+    //   StretchFactor  Growth along one axis of a mouse motion on a stretch cube.
     //   ScaleFactor  Growth of a mouse motion on the scale ring.
     //
 
@@ -240,9 +268,26 @@ public partial class PartGizmo : Node3D
         float   scale  = Scale.X;
         Vector2 center = Camera.UnprojectPosition(origin);
 
-        // Arrows: distance to the shaft on screen
+        // Cubes first: they sit beyond the arrow tips and would lose against the shafts
         GizmoHandle best     = GizmoHandle.None;
-        float       bestDist = ARROW_PICK_PIXELS;
+        float       bestDist = CUBE_PICK_PIXELS;
+        foreach (GizmoHandle handle in new[] { GizmoHandle.StretchX, GizmoHandle.StretchY, GizmoHandle.StretchZ }.Where(_shown.Contains))
+        {
+            Vector3 cube = origin + AxisOf(handle) * scale * CUBE_DISTANCE;
+            float   distance = Camera.IsPositionBehind(cube) ? float.PositiveInfinity : Camera.UnprojectPosition(cube).DistanceTo(pixel);
+            if (distance < bestDist)
+            {
+                bestDist = distance;
+                best     = handle;
+            }
+        }
+        if (GizmoHandle.None != best)
+        {
+            return best;
+        }
+
+        // Arrows: distance to the shaft on screen
+        bestDist = ARROW_PICK_PIXELS;
         foreach (GizmoHandle handle in new[] { GizmoHandle.MoveX, GizmoHandle.MoveY, GizmoHandle.MoveZ }.Where(_shown.Contains))
         {
             Vector3 tip = origin + AxisOf(handle) * scale * ARROW_LENGTH;
@@ -336,6 +381,16 @@ public partial class PartGizmo : Node3D
         float   swept  = Mathf.Wrap((to - center).Angle() - (from - center).Angle(), -Mathf.Pi, Mathf.Pi);
         bool    isFacingCamera = AxisOf(handle).Dot(Camera.GlobalPosition - GlobalPosition) >= 0f;
         return isFacingCamera ? -swept : swept;
+    }
+
+    /// <summary>Stretch factor of a drag on a cube: how far the mouse pulled it along its axis, in cube distances.</summary>
+    /// <param name="handle">(Required) A stretch handle.</param>
+    /// <param name="relative">(Required) Mouse motion in pixels.</param>
+    /// <returns>Above 1 pulled outwards (longer), below 1 pushed in (shorter), never below 0.5 per motion.</returns>
+    public float StretchFactor(GizmoHandle handle, Vector2 relative)
+    {
+        float reach = Scale.X * CUBE_DISTANCE;
+        return Mathf.Max(1f + DragAlong(Camera, GlobalPosition, AxisOf(handle), relative, reach) / reach, 0.5f);
     }
 
     /// <summary>Scale factor of a drag on the scale ring: how much farther from the gizmo center the mouse moved.</summary>

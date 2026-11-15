@@ -20,12 +20,14 @@ namespace CellOut;
 // =============================   PLACED PART   =============================
 // ===========================================================================
 //
-//   CreaturePart   Kind, share of the spine (0 tail .. 1 nose), the points paid, size,
+//   CreaturePart   Kind, share of the spine (0 tail .. 1 nose), the points paid, size, stretch per axis,
 //                  side and the pose set with the gizmo of the editor.
 //
 
 /// <summary>One placed creature part. Paired parts (CreaturePartInfo.IsPaired) stand for a mirrored pair unless Side is set.</summary>
 /// <param name="Size">Visual size, 1 = normal, MIN_PART_SIZE..MAX_PART_SIZE. Looks only, the stats ignore it.</param>
+/// <param name="Stretch">Extra factor per axis on top of Size (x along the body, y up, z out of the flank, before the turn),
+/// null = unstretched. Read it through Proportion. MIN_PART_STRETCH..MAX_PART_STRETCH per axis. Looks only.</param>
 /// <param name="Side">0 for a pair or a midline part, 1 right (+Z) or -1 left for a single half of a paired part.</param>
 /// <param name="Offset">Shift of the right half (or the whole midline part) in unit space, the left half mirrors it. Looks only.</param>
 /// <param name="Rotation">Euler turn in radians around the anchor of the right half, the left half mirrors it. Looks only.</param>
@@ -45,8 +47,12 @@ public readonly record struct CreaturePart(
     IReadOnlyList<Vector3> Joints = null,
     int Id = 0,
     int ParentId = 0,
-    int ParentJoint = 0)
+    int ParentJoint = 0,
+    Vector3? Stretch = null)
 {
+    /// <summary>The stretch per axis, (1, 1, 1) for an unstretched part.</summary>
+    public Vector3 Proportion => Stretch ?? Vector3.One;
+
     public CreaturePartInfo Info => CreatureCatalog.Get(Kind);
 
     /// <summary>1 for a pair or a midline part, 0.5 for a single half: weight and effects scale with it.</summary>

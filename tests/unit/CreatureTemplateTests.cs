@@ -86,7 +86,7 @@ public class CreatureTemplateTests
             foreach (CreaturePart part in design.Parts)
             {
                 // Free are only the part at the tail tip and the eyes, everything else was paid at its catalog price
-                bool isFreeKind = CreaturePartKind.Eye == part.Kind || CreatureMount.Tail == part.Info.Mount;
+                bool isFreeKind = CreatureMount.Tail == part.Info.Mount || (CreatureCategory.Eyes == part.Info.Category && CreaturePartKind.Lure != part.Kind);
                 Assert.True(part.PaidCost == part.Info.CostFor(part.Side) || (0 == part.PaidCost && isFreeKind),
                     $"{template.Key}: {part.Kind} must be paid {part.Info.CostFor(part.Side)} EP, got {part.PaidCost}.");
             }
@@ -189,5 +189,23 @@ public class CreatureTemplateTests
         var error = Assert.Throws<InvalidOperationException>(() => CreatureTemplates.Parse(json).Build());
         Assert.Contains("SAMPLE", error.Message);
         Assert.Contains("CaudalFin", error.Message);
+    }
+
+    [Fact]
+    public void StretchIsReadAndClamped()
+    {
+        CreatureDesign design = CreatureTemplates.Parse("""
+            {
+              "key": "STRETCHED", "type": "Fish", "girths": [0.3, 0.5, 0.7, 0.5],
+              "parts": [
+                { "kind": "CaudalFin", "t": 0, "free": true, "stretch": [1.5, 1, 9] },
+                { "kind": "Eye", "t": 0.8, "free": true }
+              ]
+            }
+            """).Build();
+
+        Assert.Equal(new Godot.Vector3(1.5f, 1f, CreatureDesign.MAX_PART_STRETCH), design.Parts[0].Proportion);
+        Assert.Equal(Godot.Vector3.One, design.Parts[1].Proportion);     // unstretched parts stay at one
+        Assert.Null(design.Parts[1].Stretch);
     }
 }

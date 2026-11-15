@@ -5,6 +5,8 @@
 //   back and flanks, the belly stays light (CreatureDesign.Pattern). On top the spray paint:
 //   up to 160 dots (CreatureDesign.MAX_SPLATS) with a speckled rim like a spray can.
 //   Under the open sky of the land the skin is matt and glows less (sky_open).
+//   The mouth opening is cut into the body mesh (Visual/CreatureClay.cs), the line and its dark cavity
+//   are drawn here per pixel from the mark the mesh carries in its UV2.
 global uniform float sky_open;       // 0 under water .. 1 under the open sky, set by Plane3D.SetSky
 
 uniform vec4 clay_color : source_color = vec4(0.8, 0.55, 0.45, 1.0);
@@ -22,9 +24,14 @@ uniform float pattern_scale = 1.0;
 uniform int splat_count = 0;
 uniform vec4 splat_pos[160];         // xyz center in model space, w radius
 uniform vec4 splat_color[160];
+uniform float mouth_gape = -1.0;     // half the opening at the nose in heights of the head, negative = no mouth (MouthShape.Gape)
+uniform float mouth_min_gape = 0.045; // CreatureClay.MIN_GAPE
 
 varying vec3 local_pos;
+varying vec2 mouth_mark;             // x = 0 at the mouth corners .. 1 at the nose tip, y = below the mouth line in heights of the head
 
+const vec3 MAW_COLOR = vec3(0.13, 0.03, 0.05);
+const float LIP_RIM = 0.03;          // width of the pink rim in heights of the head
 float hash(vec3 p) {
 	return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453);
 }
@@ -61,6 +68,7 @@ float noise(vec3 p) {
 
 void vertex() {
 	local_pos = VERTEX;
+	mouth_mark = UV2;                   // meshes without UV2 (limbs, fillets, knuckles) carry 0: plain skin
 
 	// Lumps of hand-kneaded clay and the jelly wobble of the blob
 	float lumps = noise(VERTEX * 3.2 + vec3(seed)) - 0.5;
@@ -123,6 +131,18 @@ void fragment() {
 		col = mix(col, splat_color[i].rgb * (0.92 + 0.12 * grain), cover);
 	}
 	col *= 1.0 - knead * (0.07 * prints + 0.07 * fine);
+
+	// The mouth cavity: dark red-black inside, a pink rim where the lips turn in
+	if (mouth_gape >= 0.0 && mouth_mark.x > 0.0) {
+		float gape = max(mouth_gape * smoothstep(0.0, 0.3, mouth_mark.x), mouth_min_gape);
+		float off = abs(mouth_mark.y);
+		float ends = smoothstep(0.0, 0.08, mouth_mark.x);      // the line thins out into the corners
+		// The maw fills the opening, the pink rim around it keeps its width however wide the mouth gapes
+		float maw = (1.0 - smoothstep(gape - min(0.02, gape * 0.4), gape, off)) * ends;
+		float lips = (1.0 - smoothstep(gape, gape + LIP_RIM, off)) * ends * (1.0 - maw);
+		col = mix(col, mix(col, vec3(0.85, 0.45, 0.5), 0.45), lips);
+		col = mix(col, MAW_COLOR, maw);
+	}
 
 	// Countershading of the living body: darker back, lighter belly
 	float belly = 1.0 - smoothstep(-0.25, 0.2, local_pos.y);

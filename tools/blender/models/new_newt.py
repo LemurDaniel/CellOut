@@ -1,7 +1,7 @@
 # NOTE:
 #   New parts of the newt template (fire newt / axolotl mix): the feathery outer gills
 #   of an axolotl and the leaf-shaped newt tail with a fin seam along top and bottom.
-#   Not registered in build.models.py yet, the specs are in the spec file of the newt.
+#   Plus its face: the carved smile with a tongue tip and the golden frog eye.
 #
 #   ./tools/blender/Show-Model.ps1 -Module new_newt -Call 'build_feather_gills(scene)' -Name feathergills
 #   ./tools/blender/Show-Model.ps1 -Module new_newt -Call 'build_newt_tail(scene)' -Name newttail
@@ -10,6 +10,8 @@
 #   Chapters:
 #     NEWT PARTS   Feathery outer gills (FlankPair) and the newt tail (Tail).
 #
+
+import math
 
 from models.fins import fin
 from models.helpers import (
@@ -20,6 +22,7 @@ from models.helpers import (
     G,
     animate,
     bind,
+    ellipsoid,
     rig,
     tube,
     wave,
@@ -33,6 +36,8 @@ from models.helpers import (
 #   gill_branch           One gill stalk with its feathers, as stalk and feather mesh.
 #   build_feather_gills   Three feathery gill stalks of the right flank, swaying.
 #   build_newt_tail       Leaf-shaped tail: a fleshy core with a fin seam above and below.
+#   build_smile           Tongue tip of the carved smile (Snout).
+#   build_frogeye         Golden eye with a flat pupil, socket ring and heavy lid (Eye).
 #
 
 GILL_FEATHERS = 6                    # feather pairs along one stalk
@@ -129,3 +134,33 @@ def build_newt_tail(scene):
 
     # The core is the fleshy root of the fin: a long drop, as thick as the tail tip at the origin
     fin(scene, roots, tips, AXIS_OUT, G(-0.4, 0.0, 0), (0.62, 0.06, 0.1), 10.0)
+
+
+def build_smile(scene):
+    """
+    The mouth of a newt (Snout: x 0 at the mouth corners .. 1 at the nose tip, z the width
+    of the head). The smile itself is carved into the head (data/mouths.json), the model
+    only adds a tongue tip peeking out of the closed line a little off the middle.
+    """
+    ellipsoid(scene, 'Tongue', G(0.93, -0.03, 0.3), (0.12, 0.15, 0.06), 'Gill', subdivisions=2)
+
+
+def build_frogeye(scene):
+    """
+    The eye of a frog or newt (Eye: an eyeball of radius 1 at the origin, +Z out of the
+    head, +X forward): a golden dome with a flat lying pupil, sitting in a ring of skin
+    and half covered by a heavy upper lid, which gives the relaxed amphibian look.
+    """
+    # Golden ball with a wide flat pupil looking out and a little forward
+    ellipsoid(scene, 'Ball', G(0, 0, 0), (1.0, 1.0, 1.0), 'Beak', subdivisions=3)
+    ellipsoid(scene, 'Pupil', G(0.2, -0.06, 0.52), (0.78, 0.6, 0.5), 'Pupil', subdivisions=3)
+    ellipsoid(scene, 'Glint', G(0.42, 0.14, 0.9), (0.14, 0.14, 0.14), 'Glint', subdivisions=2)
+
+    # Socket: a ring of skin around the base of the ball, open at the back like a horseshoe
+    count = 14
+    ring = [G(1.02 * math.cos(math.tau * (i + 0.5) / count + math.pi), 1.02 * math.sin(math.tau * (i + 0.5) / count + math.pi), 0.12)
+            for i in range(count)]
+    tube(scene, 'Socket', ring, [0.2] * count, [(i, i + 1) for i in range(count - 1)], 'Skin', subdivisions=1, max_pieces=2)
+
+    # Upper lid: a cap in the pattern color over the top of the ball, the yellow brow of a fire salamander
+    ellipsoid(scene, 'Lid', G(-0.04, 0.72, -0.1), (1.1, 1.04, 0.62), 'BackSkin', subdivisions=3)
