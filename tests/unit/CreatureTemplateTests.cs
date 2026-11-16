@@ -98,11 +98,10 @@ public class CreatureTemplateTests
     [Fact]
     public void NewtIsReadyForTheLand()
     {
-        // The one template made for the first step ashore: its legs reach the ground and it has a lung
+        // The one template made for the first step ashore: its legs reach the ground
         CreatureDesign newt = CreatureTemplates.Get("NEWT").Build();
 
         Assert.True(newt.LegPairs >= 2, $"The newt must stand on two pairs of legs, {newt.LegPairs} reach the ground.");
-        Assert.True(newt.BreathesAir, "The newt must carry a lung.");
         Assert.True(CreatureStats.From(newt).LandSpeed > 0.3f, "The newt must walk, not crawl.");
     }
 
@@ -292,6 +291,162 @@ public class CreatureTemplateTests
         CreatureDesign level = CreatureTemplates.Plain(CreatureType.Fish).Build();
         Assert.Equal(0f, level.Pitch);
         Assert.Equal(CreatureSkin.Smooth, level.Skin);
+    }
+
+    [Fact]
+    public void BranchesOfTheBodyPartColorsAndTheMouthPlace()
+    {
+        CreatureTemplate template = CreatureTemplates.Parse("""
+            {
+              "key": "HYDRA", "type": "Fish", "girths": [0.3, 0.5, 0.7, 0.5],
+              "crowns": [0, -1, -1, 0], "bellies": [1, 1, 1, 0],
+              "mouthLevel": -0.5, "mouthLength": 9,
+              "parts": [
+                { "kind": "Trunk", "t": 0.8, "middle": true, "color": "#ff0000" },
+                { "kind": "Eye", "onPart": 0, "onJoint": 2 },
+                { "kind": "WingLimb", "t": 0.5, "limb": "Tentacle" },
+                { "kind": "Finger", "onPart": 2, "onJoint": 1 }
+              ]
+            }
+            """);
+        CreatureDesign design = template.Build();
+
+        // A second piece of body with a head of its own, a wing arm with a finger on its joint
+        Assert.Equal(4, design.Parts.Count);
+        Assert.True(design.Parts[0].IsCentered);
+        Assert.Equal(new Color(1f, 0f, 0f), design.Parts[0].Tint);
+        Assert.Null(design.Parts[1].Tint);
+        Assert.Equal(design.Parts[0].Id, design.Parts[1].ParentId);
+        // A bare limb takes the look of another limb kind, cost and kind stay
+        Assert.Equal(CreaturePartKind.WingLimb, design.Parts[2].Kind);
+        Assert.Equal(CreaturePartKind.Tentacle, design.Parts[2].LimbStyle);
+        Assert.True(design.SetLimbKind(2, CreaturePartKind.WingLimb));
+        Assert.Null(design.Parts[2].LimbKind);
+
+        // Ring shapes and the mouth place arrive, clamped
+        Assert.Equal(-1f, design.Crowns[1], 4);
+        Assert.Equal(1f, design.Bellies[0], 4);
+        Assert.Equal(-0.5f, design.MouthLevel, 4);
+        Assert.Equal(CreatureLook.MAX_MOUTH_LENGTH, design.MouthLength, 4);
+        MouthShape mouth = MouthShapes.For(design);
+        Assert.Equal(MouthShapes.PLAIN.Level - 0.5f, mouth.Level, 4);
+        Assert.Equal(MouthShapes.PLAIN.Length * CreatureLook.MAX_MOUTH_LENGTH, mouth.Length, 4);
+
+        design.SetPartColor(0, null);
+        Assert.Null(design.Parts[0].Tint);
+    }
+
+    [Fact]
+    public void OwnShapesBecomeParts()
+    {
+        CreatureDesign design = CreatureDesign.FromGirths(CreatureType.Fish, new[] { 0.4f, 0.6f, 0.8f, 0.6f }, null);
+        CustomShape horn = design.AddShape();
+        horn.Form.SetLift(horn.Form.Girths.Count - 1, 0.3f);
+        Assert.False(horn.Form.HasMouthLine);
+
+        // A part made of the shape: free of charge, a pair on the flanks, no effect on the stats
+        float health = CreatureStats.From(design).Health;
+        Assert.True(design.PlaceShape(horn.Id, 0.5f));
+        Assert.False(design.PlaceShape(99, 0.3f));
+        Assert.Equal(horn.Id, design.Parts[0].ShapeId);
+        Assert.Equal(0, design.Parts[0].PaidCost);
+        Assert.Equal(health, CreatureStats.From(design).Health, 4);
+
+        // A copy brings its own clay along, deleting a shape takes its parts with it
+        var copy = new CreatureDesign();
+        copy.CopyFrom(design);
+        Assert.NotSame(horn.Form, copy.ShapeOf(horn.Id).Form);
+        Assert.Equal(0.3f, copy.ShapeOf(horn.Id).Form.Lifts[^1], 4);
+        Assert.True(design.RemoveShape(horn.Id));
+        Assert.Empty(design.Parts);
+        Assert.Single(copy.Parts);
+    }
+
+    [Fact]
+    public void AHeadModelReplacesTheCarvedFace()
+    {
+        CreatureDesign design = CreatureTemplates.Parse("""
+            {
+              "key": "SKULL", "type": "Fish", "girths": [0.3, 0.5, 0.7, 0.5],
+              "parts": [
+                { "kind": "Jaw", "t": 1 },
+                { "kind": "Limb", "t": 0.5 }
+              ]
+            }
+            """).Build();
+        Assert.False(design.HasHeadModel);
+        Assert.NotNull(MouthShapes.For(design));
+
+        // The skull covers the front of the body: no carved mouth, no teeth. It costs points like every part
+        Assert.True(design.TryPlace(CreaturePartKind.ElephantHead, 1f, CreatureCatalog.Get(CreaturePartKind.ElephantHead).Cost));
+        Assert.True(design.HasHeadModel);
+        Assert.Null(MouthShapes.For(design));
+        Assert.Equal(CreatureCategory.Heads, design.Parts[^1].Info.Category);
+        Assert.Equal(1f, design.Parts[^1].T, 4);
+
+        // A head on a limb joint is a bud of its own, the body keeps its face
+        design.RemovePart(design.Parts.Count - 1);
+        Assert.True(design.TryPlaceOnLimb(CreaturePartKind.ElephantHead, 1, 2, 2));
+        Assert.False(design.HasHeadModel);
+    }
+
+    [Fact]
+    public void MotionOfBodyAndPartsArrivesClamped()
+    {
+        CreatureDesign design = CreatureTemplates.Parse("""
+            {
+              "key": "STIFF", "type": "Fish", "girths": [0.3, 0.5, 0.7, 0.5],
+              "waveAmount": 9, "waveSpeed": 0, "breathing": false,
+              "parts": [
+                { "kind": "Limb", "t": 0.5, "motion": { "on": false } },
+                { "kind": "Eye", "t": 0.9, "motion": { "blink": false, "speed": 99, "phase": 1.25 } },
+                { "kind": "DorsalFin", "t": 0.4, "motion": { "channels": { "Fin": 0, "Root": 9, "Tip": 1 } } }
+              ]
+            }
+            """).Build();
+
+        // Channels of the model animation: clamped, a plain 1 is no setting, the last one taken away leaves none
+        CreaturePart fin = design.Parts[2];
+        Assert.Equal(0f, fin.ChannelAmount("Fin"), 4);
+        Assert.Equal(PartMotion.MAX_AMOUNT, fin.ChannelAmount("Root"), 4);
+        Assert.Equal(2, fin.Channels.Count);
+        Assert.Equal(1f, fin.ChannelAmount("Unknown"), 4);
+        design.SetPartChannel(2, "Fin", 1f);
+        design.SetPartChannel(2, "Root", 1f);
+        Assert.Null(design.Parts[2].Channels);
+
+        Assert.Equal(CreatureLook.MAX_WAVE_AMOUNT, design.WaveAmount, 4);
+        Assert.Equal(CreatureLook.MIN_WAVE_SPEED, design.WaveSpeed, 4);
+        Assert.False(design.IsBreathing);
+
+        // Fields left out keep their default, values are clamped, the phase wraps
+        Assert.False(design.Parts[0].Movement.IsOn);
+        Assert.Equal(1f, design.Parts[0].Movement.Amount, 4);
+        PartMotion eye = design.Parts[1].Movement;
+        Assert.True(eye.IsOn);
+        Assert.False(eye.IsBlinking);
+        Assert.Equal(PartMotion.MAX_SPEED, eye.Speed, 4);
+        Assert.Equal(0.25f, eye.Phase, 4);
+
+        // A tail fin drives the swim wave of the body only while it moves itself
+        Assert.True(design.TryPlace(CreaturePartKind.SharkTail, 0f, 0));
+        Assert.True(design.SwimsWithWave);
+        design.SetPartMotion(design.Parts.Count - 1, PartMotion.REST with { IsOn = false });
+        Assert.False(design.SwimsWithWave);
+
+        // A second color along a limb: from a joint outwards, clamped to its joints, only on parts with joints
+        Assert.True(design.SetLimbTip(0, new Color(1f, 1f, 1f, 0.2f), 99));
+        Assert.Equal(new Color(1f, 1f, 1f), design.Parts[0].TipColor);
+        Assert.Equal(design.Parts[0].Joints.Count, design.Parts[0].TipFrom);
+        Assert.True(design.SetLimbTip(0, null, 2));
+        Assert.Null(design.Parts[0].TipColor);
+        Assert.False(design.SetLimbTip(1, Colors.White, 1));                    // an eye has no joints
+
+        // Untouched parts carry no setting, the plain motion takes a setting away again
+        Assert.Null(design.Parts[2].Motion);
+        Assert.Equal(PartMotion.REST, design.Parts[2].Movement);
+        design.SetPartMotion(0, PartMotion.REST);
+        Assert.Null(design.Parts[0].Motion);
     }
 
     [Fact]

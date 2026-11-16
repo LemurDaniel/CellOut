@@ -357,13 +357,8 @@ public sealed record CreatureEffectsBalance
     public required float LimbStride { get; init; }
     public required float LimbReach { get; init; }               // a sculpted limb pair held up grabs like a short arm
 
-    // Brain and lungs
-    public required int SmallBrainEp { get; init; }              // extra evolution points per level
-    public required int BigBrainEp { get; init; }
-    public required float BigBrainAcceleration { get; init; }
-    public required float LungHealth { get; init; }
+    // Breathing openings
     public required float BlowholeHealth { get; init; }
-    public required float BigLungHealth { get; init; }
 }
 
 // ===========================================================================

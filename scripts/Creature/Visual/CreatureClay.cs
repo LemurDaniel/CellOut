@@ -27,6 +27,7 @@ public static class CreatureClay
     //   BuildBodyMesh   The lofted clay body: elliptic rings along the spine, the mouth cut into the head.
     //   CarveMouth      Moves one vertex for the mouth opening: cavity, lips and lower jaw.
     //   LimbMesh        The tube mesh along a smoothed joint path.
+    //   MembraneMesh    The skin of a wing between the arm and its trailing edge.
     //   AddFillet       A soft clay ball where a part grows out of the body.
     //
 
@@ -59,10 +60,18 @@ public static class CreatureClay
             float   height = design.HeightScaleAt(x);
             float   width  = design.WidthScaleAt(x);
             Vector3 up     = new Vector3(-design.SlopeAt(x) * RING_TILT, 1f, 0f).Normalized();
+            // The halves of the ring are superellipses: exponent 2 round, 1 a keel (a diamond), 4 boxy
+            float   crown  = 2f / (2f * Mathf.Pow(2f, design.CrownAt(x)));
+            float   belly  = 2f / (2f * Mathf.Pow(2f, design.BellyAt(x)));
             for (int j = 0; j < SEGMENTS; j++)
             {
                 float   angle  = Mathf.Tau * j / SEGMENTS;
-                Vector3 vertex = center + up * (Mathf.Sin(angle) * radius * height) + Vector3.Back * (Mathf.Cos(angle) * radius * width);
+                float   sine   = Mathf.Sin(angle);
+                float   cosine = Mathf.Cos(angle);
+                float   power  = sine >= 0f ? crown : belly;
+                float   across = Mathf.Sign(cosine) * Mathf.Pow(Mathf.Abs(cosine), power);
+                float   rise   = Mathf.Sign(sine) * Mathf.Pow(Mathf.Abs(sine), power);
+                Vector3 vertex = center + up * (rise * radius * height) + Vector3.Back * (across * radius * width);
                 // The shader draws the mouth line per pixel from this mark, sharper than the mesh could cut it
                 // In UV2: primitive meshes sharing the clay (fillets, knuckles) bring their own UV, but no UV2
                 surface.SetUV2(null == mouth ? Vector2.Zero : CarveMouth(design, mouth, center, ref vertex));
@@ -161,8 +170,10 @@ public static class CreatureClay
     /// <param name="tipRadius">(Optional) Radius at the tip. Defaults to LIMB_TIP_RADIUS.</param>
     /// <param name="rootRadius">(Optional) Radius at the shoulder. Defaults to LIMB_ROOT_RADIUS.</param>
     /// <param name="widths">(Optional) Thickness factor per point of the path, blended along the tube. Defaults to 1 everywhere.</param>
+    /// <param name="alongFrom">(Optional) Share of the whole limb this tube starts at, written to UV.x for the shader (tip_from). Defaults to 0.</param>
+    /// <param name="alongTo">(Optional) Share of the whole limb this tube ends at: a hard segment is only a piece of its limb. Defaults to 1.</param>
     /// <returns>The tube mesh in limb space.</returns>
-    public static ArrayMesh LimbMesh(IReadOnlyList<Vector3> path, float tipRadius = LIMB_TIP_RADIUS, float rootRadius = LIMB_ROOT_RADIUS, IReadOnlyList<float> widths = null)
+    public static ArrayMesh LimbMesh(IReadOnlyList<Vector3> path, float tipRadius = LIMB_TIP_RADIUS, float rootRadius = LIMB_ROOT_RADIUS, IReadOnlyList<float> widths = null, float alongFrom = 0f, float alongTo = 1f)
     {
         // Smoothed samples, thick at the shoulder, thin at the tip
         var samples = new List<Vector3>();
@@ -197,6 +208,7 @@ public static class CreatureClay
             for (int j = 0; j < LIMB_SEGMENTS; j++)
             {
                 float angle = Mathf.Tau * j / LIMB_SEGMENTS;
+                surface.SetUV(new Vector2(Mathf.Lerp(alongFrom, alongTo, (float)i / (samples.Count - 1)), 0f));
                 surface.AddVertex(samples[i] + (normal * Mathf.Sin(angle) + binormal * Mathf.Cos(angle)) * radius);
             }
         }
@@ -214,6 +226,54 @@ public static class CreatureClay
                 surface.AddIndex(b);
                 surface.AddIndex(c);
                 surface.AddIndex(d);
+            }
+        }
+        surface.GenerateNormals();
+        return surface.Commit();
+    }
+
+    /*
+      The skin of a wing: a sheet from the arm (the path) back to a trailing edge.
+      > Edge:   every point of the arm shifted towards the tail (-X) by the chord, which runs
+                out to nothing at the tip; at the shoulder the edge lies along the body
+      > Scallop: between two joints the edge swings in a little, like the skin between fingers
+      Both faces are built (own vertices, opposite winding): the clay culls back faces.
+    */
+    private const int MEMBRANE_STEPS = 6;            // strips per segment of the arm
+    private const float MEMBRANE_SCALLOP = 0.2f;     // share of the chord the edge swings in between two joints
+
+    /// <summary>The skin of a wing between the arm and its trailing edge.</summary>
+    /// <param name="path">(Required) The shoulder and every joint, in limb space.</param>
+    /// <param name="chord">(Required) Width of the skin at the shoulder, towards the tail.</param>
+    /// <returns>The two sided sheet in limb space.</returns>
+    public static ArrayMesh MembraneMesh(IReadOnlyList<Vector3> path, float chord)
+    {
+        var arm  = new List<Vector3>();
+        var edge = new List<Vector3>();
+        int segments = path.Count - 1;
+        for (int i = 0; i <= segments * MEMBRANE_STEPS; i++)
+        {
+            float   along = (float)i / MEMBRANE_STEPS;
+            int     point = Mathf.Min(Mathf.FloorToInt(along), segments - 1);
+            Vector3 at    = path[point].Lerp(path[point + 1], along - point);
+            float   share = (float)i / (segments * MEMBRANE_STEPS);
+            float   swing = 1f - MEMBRANE_SCALLOP * Mathf.Abs(Mathf.Sin(Mathf.Pi * along));
+            arm.Add(at);
+            edge.Add(at + Vector3.Left * chord * (1f - share * share) * swing);
+        }
+        var surface = new SurfaceTool();
+        surface.Begin(Mesh.PrimitiveType.Triangles);
+        foreach (bool isFront in new[] { true, false })
+        {
+            for (int i = 0; i < arm.Count - 1; i++)
+            {
+                Vector3[] quad = isFront
+                    ? new[] { arm[i], arm[i + 1], edge[i], edge[i], arm[i + 1], edge[i + 1] }
+                    : new[] { arm[i], edge[i], arm[i + 1], edge[i], edge[i + 1], arm[i + 1] };
+                foreach (Vector3 vertex in quad)
+                {
+                    surface.AddVertex(vertex);
+                }
             }
         }
         surface.GenerateNormals();

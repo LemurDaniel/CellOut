@@ -34,7 +34,7 @@ namespace CellOut;
 
 public enum CreatureType { Fish, MarineMammal }
 
-public enum CreatureCategory { Fins, Mouths, Defense, Eyes, Limbs, Feet, Hands, Brain, Lungs, Wings }
+public enum CreatureCategory { Fins, Heads, Mouths, Defense, Eyes, Limbs, Feet, Hands, Wings, Custom }
 
 /*
   Mounts share their spots: two parts on the same mount keep a gap along the spine.
@@ -52,7 +52,9 @@ public enum CreaturePartKind
     SickleFin, RoundFlipper, HindPaddle, FinRibbon, OralArms, CrocTail, Mane, TuftTail, BigEars, PenguinFlipper, CrestFeathers, TailFeathers, StarArm, MantaWing, WhipTail, TailFan, Rattle, ThickTail,
     // Mouths: one per head, the mouth sets the diet
     Jaw, FilterMouth, Beak, NeedleMaw, PufferMouth, TubeSnout,
-    SharkMaw, OrcaMaw, GapeMaw, SquidBeak, CrabMouth, Smile, CrocMaw, ParrotBeak, Fangs, ForkTongue, RexMaw,
+    SharkMaw, OrcaMaw, GapeMaw, SquidBeak, CrabMouth, Smile, CrocMaw, ParrotBeak, Fangs, ForkTongue, RexMaw, ElephantHead,
+    // Head models: skulls with slots (tab Heads)
+    HorseHead, CatHead, RhinoHead, ParrotHead, PenguinHead, RaptorHead, CrocHead, RexHead, CeratopsHead, InsectHead, SpiderHead, CrabHead,
     // Defense
     Spines, Shell, PoisonGland, Carapace, SpiralShell, NautilusShell, BackPlates, JellyBell, Ossicones, Tusks, UrchinSpines, Stinger, Casque, Horns, NeckFrill, SpineCrest,
     // Eyes
@@ -60,15 +62,15 @@ public enum CreaturePartKind
     // Eye models: one look per animal, all see like the plain eye (the bead and the ghost eye like the pit eye)
     BeadEye, GhostEye, BulgeEye, PatchEye, SquidEye, PegEye, LidEye, TurretEye, FrogEye, CrocEye, SpiderEyes,
     // Limbs: sculpted, 1 to 4 joints
-    StubLimb, BentLimb, Limb, Tentacle, Feeler, JointedLeg, Neck,
+    StubLimb, BentLimb, Limb, Tentacle, Feeler, JointedLeg, Neck, Trunk, WingLimb, Finger,
     // Feet
     Legs, StubbyLegs, ClawLegs, CrabLegs, WebbedFeet, CrocFeet, ElephantFeet, Hooves, BirdFeet,
     // Hands
     Hands, Claws, Pincers, Suckers,
-    // Brain
-    SmallBrain, BigBrain,
-    // Lungs
-    Lung, Blowhole, BigLung, Gills, FeatherGills, Siphon,
+    // A part the player sculpted himself (mode Sculpt of the editor), its form is a shape of the design
+    CustomPart,
+    // Breathing openings one can see (tab Defense): the inner organs brain and lung are gone (decision of the user 2026-11-16)
+    Blowhole, Gills, FeatherGills, Siphon,
     // Wings
     MembraneWings, FeatherWings,
 }
@@ -200,6 +202,20 @@ public static class CreatureCatalog
         Part(CreaturePartKind.Fangs,         CreatureCategory.Mouths,  CreatureMount.Head,  null),
         Part(CreaturePartKind.ForkTongue,    CreatureCategory.Mouths,  CreatureMount.Head,  null),
         Part(CreaturePartKind.RexMaw,        CreatureCategory.Mouths,  CreatureMount.Head,  null),
+        // Heads: a whole skull as one model with slots, eyes, ears, horns and mouth models on the head plug onto it (looks only)
+        Part(CreaturePartKind.ElephantHead,  CreatureCategory.Heads,   CreatureMount.Head,  null),
+        Part(CreaturePartKind.HorseHead,     CreatureCategory.Heads,   CreatureMount.Head,  null),
+        Part(CreaturePartKind.CatHead,       CreatureCategory.Heads,   CreatureMount.Head,  null),
+        Part(CreaturePartKind.RhinoHead,     CreatureCategory.Heads,   CreatureMount.Head,  null),
+        Part(CreaturePartKind.ParrotHead,    CreatureCategory.Heads,   CreatureMount.Head,  null),
+        Part(CreaturePartKind.PenguinHead,   CreatureCategory.Heads,   CreatureMount.Head,  null),
+        Part(CreaturePartKind.RaptorHead,    CreatureCategory.Heads,   CreatureMount.Head,  null),
+        Part(CreaturePartKind.CrocHead,      CreatureCategory.Heads,   CreatureMount.Head,  null),
+        Part(CreaturePartKind.RexHead,       CreatureCategory.Heads,   CreatureMount.Head,  null),
+        Part(CreaturePartKind.CeratopsHead,  CreatureCategory.Heads,   CreatureMount.Head,  null),
+        Part(CreaturePartKind.InsectHead,    CreatureCategory.Heads,   CreatureMount.Head,  null),
+        Part(CreaturePartKind.SpiderHead,    CreatureCategory.Heads,   CreatureMount.Head,  null),
+        Part(CreaturePartKind.CrabHead,      CreatureCategory.Heads,   CreatureMount.Head,  null),
         // Defense: spines hurt, the shell takes hits, the gland poisons whatever the spines or the jaw hit
         Part(CreaturePartKind.Spines,        CreatureCategory.Defense, CreatureMount.Top,   null),
         Part(CreaturePartKind.Shell,         CreatureCategory.Defense, CreatureMount.Top,   null),
@@ -241,6 +257,9 @@ public static class CreatureCatalog
         Part(CreaturePartKind.Feeler,        CreatureCategory.Limbs,   CreatureMount.Limb,  null),
         Part(CreaturePartKind.JointedLeg,    CreatureCategory.Limbs,   CreatureMount.Limb,  null),
         Part(CreaturePartKind.Neck,          CreatureCategory.Limbs,   CreatureMount.Limb,  null),
+        Part(CreaturePartKind.Trunk,         CreatureCategory.Limbs,   CreatureMount.Limb,  null),
+        Part(CreaturePartKind.WingLimb,      CreatureCategory.Limbs,   CreatureMount.Limb,  null),
+        Part(CreaturePartKind.Finger,        CreatureCategory.Limbs,   CreatureMount.Limb,  null),
         // Feet
         Part(CreaturePartKind.Legs,          CreatureCategory.Feet,    CreatureMount.Limb,  null),
         Part(CreaturePartKind.StubbyLegs,    CreatureCategory.Feet,    CreatureMount.Limb,  null),
@@ -256,16 +275,13 @@ public static class CreatureCatalog
         Part(CreaturePartKind.Claws,         CreatureCategory.Hands,   CreatureMount.Limb,  null),
         Part(CreaturePartKind.Pincers,       CreatureCategory.Hands,   CreatureMount.Limb,  null),
         Part(CreaturePartKind.Suckers,       CreatureCategory.Hands,   CreatureMount.Limb,  null),
-        // Brain
-        Part(CreaturePartKind.SmallBrain,    CreatureCategory.Brain,   CreatureMount.Skull, null),
-        Part(CreaturePartKind.BigBrain,      CreatureCategory.Brain,   CreatureMount.Skull, null),
-        // Lungs
-        Part(CreaturePartKind.Lung,          CreatureCategory.Lungs,   CreatureMount.Inner, null),
-        Part(CreaturePartKind.Blowhole,      CreatureCategory.Lungs,   CreatureMount.Top,   null),
-        Part(CreaturePartKind.BigLung,       CreatureCategory.Lungs,   CreatureMount.Inner, null),
-        Part(CreaturePartKind.Gills,         CreatureCategory.Lungs,   CreatureMount.Inner, null),
-        Part(CreaturePartKind.FeatherGills,  CreatureCategory.Lungs,   CreatureMount.Inner, null),
-        Part(CreaturePartKind.Siphon,        CreatureCategory.Lungs,   CreatureMount.Inner, null),
+        // Own parts: sculpted clay, placed from the Sculpt mode of the editor (no palette tab), looks only
+        Part(CreaturePartKind.CustomPart,    CreatureCategory.Custom,  CreatureMount.Flank, null),
+        // Breathing openings: blowhole, gills and siphon show on the body, they sit in the Defense tab
+        Part(CreaturePartKind.Blowhole,      CreatureCategory.Defense, CreatureMount.Top,   null),
+        Part(CreaturePartKind.Gills,         CreatureCategory.Defense, CreatureMount.Inner, null),
+        Part(CreaturePartKind.FeatherGills,  CreatureCategory.Defense, CreatureMount.Inner, null),
+        Part(CreaturePartKind.Siphon,        CreatureCategory.Defense, CreatureMount.Inner, null),
         // Wings
         Part(CreaturePartKind.MembraneWings, CreatureCategory.Wings,   CreatureMount.Top,   null),
         Part(CreaturePartKind.FeatherWings,  CreatureCategory.Wings,   CreatureMount.Top,   null),
@@ -294,7 +310,7 @@ public static class CreatureCatalog
     /// <summary>The parts of one palette tab a body type may use.</summary>
     /// <param name="type">(Required) Fish or marine mammal.</param>
     /// <param name="category">(Required) The tab.</param>
-    /// <example><code>CreatureCatalog.ForCategory(CreatureType.Fish, CreatureCategory.Lungs)   // Lung, Blowhole, BigLung, Gills, ...</code></example>
+    /// <example><code>CreatureCatalog.ForCategory(CreatureType.Fish, CreatureCategory.Eyes)   // PitEye, Eye, StalkEye, ...</code></example>
     public static IReadOnlyList<CreaturePartInfo> ForCategory(CreatureType type, CreatureCategory category)
     {
         return PARTS.Where(part => category == part.Category && part.IsFor(type)).ToList();

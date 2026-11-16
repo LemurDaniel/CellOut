@@ -167,6 +167,19 @@
       "Fangs":         { "cost": 2, "weight": 0.4 },
       "ForkTongue":    { "cost": 2, "weight": 0.2 },
       "RexMaw":        { "cost": 3, "weight": 1.5 },
+      "ElephantHead":  { "cost": 2, "weight": 2.0 },
+      "HorseHead":     { "cost": 2, "weight": 1.0 },
+      "CatHead":       { "cost": 2, "weight": 1.0 },
+      "RhinoHead":     { "cost": 2, "weight": 1.0 },
+      "ParrotHead":    { "cost": 2, "weight": 1.0 },
+      "PenguinHead":   { "cost": 2, "weight": 1.0 },
+      "RaptorHead":    { "cost": 2, "weight": 1.0 },
+      "CrocHead":      { "cost": 2, "weight": 1.0 },
+      "RexHead":       { "cost": 2, "weight": 1.0 },
+      "CeratopsHead":  { "cost": 2, "weight": 1.0 },
+      "InsectHead":    { "cost": 2, "weight": 1.0 },
+      "SpiderHead":    { "cost": 2, "weight": 1.0 },
+      "CrabHead":      { "cost": 2, "weight": 1.0 },
 
       "Spines":        { "cost": 2, "weight": 0.7 },
       "Shell":         { "cost": 3, "weight": 3.0 },
@@ -208,6 +221,9 @@
       "Feeler":        { "cost": 1, "weight": 0.1 },
       "JointedLeg":    { "cost": 2, "weight": 0.5 },
       "Neck":          { "cost": 2, "weight": 0.9 },
+      "Trunk":         { "cost": 3, "weight": 1.6 },
+      "WingLimb":      { "cost": 2, "weight": 0.5 },
+      "Finger":        { "cost": 1, "weight": 0.05 },
 
       "Legs":          { "cost": 2, "weight": 1.5, "carry": 14, "stride": 1 },
       "StubbyLegs":    { "cost": 2, "weight": 1.8, "carry": 20, "stride": 0.75 },
@@ -223,13 +239,8 @@
       "Claws":         { "cost": 3, "weight": 1.0 },
       "Pincers":       { "cost": 3, "weight": 1.2 },
       "Suckers":       { "cost": 2, "weight": 0.5 },
-
-      "SmallBrain":    { "cost": 2, "weight": 0.4 },
-      "BigBrain":      { "cost": 4, "weight": 1.2 },
-
-      "Lung":          { "cost": 2, "weight": 0.8 },
+      "CustomPart":    { "cost": 0, "weight": 0.0 },
       "Blowhole":      { "cost": 1, "weight": 0.3 },
-      "BigLung":       { "cost": 3, "weight": 1.5 },
       "Gills":         { "cost": 1, "weight": 0.2 },
       "FeatherGills":  { "cost": 1, "weight": 0.2 },
       "Siphon":        { "cost": 1, "weight": 0.3 },
@@ -283,13 +294,7 @@
       "limbCarry": 10,
       "limbStride": 0.9,
       "limbReach": 0.2,
-
-      "smallBrainEp": 1,
-      "bigBrainEp": 2,
-      "bigBrainAcceleration": 1.15,
-      "lungHealth": 1.1,
-      "blowholeHealth": 1.25,
-      "bigLungHealth": 1.2
+      "blowholeHealth": 1.25
     }
   },
 

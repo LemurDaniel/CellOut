@@ -97,6 +97,12 @@ public partial class CreatureVisual3D : Node3D
     /// <summary>Whether the limbs move (walk, paddle, sway). The editor turns it off: its joint handles sit on the rest pose.</summary>
     public bool IsMoving { get; set; } = true;
 
+    /// <summary>Without a body (editor): the speed the motion is shown at, 0 standing .. 1 full speed.</summary>
+    public float PreviewSpeed { get; set; }
+
+    /// <summary>Without a body (editor): true shows the motion on land (walk), false in the water (swim wave, paddle).</summary>
+    public bool PreviewsLand { get; set; }
+
     /// <summary>(Optional) A camera that frames the parts after every rebuild (palette tiles). Defaults to none.</summary>
     public Camera3D FitCamera { get; set; }
 
@@ -140,6 +146,7 @@ public partial class CreatureVisual3D : Node3D
     private int _signature;
     private float _time;
     private float _phase;
+    private bool _wasMoving;
 
     public override void _Process(double delta)
     {
@@ -182,7 +189,7 @@ public partial class CreatureVisual3D : Node3D
         // ---------------------------------------------------------------------------
 
         float speedShare = 0f;
-        bool  isOnLand   = null != Body && Body.IsOnLand;
+        bool  isOnLand   = null != Body ? Body.IsOnLand : PreviewsLand;
         // On land the lowest part of the body (in its posture) rests on the ground, raised by the hover height of the
         // design: legs lift the body as far as they reach, a jellyfish stands on its arms or floats above them
         float landLift = Mathf.Clamp(Coast.GROUND_HEIGHT - Lowest, MIN_LAND_LIFT, MAX_LAND_LIFT) + design.Hover;
@@ -198,7 +205,8 @@ public partial class CreatureVisual3D : Node3D
         }
         else
         {
-            Visible = true;
+            Visible    = true;
+            speedShare = Mathf.Clamp(PreviewSpeed, 0f, 1f);
         }
 
         // ---------------------------------------------------------------------------
@@ -206,15 +214,18 @@ public partial class CreatureVisual3D : Node3D
         //   Wave phase and amplitude from the speed, body shader and parts follow.
         // ---------------------------------------------------------------------------
 
-        _phase += dt * (IDLE_FREQUENCY + SWIM_FREQUENCY * speedShare);
+        // Pace and size of the wave are part of the look of the animal (CreatureDesign.WaveSpeed, WaveAmount)
+        _phase += dt * (IDLE_FREQUENCY + SWIM_FREQUENCY * speedShare) * design.WaveSpeed;
         // The parts decide the motion (decision of the user 2026-11-15), the phase keeps running so the wave fades in smoothly:
         // > In the water: the swim wave with a fin, fluke or tail, a stiff glide without one
         // > On land on legs: stiff, the legs walk
         // > On land without legs: a small wiggle, that is its crawl
-        float waveGoal   = !isOnLand ? (design.SwimsWithWave ? 1f : 0f) : design.LegPairs > 0 ? 0f : CRAWL_WAVE;
-        _wave = Mathf.Lerp(_wave, waveGoal, Mathf.Clamp(dt * WAVE_EASE, 0f, 1f));
-        float amplitude  = (IDLE_AMP + SWIM_AMP * speedShare) * SwimScale * _wave;
+        // > No up and down at all, in the water and on land (decision of the user 2026-11-16, it looked odd and harsh):
+        //   a body whose wave would run up and down (marine mammal) stays stiff, only the side to side wave of a fish moves
         bool  isVertical = CreatureType.MarineMammal == design.Type;
+        float waveGoal   = isVertical ? 0f : !isOnLand ? (design.SwimsWithWave ? 1f : 0f) : design.LegPairs > 0 ? 0f : CRAWL_WAVE;
+        _wave = Mathf.Lerp(_wave, waveGoal, Mathf.Clamp(dt * WAVE_EASE, 0f, 1f));
+        float amplitude  = (IDLE_AMP + SWIM_AMP * speedShare) * SwimScale * _wave * design.WaveAmount;
         SetClay("swim_phase", _phase);
         SetClay("swim_amp", amplitude);
         SetClay("flash", null != Body ? Body.HurtFlash : 0f);
@@ -225,12 +236,17 @@ public partial class CreatureVisual3D : Node3D
         {
             _parts.MoveLimbs(_phase, speedShare, isOnLand);
         }
+        else if (_wasMoving)
+        {
+            _parts.RestLimbs();                      // back to the sculpted pose once the motion is switched off
+        }
+        _wasMoving = IsMoving;
 
         // The mouth breathes: the opening widens and narrows a little
         float gape = MouthShapes.For(design)?.Gape ?? -1f;
         if (gape > BREATH_MIN_GAPE)
         {
-            SetClay("mouth_gape", gape * (1f + BREATH_SHARE * Mathf.Sin(_time * BREATH_RATE)));
+            SetClay("mouth_gape", gape * (1f + (design.IsBreathing ? BREATH_SHARE * Mathf.Sin(_time * BREATH_RATE) : 0f)));
         }
 
         // ---------------------------------------------------------------------------
@@ -460,6 +476,7 @@ public partial class CreatureVisual3D : Node3D
     //   PartAt             The placed part under a ray, for picking in the editor.
     //   RayEntry           Where a ray enters a box (slab test), null on a miss.
     //   TryGetPartAnchor   Where the gizmo of a part sits.
+    //   TryGetPartFrame    The frame its pose is stored in.
     //   TryGetLimbFrame    Where a sculpted limb sits, for the joint handles of the editor.
     //
 
@@ -493,6 +510,23 @@ public partial class CreatureVisual3D : Node3D
     {
         anchor = Vector3.Zero;
         return null != _parts && _parts.TryGetPartAnchor(index, flank, out anchor);
+    }
+
+    /// <summary>The channels of the model animation of a part: one name per bone or node its loop moves (CreatureParts3D.ChannelsOf).</summary>
+    /// <param name="index">(Required) Index in Design.Parts.</param>
+    public System.Collections.Generic.IReadOnlyList<string> ChannelsOf(int index)
+    {
+        return null != _parts ? _parts.ChannelsOf(index) : System.Array.Empty<string>();
+    }
+
+    /// <summary>The frame the pose of a part is stored in, in global space: a world axis times its inverse is the axis of the stored offset, turn and stretch.</summary>
+    /// <param name="index">(Required) Index in Design.Parts.</param>
+    /// <param name="flank">(Required) -1 or 1 for one half of a pair, 0 for a midline part.</param>
+    /// <returns>False when the part has no group on that flank (not built yet).</returns>
+    public bool TryGetPartFrame(int index, int flank, out Basis frame)
+    {
+        frame = Basis.Identity;
+        return null != _parts && _parts.TryGetPartFrame(index, flank, out frame);
     }
 
     /// <summary>The posed shoulder of a sculpted limb on one flank: joints in limb space times this frame are world points.</summary>

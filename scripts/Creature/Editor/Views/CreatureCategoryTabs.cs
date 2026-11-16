@@ -1,7 +1,8 @@
 // NOTE:
 //   Category tabs of the creature editor: one index card tab per part category on a
-//   baseline, the shown one stands taller and tabs with placed parts carry their count
-//   ("Eyes · 2"). A view: a click raises CategoryPressed, hidden during the type choice.
+//   baseline, each showing the first part of its category as a small 3D icon (the name is
+//   its tooltip), the shown one stands taller and tabs with placed parts carry their count.
+//   A view: a click raises CategoryPressed, hidden during the type choice and in paint mode.
 //
 //   var tabs = new CreatureCategoryTabs();
 //   tabs.Setup(session);
@@ -27,17 +28,22 @@ public partial class CreatureCategoryTabs : VBoxContainer
     //   CategoryPressed  Raised when a tab is clicked.
     //   Setup            Tab row on a baseline, one tab per category.
     //   BuildTabs        One index card tab per part category.
-    //   Refresh          Name and part count of every tab, the shown one pressed.
+    //   RefreshIcons     The 3D icon of every tab, rebuilt for a new type or color.
+    //   Refresh          Tooltip and part count of every tab, the shown one pressed.
     //
 
-    private const float TAB_HEIGHT = 38f;
-    private const float TAB_ACTIVE_HEIGHT = 46f;
+    private const float TAB_HEIGHT = 46f;
+    private const float TAB_ACTIVE_HEIGHT = 54f;
+    private const float TAB_WIDTH = 64f;
+    private const int ICON_PIXELS = 60;
 
     public event System.Action<CreatureCategory> CategoryPressed;
 
     private CreatureEditorSession _session;
     private HBoxContainer _tabs;
     private readonly List<(CreatureCategory Category, Button Tab)> _tabButtons = new();
+    private readonly Dictionary<CreatureCategory, Control> _icons = new();
+    private (CreatureType Type, Color Color)? _iconLook;     // what the icons were built for, a new type or color rebuilds them
 
     /// <summary>Builds the strip, call once before it enters the tree.</summary>
     /// <param name="session">(Required) The sitting: shown tab and the placed parts.</param>
@@ -64,8 +70,15 @@ public partial class CreatureCategoryTabs : VBoxContainer
         var group = new ButtonGroup();
         foreach (CreatureCategory category in System.Enum.GetValues<CreatureCategory>())
         {
+            // Own parts come from the sculpt mode, not from a palette tab
+            if (CreatureCategory.Custom == category)
+            {
+                continue;
+            }
             // Tabs stand on the baseline, the pressed one grows taller in Refresh (no hover scale, it would lift off)
-            Button tab = CreatureEditorUi.NewPillButton(new Vector2(0, TAB_HEIGHT), 18);
+            Button tab = CreatureEditorUi.NewPillButton(new Vector2(TAB_WIDTH, TAB_HEIGHT), 13);
+            tab.Alignment         = HorizontalAlignment.Right;
+            tab.VerticalIconAlignment = VerticalAlignment.Bottom;
             tab.SizeFlagsVertical = SizeFlags.ShrinkEnd;
             tab.ToggleMode        = true;
             tab.ButtonGroup       = group;
@@ -76,10 +89,48 @@ public partial class CreatureCategoryTabs : VBoxContainer
         }
     }
 
-    /// <summary>"Eyes" or "Eyes · 2" once parts of the tab sit on the body.</summary>
+    /// <summary>The 3D icons of the tabs: the first part of every category in the color of the draft, rebuilt when type or color change.</summary>
+    private void RefreshIcons()
+    {
+        (CreatureType, Color) look = (_session.Draft.Type, _session.DraftColor);
+        if (look == _iconLook)
+        {
+            return;
+        }
+        _iconLook = look;
+        foreach ((CreatureCategory category, Button tab) in _tabButtons)
+        {
+            if (_icons.Remove(category, out Control old))
+            {
+                old.QueueFree();
+            }
+            CreaturePartInfo first = null;
+            foreach (CreaturePartInfo info in CreatureCatalog.ForCategory(_session.Draft.Type, category))
+            {
+                first = info;
+                break;
+            }
+            if (null == first)
+            {
+                continue;
+            }
+            Control icon = CreatureIcon.New(CreatureIcon.DesignFor(first, _session.Draft.Type), _session.DraftColor, ICON_PIXELS, isTurning: false, isPartsOnly: true);
+            icon.MouseFilter = MouseFilterEnum.Ignore;
+            icon.Position    = new Vector2((TAB_WIDTH - ICON_PIXELS) * 0.5f, -6f);
+            tab.AddChild(icon);
+            tab.MoveChild(icon, 0);
+            _icons[category] = icon;
+        }
+    }
+
+    /// <summary>The icon of every tab, its name as tooltip, the count of placed parts in its corner, the shown tab taller.</summary>
     public void Refresh()
     {
-        Visible = !_session.IsChoosingType;
+        Visible = !_session.IsChoosingType && CreatureEditorMode.Build == _session.Mode;
+        if (Visible)
+        {
+            RefreshIcons();
+        }
         foreach ((CreatureCategory category, Button tab) in _tabButtons)
         {
             int placed = 0;
@@ -87,10 +138,10 @@ public partial class CreatureCategoryTabs : VBoxContainer
             {
                 placed += category == part.Info.Category ? 1 : 0;
             }
-            string name = Tr(CreatureEditorUi.CategoryKey(category));
-            tab.Text = placed > 0 ? $"{name} · {placed}" : name;
+            tab.TooltipText = Tr(CreatureEditorUi.CategoryKey(category));
+            tab.Text        = placed > 0 ? placed.ToString() : "";
             tab.SetPressedNoSignal(category == _session.Category);
-            tab.CustomMinimumSize = new Vector2(0f, category == _session.Category ? TAB_ACTIVE_HEIGHT : TAB_HEIGHT);
+            tab.CustomMinimumSize = new Vector2(TAB_WIDTH, category == _session.Category ? TAB_ACTIVE_HEIGHT : TAB_HEIGHT);
         }
     }
 }

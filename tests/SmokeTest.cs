@@ -310,8 +310,11 @@ public partial class SmokeTest : Node
             && Mathf.IsEqualApprox(editor.Draft.Parts[0].Offset.Y, 0.1f) && Mathf.IsEqualApprox(editor.Draft.Parts[0].Rotation.Y, 0.5f)
             && editor.MovePickedPart(Vector3.Right * 9f) && editor.Draft.Parts[0].Offset.Length() <= CreatureDesign.MAX_PART_OFFSET + 0.001f
             && pointsStart - 4 == editor.Points;
-        // Stretch per axis: free, stored on the part, clamped
-        isPosed = isPosed && editor.StretchPickedPart(Vector3.Right, 1.5f) && Mathf.IsEqualApprox(editor.Draft.Parts[0].Proportion.X, 1.5f)
+        // Stretch per axis: free, stored on the part, clamped. The part is turned by 0.5 around Y, so a
+        // stretch along the body axis X is shared between its own X and Z (squares of the turned axis)
+        float ownX = Mathf.Cos(0.5f) * Mathf.Cos(0.5f);
+        isPosed = isPosed && editor.StretchPickedPart(Vector3.Right, 1.5f) && Mathf.IsEqualApprox(editor.Draft.Parts[0].Proportion.X, 1f + ownX * 0.5f)
+            && Mathf.IsEqualApprox(editor.Draft.Parts[0].Proportion.Z, 1f + (1f - ownX) * 0.5f)
             && Mathf.IsEqualApprox(editor.Draft.Parts[0].Proportion.Y, 1f)
             && editor.StretchPickedPart(Vector3.Up, 99f) && Mathf.IsEqualApprox(editor.Draft.Parts[0].Proportion.Y, CreatureDesign.MAX_PART_STRETCH)
             && pointsStart - 4 == editor.Points;
@@ -1593,7 +1596,7 @@ public partial class SmokeTest : Node
         // The body type is cosmetic: a marine mammal without a lung runs out of air like a fish, a lung saves both
         Player fish    = OrganismProbe(CreatureType.Fish);
         Player mammal  = OrganismProbe(CreatureType.MarineMammal);
-        Player breather = OrganismProbe(CreatureType.MarineMammal, CreaturePartKind.Lung);
+        Player breather = OrganismProbe(CreatureType.MarineMammal, CreaturePartKind.Blowhole);
         foreach (Player probe in new[] { fish, mammal, breather })
         {
             probe.IsOnLand     = true;
@@ -1619,7 +1622,7 @@ public partial class SmokeTest : Node
     private static bool ProbeWalking()
     {
         Player crawler = OrganismProbe(CreatureType.Fish);
-        Player walker  = OrganismProbe(CreatureType.Fish, CreaturePartKind.Legs, CreaturePartKind.Lung);
+        Player walker  = OrganismProbe(CreatureType.Fish, CreaturePartKind.Legs);
         crawler.IsOnLand = true;
         walker.IsOnLand  = true;
         bool isCrawling  = Mathf.IsEqualApprox(crawler.CurrentSpeed(), CellBody.SwimSpeed(crawler.BodySize()) * Balance.Current.Creature.Land.CrawlSpeed);
@@ -1681,7 +1684,8 @@ public partial class SmokeTest : Node
             probe.Free();
             return gained;
         }
-        return Balance.Current.Player.EpPerLevel == EpOfOneLevel() && Balance.Current.Player.EpPerLevel + 2 == EpOfOneLevel(CreaturePartKind.BigBrain);
+        // Brains are gone (decision of the user 2026-11-16): no part changes the evolution points of a level any more
+        return Balance.Current.Player.EpPerLevel == EpOfOneLevel() && Balance.Current.Player.EpPerLevel == EpOfOneLevel(CreaturePartKind.Blowhole);
     }
 
     private static bool ProbeModels()
@@ -1714,6 +1718,36 @@ public partial class SmokeTest : Node
             model.Free();
         }
         bool isEveryPartModeled = System.Enum.GetValues<PartKind>().All(kind => CellVisual3D.CELL_MODELS.ContainsKey(kind));
+
+        // Channels of a model animation: the rattle lifts its tail and shakes its bells, the lift can be switched off alone
+        Node3D rattle       = CreatureVisual3D.NewModel(CreaturePartKind.Rattle, Colors.Tan);
+        var    rattlePlayer = PartModels.PlayLoop(rattle, CreatureVisual3D.MODELS[CreaturePartKind.Rattle].Animation, 0f, 1f);
+        var    channels     = ModelChannels.Names(rattlePlayer);
+        ModelChannels.Apply(rattlePlayer, new System.Collections.Generic.Dictionary<string, float> { ["Tail1"] = 0f });
+        Animation scaled    = rattlePlayer.GetAnimation(rattlePlayer.CurrentAnimation);
+        bool isLiftStill = false, isShakeKept = false;
+        for (int track = 0; track < scaled.GetTrackCount(); track++)
+        {
+            if (Animation.TrackType.Rotation3D != scaled.TrackGetType(track) || scaled.TrackGetKeyCount(track) < 2)
+            {
+                continue;
+            }
+            float spread = 0f;
+            for (int key = 1; key < scaled.TrackGetKeyCount(track); key++)
+            {
+                spread = Mathf.Max(spread, scaled.TrackGetKeyValue(track, 0).AsQuaternion().AngleTo(scaled.TrackGetKeyValue(track, key).AsQuaternion()));
+            }
+            string bone = scaled.TrackGetPath(track).GetSubName(0);
+            isLiftStill = isLiftStill || ("Tail1" == bone && spread < 0.001f);
+            isShakeKept = isShakeKept || ("Rattle" == bone && spread > 0.01f);
+        }
+        bool isChannelsOk = channels.Contains("Tail1") && channels.Contains("Rattle") && ((string)rattlePlayer.CurrentAnimation).StartsWith("own/") && isLiftStill && isShakeKept;
+        if (!isChannelsOk)
+        {
+            GD.Print($"  rattle channels [{string.Join(", ", channels)}], playing '{rattlePlayer.CurrentAnimation}', lift still {isLiftStill}, shake kept {isShakeKept}");
+            isOk = false;
+        }
+        rattle.Free();
 
         // Every building block has its generated model
         foreach (BlockKind kind in System.Enum.GetValues<BlockKind>())

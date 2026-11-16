@@ -141,6 +141,21 @@ public partial class SkinIcon : Button
                 }
                 break;
 
+            // Wrinkles: a few wavy folds from top to bottom
+            case CreatureSkin.Wrinkles:
+                foreach (float x in new[] { -0.5f, -0.1f, 0.3f, 0.62f })
+                {
+                    float reach = Mathf.Sqrt(1f - x * x) * radius * 0.85f;
+                    var   fold  = new Vector2[9];
+                    for (int i = 0; i < fold.Length; i++)
+                    {
+                        float along = Mathf.Lerp(-reach, reach, i / 8f);
+                        fold[i] = center + new Vector2(x * radius + Mathf.Sin(i * 1.3f + x * 5f) * radius * 0.07f, along);
+                    }
+                    DrawPolyline(fold, dark, 1.5f, true);
+                }
+                break;
+
             // Plates: broad bands across, each with a dark groove below
             case CreatureSkin.Plates:
                 foreach (float y in new[] { -0.45f, 0f, 0.45f })

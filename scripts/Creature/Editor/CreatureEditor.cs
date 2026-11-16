@@ -67,6 +67,9 @@ public partial class CreatureEditor : CanvasLayer
     //   PickPattern     Paints a pattern in the second color, free of charge.
     //   PickPatternColor  Second color of the paint (null = a dark shade of the body), free of charge.
     //   SetSymmetric    Symmetry switch: new side parts as pairs or as single halves.
+    //   SetMode         The mode: build (parts and shape), paint (colors, skin, pattern, spray can) or animate (motion).
+    //   SetPainting     Shortcut: paint or build.
+    //   Undo, Redo      Takes back or repeats a change of the draft, points included.
     //   SetSpraying     Spray can on or off: left drag over the body paints instead of turning the view.
     //   SprayAt         One spray dot (and its mirror with symmetry) where the body was hit.
     //   UndoSpray       Takes back the last spray stroke.
@@ -241,6 +244,30 @@ public partial class CreatureEditor : CanvasLayer
     /// <inheritdoc cref="CreatureSprayCan.SprayAt"/>
     public bool SprayAt(Vector3 hit, int stroke = 0) => _spray.SprayAt(hit, stroke);
 
+    /// <summary>Switches the mode: build (parts and shape), paint (colors, skin, pattern, spray can) or animate (how body and parts move).</summary>
+    /// <example><code>editor.SetMode(CreatureEditorMode.Animate);</code></example>
+    public void SetMode(CreatureEditorMode mode)
+    {
+        _spray.Reset();
+        Log.Verbose("CreatureEditor", $"Mode {mode}.");
+        _session.SetMode(mode);
+    }
+
+    /// <summary>Shortcut of SetMode: true paints, false builds.</summary>
+    public void SetPainting(bool isPainting) => SetMode(isPainting ? CreatureEditorMode.Paint : CreatureEditorMode.Build);
+
+    /// <summary>Takes back the last change of the draft, points included (Ctrl+Z).</summary>
+    /// <inheritdoc cref="CreatureEditorSession.Undo"/>
+    public bool Undo()
+    {
+        _session.Checkpoint();
+        return _session.Undo();
+    }
+
+    /// <summary>Repeats the change taken back last (Ctrl+Y).</summary>
+    /// <inheritdoc cref="CreatureEditorSession.Redo"/>
+    public bool Redo() => _session.Redo();
+
     /// <summary>Takes back the last spray stroke.</summary>
     public bool UndoSpray() => _session.UndoSpray();
 
@@ -407,6 +434,7 @@ public partial class CreatureEditor : CanvasLayer
     //                    a click places the selected part or picks a placed one, left drag elsewhere
     //                    rotates, right click removes, the wheel over a vertebra handle sets its girth,
     //                    over the picked part its size, otherwise it zooms.
+    //   _Input           Ctrl+Z and Ctrl+Y: undo and redo.
     //   _Notification    Re-translates after a locale change, ends a drag.
     //
     //   Order per event: the spray can first while it is on, then the handles (gizmo, joints,
@@ -414,7 +442,6 @@ public partial class CreatureEditor : CanvasLayer
     //   of the stage.
     //
 
-    private const float TOOL_COLUMN_WIDTH = 262f;    // the toolbar plus room for its scroll bar
     private const float SIZE_STEP = 0.1f;            // per wheel notch over the picked part
 
     private void OnStageInput(InputEvent @event)
@@ -483,6 +510,21 @@ public partial class CreatureEditor : CanvasLayer
         }
     }
 
+    /// <summary>Ctrl+Z takes a change back, Ctrl+Y (or Ctrl+Shift+Z) repeats it. Before the game sees the key: Z alone opens the editor.</summary>
+    public override void _Input(InputEvent @event)
+    {
+        if (!IsOpen || IsChoosingType || @event is not InputEventKey { Pressed: true, CtrlPressed: true } key)
+        {
+            return;
+        }
+        bool isRedo = Key.Y == key.Keycode || (Key.Z == key.Keycode && key.ShiftPressed);
+        if (isRedo || Key.Z == key.Keycode)
+        {
+            _ = isRedo ? Redo() : Undo();
+            GetViewport().SetInputAsHandled();
+        }
+    }
+
     public override void _Notification(int what)
     {
         if (NotificationTranslationChanged == what && null != _frame)
@@ -522,7 +564,19 @@ public partial class CreatureEditor : CanvasLayer
             return;
         }
         _frame.Refresh();
+        _modes.Refresh();
+        _palette.Visible = CreatureEditorMode.Build == _session.Mode;
         _toolbar.Refresh();
+        _motion.Refresh();
+        _shapes.Refresh();
+        // The turntable shows the clay the handles work on: the body, or an own part in the sculpt mode
+        _stage.Clay.Design = _session.Sculpted;
+        // Animation mode: the animal moves on the turntable as it will in the game, everywhere else it holds still
+        bool isAnimating = CreatureEditorMode.Animate == _session.Mode && !IsChoosingType;
+        _stage.Clay.IsMoving     = isAnimating;
+        _stage.Clay.SwimScale    = isAnimating ? 1f : CreatureStage.STILL_SWIM_SCALE;
+        _stage.Clay.PreviewSpeed = isAnimating ? _session.PreviewSpeed : 0f;
+        _stage.Clay.PreviewsLand = isAnimating && _session.PreviewsLand;
         _cards.Refresh();
         _footer.Refresh();
         _tabs.Refresh();
@@ -557,6 +611,14 @@ public partial class CreatureEditor : CanvasLayer
         }
         _stage.Advance((float)delta);
 
+        _motion.Poll();
+
+        // Undo steps: whatever changed while a button was held (a drag of a gizmo or a slider) is one step
+        if (!Input.IsMouseButtonPressed(MouseButton.Left) && !Input.IsMouseButtonPressed(MouseButton.Right))
+        {
+            _session.Checkpoint();
+        }
+
         // Vertebra handles, joint handles of the picked limb and the gizmo
         _handles.Update(_stage.Clock);
 
@@ -583,6 +645,9 @@ public partial class CreatureEditor : CanvasLayer
     private CreaturePartPlacer _placer;
     private CreatureSprayCan _spray;
     private CreatureToolbar _toolbar;
+    private CreatureModeBar _modes;
+    private CreatureMotionPanel _motion;
+    private CreatureShapePanel _shapes;
     private CreatureCategoryTabs _tabs;
     private CreatureTemplateCards _cards;
     private CreaturePartPalette _palette;
@@ -604,10 +669,13 @@ public partial class CreatureEditor : CanvasLayer
         // Rows of the panel: tabs, template cards (first shaping), the workbench and the footer
         _frame.AddRow(_tabs);
         _frame.AddRow(_cards);
-        // The tool column scrolls instead of pushing the footer off a low window
-        var tools = new ScrollContainer { HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled, CustomMinimumSize = new Vector2(TOOL_COLUMN_WIDTH, 0f) };
-        tools.AddChild(_toolbar);
-        _frame.AddWorkbench(_palette, _stage, tools);
+        // Build mode: palette, turntable, form panel. Paint mode: paint panel, turntable, detail panel (Refresh shows the pair)
+        _frame.SetHeader(_modes);
+        // Animation mode: body motion panel, turntable, part motion panel
+        AddChild(_toolbar);
+        AddChild(_motion);
+        AddChild(_shapes);
+        _frame.AddWorkbench(_palette, _toolbar.PaintPanel, _motion.BodyPanel, _shapes.Panel, _stage, _toolbar.FormPanel, _toolbar.DetailPanel, _motion.PartPanel);
         _frame.AddRow(_footer);
 
         // The session tells when tiles are rebuilt, every widget follows, the selection changed or an end was pulled
@@ -648,8 +716,37 @@ public partial class CreatureEditor : CanvasLayer
     private void BuildViews()
     {
         // The tool column right of the turntable: colors, patterns, spray can, symmetry, vertebrae
+        _palette = new CreaturePartPalette();
+        _palette.Setup(_session, _ghost.StartDrag);
+        _palette.PartPicked   += Select;
+        _palette.HoverChanged += RefreshInfo;
+
+        // Modes, undo and redo in the header
+        _modes = new CreatureModeBar();
+        _modes.Setup(_session);
+        _modes.ModePressed += SetMode;
+
+        // The sculpt mode: the own parts of the player
+        _shapes = new CreatureShapePanel();
+        _shapes.Setup(_session, _palette.CustomMinimumSize.X);
+        _shapes.ShapePicked   += id => _session.PickShape(id);
+        _shapes.NewPressed    += () => _session.AddShape();
+        _shapes.PlacePressed  += () => _session.PlacePickedShape();
+        _shapes.RemovePressed += () => _session.RemovePickedShape();
+
+        // The animation mode: preview, motion of the body and of the picked part
+        _motion = new CreatureMotionPanel();
+        _motion.Setup(_session, _palette.CustomMinimumSize.X, CreatureToolbar.SIDE_WIDTH, index => _stage.Clay.ChannelsOf(index));
+        _motion.ChannelChanged    += (channel, amount) => _session.SetPickedChannel(channel, amount);
+        _motion.PreviewChanged    += (speed, isOnLand) => _session.SetPreview(speed, isOnLand);
+        _motion.BodyMotionChanged += (amount, speed, isBreathing) => _session.SetBodyMotion(amount, speed, isBreathing);
+        _motion.AllPartsToggled   += isOn => _session.SetAllMotion(isOn);
+        _motion.PartMotionChanged += motion => _session.SetPickedMotion(motion);
+        _modes.UndoPressed += () => Undo();
+        _modes.RedoPressed += () => Redo();
+
         _toolbar = new CreatureToolbar();
-        _toolbar.Setup(_session);
+        _toolbar.Setup(_session, _palette.CustomMinimumSize.X);
         _toolbar.AddVertebraPressed    += () => AddVertebra();
         _toolbar.RemoveVertebraPressed += () => RemoveVertebra();
         _toolbar.SymmetryToggled       += SetSymmetric;
@@ -664,7 +761,14 @@ public partial class CreatureEditor : CanvasLayer
         _toolbar.SprayColorPicked      += color => _session.SetSprayColor(color);
         _toolbar.PostureChanged        += degrees => _session.SetPosture(degrees);
         _toolbar.HoverChanged          += hover => _session.SetHover(hover);
-        _toolbar.FlatnessChanged       += flatness => _session.SetFlatness(flatness);
+        _toolbar.PartColorPicked       += color => _session.SetPickedPartColor(color);
+        _toolbar.PartTipColorPicked    += (color, from) => _session.SetPickedTipColor(color, from);
+        _toolbar.PatternScaleChanged   += scale => _session.SetPatternScale(scale);
+        _toolbar.PatternWrapToggled    += isWrapping => _session.SetPatternWraps(isWrapping);
+        _toolbar.MouthLineToggled      += hasMouth => _session.SetMouthLine(hasMouth);
+        _toolbar.MouthPlaceChanged     += (level, length) => _session.SetMouthPlace(level, length);
+        _toolbar.LimbLookPressed       += () => _session.CyclePickedLimbLook();
+        _toolbar.RingShapeChanged      += (crown, belly) => _session.ShapePickedVertebra(crown, belly);
         _toolbar.PatternColorPicked    += PickPatternColor;
 
         _tabs = new CreatureCategoryTabs();
@@ -674,11 +778,6 @@ public partial class CreatureEditor : CanvasLayer
         _cards = new CreatureTemplateCards();
         _cards.Setup(_session);
         _cards.TemplateChosen += template => ChooseTemplate(template);
-
-        _palette = new CreaturePartPalette();
-        _palette.Setup(_session, _ghost.StartDrag);
-        _palette.PartPicked   += Select;
-        _palette.HoverChanged += RefreshInfo;
 
         _footer = new CreatureFooter();
         _footer.Setup(_session);

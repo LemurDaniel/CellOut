@@ -36,8 +36,6 @@ HORN_BROW_RADIUS = 0.13
 HORN_BROW_RISE = (62.0, 22.0)        # degrees above level at the root and at the tip: it rises, then bends forward
 HORN_BROW_SPLAY = 0.14               # the tips stand this much further apart than the roots
 HORN_STEPS = 7                       # points along a brow horn
-HORN_NOSE = ((0.6, -1.0, 0.0), (0.7, -0.55, 0.0), (0.78, -0.22, 0.0))        # the short nose horn from deep in the snout to its tip
-HORN_NOSE_RADII = (0.14, 0.115, 0.02)
 
 FRILL_SEGMENTS = 36                  # columns of the fan from one flank over the back to the other
 FRILL_RINGS = 7                      # rows from the neck out to the edge
@@ -115,7 +113,7 @@ def build_rexmaw(scene):
 # =========================   TRICERATOPS PARTS   ===========================
 # ===========================================================================
 #
-#   build_horns       Two long brow horns and a short nose horn.
+#   build_horns       Two long brow horns.
 #   frill_radius      How far the frill reaches at an angle.
 #   frill_scallop     The bulge of the rim at an angle.
 #   frill_point       A point of the frill dish.
@@ -126,9 +124,10 @@ def build_rexmaw(scene):
 def build_horns(scene):
     """
     The horns of a triceratops (Top: the origin on the back line, +X forward, +Y up):
-    two long brow horns that rise out of the head and bend forward, their tips apart,
-    and a short horn in front of and below them on the nose. Every root is sunk deep,
-    so the horns grow out of heads of any shape; a collar of skin closes each brow root.
+    two long brow horns (Bone) that rise out of the head and bend forward, their tips
+    apart. The roots are sunk deep, so the horns grow out of heads of any shape; a
+    collar of skin closes each root. On a head model they sit on the slot Horn; the
+    short nose horn of a triceratops belongs to its skull (new_heads_reptile.py).
     """
     for side in (-1, 1):
         forward, up, out = HORN_BROW_ROOT
@@ -141,9 +140,8 @@ def build_horns(scene):
             point = point + G(math.cos(rise) * stride, math.sin(rise) * stride, side * HORN_BROW_SPLAY / (HORN_STEPS - 1))
             points.append(point)
         radii = [HORN_BROW_RADIUS * (1.0 - i / (HORN_STEPS - 1)) ** 0.8 + 0.012 for i in range(HORN_STEPS)]
-        tube(scene, f'Brow{side}', points, radii, [(i, i + 1) for i in range(HORN_STEPS - 1)], 'Claw')
+        tube(scene, f'Brow{side}', points, radii, [(i, i + 1) for i in range(HORN_STEPS - 1)], 'Bone')
         ellipsoid(scene, f'Collar{side}', points[1] - G(0.02, 0.05, 0), (0.19, 0.17, 0.15), 'Skin', subdivisions=3)
-    tube(scene, 'Nose', [G(*point) for point in HORN_NOSE], HORN_NOSE_RADII, [(0, 1), (1, 2)], 'Claw')
 
 
 def frill_radius(degrees):

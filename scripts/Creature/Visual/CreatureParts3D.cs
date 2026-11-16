@@ -63,8 +63,6 @@ public partial class CreatureParts3D : Node3D
         [CreatureCategory.Limbs]   = 1f,             // sculpted, the joints already set the length
         [CreatureCategory.Feet]    = 1f,
         [CreatureCategory.Hands]   = 1f,             // on a sculpted limb: the joints set the length, END_SIZE the hand
-        [CreatureCategory.Brain]   = 1.4f,
-        [CreatureCategory.Lungs]   = 1.3f,
         [CreatureCategory.Wings]   = 1.8f,
     };
 
@@ -105,9 +103,12 @@ public partial class CreatureParts3D : Node3D
         _knuckleClay = knuckleClay;
         _limbs       = new CreatureLimbs3D(limbClay, knuckleClay);
 
-        for (int index = 0; index < design.Parts.Count; index++)
+        // Head models first: the parts on the head plug onto the slots of the posed skull
+        var order = Enumerable.Range(0, design.Parts.Count).OrderBy(index => CreatureCategory.Heads == design.Parts[index].Info.Category ? 0 : 1).ToList();
+        foreach (int index in order)
         {
             int firstPivot = _attached.Count;
+            int firstEye   = _eyes.Count;
             BuildPart(design, design.Parts[index], color);
 
             // Posed by side, size, shift and turn; an eye of a dropped half blinks no more
@@ -127,6 +128,7 @@ public partial class CreatureParts3D : Node3D
                 }
             }
 
+            ApplyMotion(index, part, pivots, firstEye);
             if (part.Radial >= 2 && !CreatureDesign.IsOnBud(part))
             {
                 AddRing(index, part, pivots);
@@ -176,8 +178,11 @@ public partial class CreatureParts3D : Node3D
                 painted.SetShaderParameter("to_body", new Projection(toBody));
                 painted.SetShaderParameter("body_lift", design.LiftAt(toBody.Origin.X));
                 painted.SetShaderParameter("is_body", false);
-                // The limb zone: every limb with its knuckles, foot or hand in one color, no other zone on top
-                if (limbColor is Color zone && _limbs.IsOnLimb(mesh))
+                // A color of its own for the part, else the limb zone (every limb with its knuckles, foot or hand
+                // in one color): plain, no pattern and no other zone on top
+                int    owner = _poser.PartOf(mesh);
+                Color? tint  = owner >= 0 && owner < design.Parts.Count ? design.Parts[owner].Tint : null;
+                if ((tint ?? (_limbs.IsOnLimb(mesh) ? limbColor : null)) is Color zone)
                 {
                     var none = new Color(0f, 0f, 0f, 0f);
                     painted.SetShaderParameter("clay_color", zone);
@@ -185,6 +190,31 @@ public partial class CreatureParts3D : Node3D
                     painted.SetShaderParameter("belly_color", none);
                     painted.SetShaderParameter("head_color", none);
                     painted.SetShaderParameter("tail_color", none);
+                }
+                // A second color from a joint outwards: the tube cuts it per pixel along its length,
+                // knuckles, beads and the foot or hand take it whole when they sit at or beyond that joint
+                if (owner >= 0 && owner < design.Parts.Count && design.Parts[owner].TipColor is Color tip && null != design.Parts[owner].Joints)
+                {
+                    CreaturePart limb  = design.Parts[owner];
+                    int          point = -1;
+                    for (Node above = mesh; above != this && null != above && point < 0; above = above.GetParent())
+                    {
+                        point = above.HasMeta(CreatureLimbs3D.POINT_META) ? above.GetMeta(CreatureLimbs3D.POINT_META).AsInt32() : -1;
+                    }
+                    if (mesh.HasMeta(CreatureLimbs3D.TUBE_META))
+                    {
+                        painted.SetShaderParameter("tip_color", tip);
+                        painted.SetShaderParameter("tip_from", (float)limb.TipFrom / limb.Joints.Count);
+                    }
+                    else if (point >= limb.TipFrom)
+                    {
+                        var none = new Color(0f, 0f, 0f, 0f);
+                        painted.SetShaderParameter("clay_color", tip);
+                        painted.SetShaderParameter("pattern", 0);
+                        painted.SetShaderParameter("belly_color", none);
+                        painted.SetShaderParameter("head_color", none);
+                        painted.SetShaderParameter("tail_color", none);
+                    }
                 }
                 return painted;
             }
@@ -199,6 +229,64 @@ public partial class CreatureParts3D : Node3D
                 {
                     mesh.SetSurfaceOverrideMaterial(surface, Painted());
                 }
+            }
+        }
+    }
+
+    private readonly HashSet<Node3D> _openEyes = new();     // eyes of parts that never blink
+    private readonly Dictionary<int, List<string>> _channels = new();   // channels of the model loop per part index
+
+    /// <summary>The channels of the model animation of a part (Core/ModelChannels.cs), for the animation mode of the editor.</summary>
+    /// <param name="index">(Required) Index in Design.Parts.</param>
+    /// <returns>One name per bone or node its loop moves, empty for a part without a loop.</returns>
+    public IReadOnlyList<string> ChannelsOf(int index)
+    {
+        return _channels.TryGetValue(index, out List<string> names) ? names : System.Array.Empty<string>();
+    }
+
+    /*
+      The own motion of a part (CreaturePart.Movement) on what was just built for it:
+      > Model loops (a fluttering fin, a chewing jaw): off freezes them at the start of the
+        cycle, else their pace is scaled and they start the offset later in the cycle;
+        every channel of the loop (a bone or node it moves) has its own strength (CreaturePart.Channels)
+      > Eyes: a part that does not blink keeps its eyes open (Blink skips them)
+      The swing of sculpted limbs reads the motion itself (CreatureLimbs3D.Move).
+    */
+    private void ApplyMotion(int index, CreaturePart part, IReadOnlyList<Node3D> pivots, int firstEye)
+    {
+        PartMotion motion = part.Movement;
+        for (int i = firstEye; !motion.IsBlinking && i < _eyes.Count; i++)
+        {
+            _openEyes.Add(_eyes[i]);
+        }
+        var channels = new List<string>();
+        _channels[index] = channels;
+        foreach (Node3D pivot in pivots)
+        {
+            foreach (AnimationPlayer player in pivot.FindChildren("*", nameof(AnimationPlayer), true, false).OfType<AnimationPlayer>())
+            {
+                if (string.IsNullOrEmpty(player.CurrentAnimation))
+                {
+                    continue;
+                }
+                // The channels of the loop (bones or nodes it moves), each with its own strength
+                channels.AddRange(ModelChannels.Names(player).Where(name => !channels.Contains(name)));
+                if (null != part.Channels)
+                {
+                    ModelChannels.Apply(player, part.Channels);
+                }
+                if (PartMotion.REST == motion)
+                {
+                    continue;
+                }
+                if (!motion.IsOn)
+                {
+                    player.Seek(0.0, true);
+                    player.SpeedScale = 0f;
+                    continue;
+                }
+                player.SpeedScale *= motion.Speed;
+                player.Seek((player.CurrentAnimationPosition + motion.Phase * player.CurrentAnimationLength) % player.CurrentAnimationLength, true);
             }
         }
     }
@@ -226,6 +314,10 @@ public partial class CreatureParts3D : Node3D
                     if (_eyes.Contains(piece))
                     {
                         _eyes.Add(copy);
+                        if (_openEyes.Contains(piece))
+                        {
+                            _openEyes.Add(copy);
+                        }
                     }
                     // A duplicated player does not play: start what the original plays, a little later per copy
                     var players = piece.FindChildren("*", nameof(AnimationPlayer), true, false).OfType<AnimationPlayer>().ToList();
@@ -241,6 +333,32 @@ public partial class CreatureParts3D : Node3D
                     }
                 }
             }
+        }
+    }
+
+    private const float CUSTOM_SCALE = 0.45f;        // an own shape is sculpted as big as a body and placed at this size
+
+    /*
+      An own part (CreaturePartKind.CustomPart): the shape the player sculpted (CreatureDesign.Shapes) lofted like
+      a body, in the clay of the body so it takes color, pattern and skin. Its tail end sits in the skin of the
+      flank, its nose points out of it; the left half is the mirror image. Size, stretch, shift and turn come on top.
+    */
+    private void BuildCustom(CreaturePart part, float x, float top, float flank)
+    {
+        CustomShape shape = _design.ShapeOf(part.ShapeId);
+        if (null == shape)
+        {
+            return;
+        }
+        ArrayMesh mesh  = CreatureClay.BuildBodyMesh(shape.Form);
+        var       turn  = new Basis(Vector3.Up, -Mathf.Pi * 0.5f);      // +X of the shape becomes +Z: out of the right flank
+        Node3D    pivot = AddPivot(x);
+        foreach (float side in new[] { -1f, 1f })
+        {
+            var holder = new Node3D { Position = new Vector3(0f, top * 0.25f, side * flank * 0.9f), Scale = new Vector3(1f, 1f, side) };
+            pivot.AddChild(holder);
+            MeshInstance3D clay = CellVisual3D.AddMesh(holder, mesh, _knuckleClay, Vector3.Zero, Vector3.One);
+            clay.Transform = new Transform3D(turn * Basis.FromScale(Vector3.One * CUSTOM_SCALE), turn * new Vector3(-shape.Form.TailTipX * CUSTOM_SCALE, 0f, 0f));
         }
     }
 
@@ -280,9 +398,11 @@ public partial class CreatureParts3D : Node3D
             bud.TryPlace(part.Kind, 1f, 0);          // the bud carves the opening of this mouth
         }
         Vector3 middle = new((bud.TailTipX + bud.NoseTipX) * 0.5f, 0f, 0f);
+        // On a thick limb (a neck, a second piece of body) the bud is as thick as the tube there: a head that fits
+        float budScale = Mathf.Max(BUD_SCALE, CreatureLimbs3D.RadiusAt(design.Parts[parentIndex], joint + 1) / Mathf.Max(bud.RadiusAt(0f), 0.01f));
         foreach ((int _, Node3D piece) in _limbs.PiecesOf(parentIndex).ToList())
         {
-            var holder = new Node3D { Transform = new Transform3D(turn * Basis.FromScale(Vector3.One * BUD_SCALE), joints[joint]) };
+            var holder = new Node3D { Transform = new Transform3D(turn * Basis.FromScale(Vector3.One * budScale), joints[joint]) };
             piece.AddChild(holder);
             var budSpace = new Node3D { Position = -middle };
             holder.AddChild(budSpace);
@@ -322,6 +442,8 @@ public partial class CreatureParts3D : Node3D
 
     private void BuildPart(CreatureDesign design, CreaturePart part, Color color)
     {
+        // A part with a color of its own: fins, end models and everything derived from the body color follow it
+        color = part.Tint ?? color;
         if (CreatureDesign.IsOnBud(part))
         {
             BuildOnLimb(design, part, color);
@@ -343,6 +465,13 @@ public partial class CreatureParts3D : Node3D
         float              top     = design.TopAt(x);
         float              flank   = design.FlankAt(x);
         float              finSize = 0.6f + design.MeanGirth * 0.5f;
+
+        // An own part: the clay the player sculpted, out of both flanks
+        if (CreaturePartKind.CustomPart == part.Kind)
+        {
+            BuildCustom(part, x, top, flank);
+            return;
+        }
 
         // Every sculpted limb, with or without a foot or a hand on its tip: a clay tube through its joints, on both flanks
         if (part.Info.IsSculpted || part.Info.IsEnd)
@@ -455,39 +584,10 @@ public partial class CreatureParts3D : Node3D
                 }
                 break;
 
-            // Skull: two folded pink lobes bulging from the top of the head
-            case CreaturePartKind.SmallBrain:
-            case CreaturePartKind.BigBrain:
-                float  brainX    = design.XAt(0.78f);
-                float  brainY    = design.TopAt(brainX) * 0.9f;
-                float  brainSize = (CreaturePartKind.BigBrain == part.Kind ? 1f : 0.7f) * (0.1f + design.RadiusAt(brainX) * 0.22f) * 1.8f;
-                CreatureModels.Attach(AddPivot(brainX), part.Kind, color, new Vector3(0f, brainY, 0f), brainSize, 1f);
-                break;
-
             // Back: a pair of wings
             case CreaturePartKind.MembraneWings:
             case CreaturePartKind.FeatherWings:
                 BuildWings(part.Kind, x, top, flank, radius, color, back);
-                break;
-
-            // Lung: two nostrils on top of the nose, wherever it was placed inside.
-            // The big lung has wider nostrils and a puffed throat sac under the chin.
-            case CreaturePartKind.Lung:
-            case CreaturePartKind.BigLung:
-                bool   isBigLung = CreaturePartKind.BigLung == part.Kind;
-                float  nostrilX  = design.SpineEndX + (design.NoseTipX - design.SpineEndX) * 0.45f;
-                Node3D nose      = AddPivot(nostrilX);
-                foreach (float side in new[] { -1f, 1f })
-                {
-                    CellVisual3D.AddMesh(nose, CellVisual3D.SphereMesh(), CellVisual3D.Material(outline),
-                        new Vector3(0f, design.TopAt(nostrilX) * 0.92f, side * (isBigLung ? 0.07f : 0.05f)), new Vector3(0.03f, 0.015f, 0.022f) * (isBigLung ? 1.6f : 1f));
-                }
-                if (isBigLung)
-                {
-                    float throatX = design.SpineEndX - 0.1f;
-                    CellVisual3D.AddMesh(AddPivot(throatX), CellVisual3D.SphereMesh(), CellVisual3D.Material(color.Lightened(0.3f), 0f, 0.5f),
-                        new Vector3(0f, -design.TopAt(throatX) * 0.75f, 0f), new Vector3(0.18f, 0.12f, design.FlankAt(throatX) * 0.6f));
-                }
                 break;
 
             // Nose: the chomping jaw of a shark, the baleen mouth of a whale or a hooked beak
@@ -570,7 +670,7 @@ public partial class CreatureParts3D : Node3D
     private const float MODEL_RATE = 0.8f;           // loops per second of the animation of a placed model
 
     /// <summary>The model spaces a part model can be built in (tools/blender, see Visual/CreatureModels.cs).</summary>
-    private enum ModelSpace { Snout, Hug, FlankPair, Top, Belly, Tail, Eye, Row }
+    private enum ModelSpace { Snout, Hug, FlankPair, Top, Belly, Tail, Eye, Row, Head, None }
 
     /// <summary>How the model of a kind sits on the body.</summary>
     /// <param name="Space">The space the model is built in, it decides the pivot and the stretch.</param>
@@ -590,6 +690,8 @@ public partial class CreatureParts3D : Node3D
       - Eye:        an eyeball of radius 1 on both flanks where the plain eyes sit, +Z out of the head, it blinks
       - Row:        one element (a plate, a spike) the game repeats along the back over Reach of the body length:
                     every copy on its own spot of the spine, so the row follows each bend and looks alike on every body
+      - Head:       a whole skull: origin at the neck joint (centre of the back of the skull) on the last vertebra, +X forward,
+                    neck stump of radius 1 = the body height there. Its empties Slot<Name> are plug points (see SLOTS below)
     */
     private static readonly IReadOnlyDictionary<CreaturePartKind, Placement> PLACEMENTS = new Dictionary<CreaturePartKind, Placement>
     {
@@ -630,6 +732,19 @@ public partial class CreatureParts3D : Node3D
         [CreaturePartKind.CrocEye]       = new(ModelSpace.Eye),
         [CreaturePartKind.Mane]          = new(ModelSpace.Row, Reach: 0.4f),
         [CreaturePartKind.ParrotBeak]    = new(ModelSpace.Snout),
+        [CreaturePartKind.ElephantHead]  = new(ModelSpace.Head),
+        [CreaturePartKind.HorseHead] = new(ModelSpace.Head),
+        [CreaturePartKind.CatHead] = new(ModelSpace.Head),
+        [CreaturePartKind.RhinoHead] = new(ModelSpace.Head),
+        [CreaturePartKind.ParrotHead] = new(ModelSpace.Head),
+        [CreaturePartKind.PenguinHead] = new(ModelSpace.Head),
+        [CreaturePartKind.RaptorHead] = new(ModelSpace.Head),
+        [CreaturePartKind.CrocHead] = new(ModelSpace.Head),
+        [CreaturePartKind.RexHead] = new(ModelSpace.Head),
+        [CreaturePartKind.CeratopsHead] = new(ModelSpace.Head),
+        [CreaturePartKind.InsectHead] = new(ModelSpace.Head),
+        [CreaturePartKind.SpiderHead] = new(ModelSpace.Head),
+        [CreaturePartKind.CrabHead] = new(ModelSpace.Head),
         [CreaturePartKind.TailFeathers]  = new(ModelSpace.Tail),
         [CreaturePartKind.CrestFeathers] = new(ModelSpace.Top),
         [CreaturePartKind.PenguinFlipper]= new(ModelSpace.FlankPair),
@@ -662,6 +777,63 @@ public partial class CreatureParts3D : Node3D
         [CreaturePartKind.OralArms]      = new(ModelSpace.Belly),
     };
 
+    /*
+      Slots of a head model (tab Heads, model space Head): empties named Slot<Name> on the right half
+      of the skull, written by slot() of tools/blender/models/helpers.py. A part whose spot lies on the
+      head (T from HEAD_SLOT_SHARE on) plugs onto the slot of its kind, mirrored for the left half:
+      > Eye:    every kind of the Eyes tab             (slot size = radius of the eyeball)
+      > Mouth:  every mouth model in the Snout space   (slot size = height of the head)
+      > Ear, Horn: the kinds of SLOT_KINDS             (slot size = height the part is built at)
+      The slot gives position, direction and size; size, stretch, shift and turn of the part come on top.
+      A kind without a slot on this skull, and every part behind the head, sits on the body as always.
+    */
+    private const float HEAD_SLOT_SHARE = 0.84f;     // parts from this share of the spine on count as sitting on the head
+    private static readonly string[] SLOT_NAMES = { "Eye", "Ear", "Horn", "Mouth", "Nose" };
+    private static readonly IReadOnlyDictionary<CreaturePartKind, string> SLOT_KINDS = new Dictionary<CreaturePartKind, string>
+    {
+        [CreaturePartKind.BigEars]   = "Ear",
+        [CreaturePartKind.Tusks]     = "Horn",
+        [CreaturePartKind.Horns]     = "Horn",
+        [CreaturePartKind.Ossicones] = "Horn",
+        [CreaturePartKind.Casque]    = "Horn",
+    };
+    private static readonly Basis MIRROR_Z = Basis.FromScale(new Vector3(1f, 1f, -1f));
+
+    private readonly Dictionary<string, Node3D> _headSlots = new();     // the plug points of the head model, right half
+
+    /// <summary>Builds a part on the slot of the head model that fits its kind.</summary>
+    /// <param name="models">Takes the built models, for their animation.</param>
+    /// <returns>False when the body has no head model, the part sits behind the head or the skull has no slot for it: build it on the body.</returns>
+    private bool BuildOnSlot(CreatureDesign design, CreaturePart part, Placement placement, Color color, IReadOnlyDictionary<string, Material> finSkin, List<Node3D> models)
+    {
+        string name = CreatureCategory.Eyes == part.Info.Category ? "Eye"
+            : CreatureCategory.Mouths == part.Info.Category && ModelSpace.Snout == placement.Space ? "Mouth"
+            : SLOT_KINDS.TryGetValue(part.Kind, out string known) ? known : null;
+        if (null == name || part.T < HEAD_SLOT_SHARE || design != _design || !_headSlots.TryGetValue(name, out Node3D plug) || !IsInstanceValid(plug))
+        {
+            return false;
+        }
+        // The slot in the space of the pivot the part hangs on (the skull is posed already: heads are built first)
+        Node3D      pivot = AddPivot(design.SpineEndX);
+        Transform3D right = pivot.Transform.AffineInverse() * (GlobalTransform.AffineInverse() * plug.GlobalTransform);
+        float       unit  = right.Basis.Scale.X * placement.Size;
+        Basis       turn  = right.Basis.Orthonormalized();
+        bool        isMid = "Mouth" == name || !part.Info.IsPaired;
+        foreach (float side in isMid ? new[] { 1f } : new[] { -1f, 1f })
+        {
+            // The left half is the mirror image: position across the spine, direction mirrored
+            Vector3 at    = side < 0f ? new Vector3(right.Origin.X, right.Origin.Y, -right.Origin.Z) : right.Origin;
+            Node3D  model = CreatureModels.Attach(pivot, part.Kind, color, isMid ? new Vector3(at.X, at.Y, 0f) : at, unit, side, overrides: finSkin);
+            model.Basis = (side < 0f ? MIRROR_Z * turn * MIRROR_Z : turn) * model.Basis;
+            models.Add(model);
+            if (CreatureCategory.Eyes == part.Info.Category)
+            {
+                _eyes.Add(model);
+            }
+        }
+        return true;
+    }
+
     /// <summary>Builds the model of a kind listed in PLACEMENTS on its pivot and starts its animation.</summary>
     private void BuildPlaced(CreatureDesign design, CreaturePart part, Placement placement, Color color, IReadOnlyDictionary<string, Material> finSkin)
     {
@@ -670,8 +842,27 @@ public partial class CreatureParts3D : Node3D
         float flank  = design.FlankAt(x);
         float size   = (0.4f + design.RadiusAt(x) * 0.5f) * placement.Size;
         var   models = new List<Node3D>();
-        switch (placement.Space)
+        // A part on the head of a body with a head model plugs onto a slot of the skull instead of the body
+        ModelSpace space = BuildOnSlot(design, part, placement, color, finSkin, models) ? ModelSpace.None : placement.Space;
+        switch (space)
         {
+            case ModelSpace.None:
+                break;
+            case ModelSpace.Head:
+                // The skull on the last vertebra, as big as the body is tall there; it brings the plug points
+                float  neckX = design.SpineEndX;
+                Node3D skull = CreatureModels.NewModel(part.Kind, color, finSkin);
+                skull.Scale = Vector3.One * design.TopAt(neckX) * placement.Size;
+                AddPivot(neckX).AddChild(skull);
+                models.Add(skull);
+                foreach (string name in SLOT_NAMES)
+                {
+                    if (!_headSlots.ContainsKey(name) && skull.FindChild($"Slot{name}", true, false) is Node3D plug)
+                    {
+                        _headSlots[name] = plug;
+                    }
+                }
+                break;
             case ModelSpace.Snout:
                 // In the opening the body mesh cut for this kind (Design/MouthShapes.cs)
                 MouthShape shape = MouthShapes.Current.TryGetValue(part.Kind, out MouthShape cut) ? cut : new MouthShape();
@@ -892,6 +1083,12 @@ public partial class CreatureParts3D : Node3D
         _limbs?.Move(_design, phase, speedShare, isOnLand);
     }
 
+    /// <summary>Puts the limbs back into their sculpted rest pose (CreatureLimbs3D.Rest).</summary>
+    public void RestLimbs()
+    {
+        _limbs?.Rest();
+    }
+
     /// <summary>Closes or opens the eyes.</summary>
     /// <param name="isBlinking">(Required) True while the eyes are shut.</param>
     public void Blink(bool isBlinking)
@@ -899,7 +1096,8 @@ public partial class CreatureParts3D : Node3D
         foreach (Node3D eye in _eyes)
         {
             Vector3 open = _eyeScales.TryGetValue(eye, out Vector3 posed) ? posed : Vector3.One;
-            eye.Scale = new Vector3(open.X, open.Y * (isBlinking ? 0.15f : 1f), open.Z);
+            bool    isShut = isBlinking && !_openEyes.Contains(eye);
+            eye.Scale = new Vector3(open.X, open.Y * (isShut ? 0.15f : 1f), open.Z);
         }
     }
 
@@ -922,6 +1120,7 @@ public partial class CreatureParts3D : Node3D
     //
     //   PartAt             The placed part under a ray.
     //   TryGetPartAnchor   Where the gizmo of a part sits, in global space.
+    //   TryGetPartFrame    The frame its pose is stored in, in global space.
     //   TryGetLimbFrame    Where a sculpted limb sits, for the joint handles of the editor.
     //
 
@@ -949,6 +1148,15 @@ public partial class CreatureParts3D : Node3D
         }
         anchor = ToGlobal(local);
         return true;
+    }
+
+    /// <summary>The frame the pose of a part is stored in, in global space (CreaturePartPoser.TryGetPartFrame).</summary>
+    /// <returns>False when the part has no group on that flank (not built yet).</returns>
+    public bool TryGetPartFrame(int index, int flank, out Basis frame)
+    {
+        bool isBuilt = _poser.TryGetPartFrame(index, flank, out Basis local);
+        frame = GlobalBasis * local;
+        return isBuilt;
     }
 
     /// <summary>The posed shoulder of a sculpted limb on one flank (CreatureLimbs3D.TryGetFrame).</summary>

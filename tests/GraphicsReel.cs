@@ -10,6 +10,8 @@
 //   $env:CELLOUT_REEL_LAND = '1'       # optional: rush to the land animal, only the last still is worth a look
 //   $env:CELLOUT_REEL_TRIBE = '1'      # optional: rush to the pack and the tribe (stills: frames 112 and 212)
 //   $env:CELLOUT_REEL_TEMPLATE = 'SHARK'   # optional: the creature editor stays open with this template (CreatureTemplates), end with --quit-after 300
+//   $env:CELLOUT_REEL_MODE = 'Paint'   # optional, with a template: the editor shows this mode (Build, Paint, Animate) instead of the build mode
+//   $env:CELLOUT_REEL_PART = '0'       # optional, with a mode: the index of the part picked in the editor
 //   $env:CELLOUT_REEL_SKY = '1'       # optional, while rushing: the camera tilts flat, the still shows sky and horizon
 //   $env:CELLOUT_REEL_MAP = '1'       # optional: the tribe pans off the village and opens the world map (rushing: still 198)
 
@@ -56,6 +58,7 @@ public partial class GraphicsReel : Node
     private static readonly bool IS_SHOWING_MAP = "1" == OS.GetEnvironment("CELLOUT_REEL_MAP");
     private static readonly bool IS_LOOKING_UP = "1" == OS.GetEnvironment("CELLOUT_REEL_SKY");
     private static readonly string TEMPLATE_KEY = OS.GetEnvironment("CELLOUT_REEL_TEMPLATE");
+    private static readonly CreatureEditorMode EDITOR_MODE = System.Enum.TryParse(OS.GetEnvironment("CELLOUT_REEL_MODE"), true, out CreatureEditorMode mode) ? mode : CreatureEditorMode.Build;
 
     private Main _main;
     private int _frame;
@@ -142,6 +145,17 @@ public partial class GraphicsReel : Node
                 {
                     // A template to look at: the editor stays open with it on the turntable, quit by --quit-after
                     _main.CreatureEditor.ChooseTemplate(CreatureTemplates.Get(TEMPLATE_KEY));
+                    _main.CreatureEditor.SetMode(EDITOR_MODE);
+                    if (CreatureEditorMode.Build == EDITOR_MODE)
+                    {
+                        _main.CreatureEditor.PickVertebra(1);    // the ring sliders of the form panel show
+                    }
+                    else
+                    {
+                        // The part icon of the color zones wakes up, the motion panel shows a limb (the last part of most templates)
+                        _main.CreatureEditor.PickPart(int.TryParse(OS.GetEnvironment("CELLOUT_REEL_PART"), out int part) ? part
+                            : CreatureEditorMode.Paint == EDITOR_MODE ? 0 : _main.CreatureEditor.Draft.Parts.Count - 1);
+                    }
                 }
                 break;
             case COAST_FRAME:

@@ -21,14 +21,22 @@
 //     "girths": [0.3, 0.5, 0.75],      girth per vertebra, tail first (4 to 9 vertebrae)
 //     "lifts": [0, 0, 0.2],            (optional) height of the spine per vertebra
 //     "sways": [0.4, 0.1, 0],          (optional) sideways offset per vertebra (+ is the right flank): the body curls, step between neighbors up to 0.38
-//     "flats": [0, 0, 0.8],            (optional) cross-section per vertebra on top of "flat": 1 flat and wide, -1 tall and narrow (a flat head on a round trunk)
+//     "heights": [1, 1, 0.5],        (optional) height of the ring per vertebra as a factor, 1 as the body gives it, 0.3..2.5 (a flat head on a round trunk)
+//     "widths": [1, 1, 1.4],         (optional) width of the ring per vertebra as a factor (a wide head, a narrow chameleon)
+//     "crowns": [0, -1, 0],         (optional) shape of the upper half of the ring per vertebra: -1 a keel, 0 round, 1 boxy (a flat back with edges)
+//     "bellies": [1, 1, 0],         (optional) shape of the lower half of the ring per vertebra: 1 a flat belly
+//     "mouthLevel": -0.6,            (optional) shifts the mouth line in heights of the head, -1 a mouth on the underside (a ray)
+//     "mouthLength": 0.7,            (optional) factor on the length of the mouth opening, 0.3..1.8
+//     parts: "color": "#rrggbb"       (optional) a color of its own for this part instead of the body color
+//     parts: "tipColor": "#rrggbb", "tipFrom": 2   (optional) limbs, feet, hands: a second plain color from that joint outwards (1 = first joint), white lower legs
+//     "waveAmount": 0, "waveSpeed": 1.5, "breathing": false   (optional) motion of the whole body: factor on the swim wave, on its pace, the breathing mouth
+//     parts: "motion": { "on": false, "speed": 1.5, "amount": 0.5, "phase": 0.5, "blink": false, "channels": { "Tail1": 0 } }   (optional) the own motion of this part, every field optional; channels: strength per bone or node of its model animation
 //     "gaps": [0.36, 0.2],            (optional) distance between neighbors, one less than girths, 0.162 to 0.648 (default 0.36):
 //                                      short gaps make a ball or let the spine climb steeply
 //     "color": "#6b859e",              (optional) body color, else the color of the player
 //     "pattern": "Saddle",             (optional) None, Stripes, Spots, Patches, Saddle or Net (dark fields with thin light lines between them)
 //     "patternWrap": true,             (optional) the pattern runs all around, belly and legs too, instead of fading out towards the belly
 //     "pitch": 90,                     (optional) posture of the whole body in degrees: 0 level, 90 upright with the nose up, -90 nose down
-//     "flat": 0.8,                     (optional) cross-section: 0 as the type gives it, 1 pressed flat and wide, -1 tall and narrow
 //     "hover": 0.6,                    (optional) how high the body floats above the ground on land, in body sizes (0 to 1.5, default 0: its lowest part rests on the ground)
 //     "bellyColor": "#f2ead0",         (optional) color zones on top of the body color: the underside (fading up the flanks),
 //     "headColor": "#d05a2c",          the head, "limbColor" every limb with its foot or hand, "tailColor" the tail end
@@ -82,6 +90,17 @@ namespace CellOut;
 //
 
 /// <summary>One part of a template file, see the NOTE of this file for the fields.</summary>
+/// <summary>The "motion" block of a part in a template file, see PartMotion.</summary>
+public sealed record CreatureTemplateMotion
+{
+    public bool On { get; init; } = true;
+    public float Speed { get; init; } = 1f;
+    public float Amount { get; init; } = 1f;
+    public float Phase { get; init; }
+    public bool Blink { get; init; } = true;
+    public Dictionary<string, float> Channels { get; init; }
+}
+
 public sealed record CreatureTemplatePart
 {
     public required CreaturePartKind Kind { get; init; }
@@ -90,12 +109,18 @@ public sealed record CreatureTemplatePart
     public int Side { get; init; }
     public float Size { get; init; } = 1f;
     public float[] Stretch { get; init; }
+    public CreatureTemplateMotion Motion { get; init; }
+    public string TipColor { get; init; }
+    public int TipFrom { get; init; } = 1;
+    public string Color { get; init; }
     public float[] Offset { get; init; }
     public float[] Rotation { get; init; }
     public float[][] Joints { get; init; }
     public CreaturePartKind? Limb { get; init; }
     public int Radial { get; init; }
     public float[] Widths { get; init; }
+    public float[] Crowns { get; init; }
+    public float[] Bellies { get; init; }
     public bool Middle { get; init; }
     public int? OnPart { get; init; }
     public int OnJoint { get; init; }
@@ -110,7 +135,10 @@ public sealed record CreatureTemplateFile
     public required float[] Girths { get; init; }
     public float[] Lifts { get; init; }
     public float[] Sways { get; init; }
-    public float[] Flats { get; init; }
+    public float[] Heights { get; init; }
+    public float[] Widths { get; init; }
+    public float[] Crowns { get; init; }
+    public float[] Bellies { get; init; }
     public float[] Gaps { get; init; }
     public string Color { get; init; }
     public CreaturePattern Pattern { get; init; }
@@ -124,8 +152,12 @@ public sealed record CreatureTemplateFile
     public float Hover { get; init; }
     public float PatternScale { get; init; } = 1f;
     public bool MouthLine { get; init; } = true;
+    public float MouthLevel { get; init; }
+    public float WaveAmount { get; init; } = 1f;
+    public float WaveSpeed { get; init; } = 1f;
+    public bool Breathing { get; init; } = true;
+    public float MouthLength { get; init; } = 1f;
     public bool PatternWrap { get; init; }
-    public float Flat { get; init; }
     public required CreatureTemplatePart[] Parts { get; init; }
 }
 
@@ -312,9 +344,21 @@ public static class CreatureTemplates
         {
             design.SetSway(i, file.Sways[i]);
         }
-        for (int i = 0; null != file.Flats && i < file.Flats.Length && i < file.Girths.Length; i++)
+        for (int i = 0; null != file.Heights && i < file.Heights.Length && i < file.Girths.Length; i++)
         {
-            design.SetFlat(i, file.Flats[i]);
+            design.SetHeight(i, file.Heights[i]);
+        }
+        for (int i = 0; null != file.Widths && i < file.Widths.Length && i < file.Girths.Length; i++)
+        {
+            design.SetWidth(i, file.Widths[i]);
+        }
+        for (int i = 0; null != file.Crowns && i < file.Crowns.Length && i < file.Girths.Length; i++)
+        {
+            design.SetCrown(i, file.Crowns[i]);
+        }
+        for (int i = 0; null != file.Bellies && i < file.Bellies.Length && i < file.Girths.Length; i++)
+        {
+            design.SetBelly(i, file.Bellies[i]);
         }
 
         for (int i = 0; i < file.Parts.Length; i++)
@@ -338,6 +382,22 @@ public static class CreatureTemplates
                 throw new InvalidOperationException($"Template {file.Key}: 'radial' needs a kind that may stand more than once on the body, part {i} is '{part.Kind}'.");
             }
             design.SetPartSize(index, part.Size);
+            if (null != part.Motion)
+            {
+                design.SetPartMotion(index, new PartMotion(part.Motion.On, part.Motion.Speed, part.Motion.Amount, part.Motion.Phase, part.Motion.Blink));
+                foreach ((string channel, float amount) in part.Motion.Channels ?? new Dictionary<string, float>())
+                {
+                    design.SetPartChannel(index, channel, amount);
+                }
+            }
+            if (null != part.TipColor && !design.SetLimbTip(index, ToColor(file, part.TipColor), part.TipFrom))
+            {
+                throw new InvalidOperationException($"Template {file.Key}: 'tipColor' needs a limb, a foot or a hand, part {i} is '{part.Kind}'.");
+            }
+            if (null != part.Color)
+            {
+                design.SetPartColor(index, ToColor(file, part.Color));
+            }
             if (null != part.Stretch)
             {
                 design.SetPartStretch(index, ToVector(file, part.Stretch));
@@ -378,8 +438,9 @@ public static class CreatureTemplates
         design.SetHover(file.Hover);
         design.SetPatternScale(file.PatternScale);
         design.SetMouthLine(file.MouthLine);
+        design.SetMouthPlace(file.MouthLevel, file.MouthLength);
+        design.SetBodyMotion(file.WaveAmount, file.WaveSpeed, file.Breathing);
         design.SetPatternWraps(file.PatternWrap);
-        design.SetFlatness(file.Flat);
         return design;
     }
 

@@ -29,6 +29,7 @@ public partial class CreatureEditorFrame : Control
     // ===========================================================================
     //
     //   Setup          Builds grey-out, panel and title, hidden and closed.
+    //   SetHeader      Puts a bar right of the title.
     //   AddRow         Adds a row below the last one.
     //   AddWorkbench   Adds the sculpting row with its parts side by side.
     //   Refresh        Title of the phase, the workbench only while sculpting.
@@ -45,6 +46,8 @@ public partial class CreatureEditorFrame : Control
     private ShaderMaterial _panelBackground;
     private Control _panel;
     private VBoxContainer _rows;
+    private const int TITLE_SIZE = 26;                 // the smallest size the display font reads well at
+    private HBoxContainer _header;
     private Label _titleLabel;
     private HBoxContainer _workbench;
 
@@ -84,9 +87,20 @@ public partial class CreatureEditorFrame : Control
         _rows.AddThemeConstantOverride("separation", 12);
         margin.AddChild(_rows);
 
-        _titleLabel = CreatureEditorUi.NewLabel(38);
+        // Header: the title of the type choice, while sculpting the bar the editor hands in (SetHeader) takes the row
+        _header = new HBoxContainer();
+        _header.AddThemeConstantOverride("separation", 16);
+        _rows.AddChild(_header);
+        _titleLabel = CreatureEditorUi.NewLabel(TITLE_SIZE);
+        _titleLabel.VerticalAlignment = VerticalAlignment.Center;
         GameFonts.UseDisplay(_titleLabel);
-        _rows.AddChild(_titleLabel);
+        _header.AddChild(_titleLabel);
+    }
+
+    /// <summary>Puts a bar into the header, right of the title (modes, undo and redo).</summary>
+    public void SetHeader(Control bar)
+    {
+        _header.AddChild(bar);
     }
 
     /// <summary>Adds a row below the title and the rows added before.</summary>
@@ -112,7 +126,9 @@ public partial class CreatureEditorFrame : Control
     /// <summary>Updates the title and shows the workbench once the type is chosen.</summary>
     public void Refresh()
     {
-        _titleLabel.Text   = Tr(_session.IsChoosingType ? "CREATURE_CHOOSE_TITLE" : "CREATURE_EDITOR_TITLE");
+        // The title only asks the question of the first shaping; while sculpting the modes stand in its place
+        _titleLabel.Visible = _session.IsChoosingType;
+        _titleLabel.Text    = Tr("CREATURE_CHOOSE_TITLE");
         _workbench.Visible = !_session.IsChoosingType;
     }
 

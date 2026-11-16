@@ -27,9 +27,13 @@
 //     PUSH VERTEBRAE    Picks a vertebra, pushes and scales it, grows or shrinks the spine.
 //
 
+using System.Linq;
 using Godot;
 
 namespace CellOut;
+
+/// <summary>What the creature editor shows: parts and shape, paint, motion, or the clay of an own part.</summary>
+public enum CreatureEditorMode { Build, Paint, Animate, Sculpt }
 
 public sealed class CreatureEditorSession
 {
@@ -68,22 +72,225 @@ public sealed class CreatureEditorSession
     public bool IsChoosingType { get; private set; }
     public bool IsSymmetric { get; private set; } = true;
 
-    /// <summary>Changes the cross-section of the picked vertebra: positive flatter and wider, negative taller and narrower.</summary>
-    /// <param name="delta">(Required) Added to its flatness, the result is clamped to -1..1.</param>
+    /// <summary>
+    /// Stretches the picked vertebra along one axis (gizmo cubes): X the length of the body
+    /// there, Y the height of its ring, Z the width of its ring. Free of charge, looks only.
+    /// </summary>
+    /// <param name="axis">(Required) Vector3.Right, Vector3.Up or Vector3.Back.</param>
+    /// <param name="factor">(Required) Above 1 bigger, below 1 smaller, clamped by the spine.</param>
     /// <returns>False when no vertebra is picked.</returns>
-    public bool FlattenPickedVertebra(float delta)
+    /// <example><code>session.StretchPickedVertebra(Vector3.Up, 0.8f);   // flatter</code></example>
+    public bool StretchPickedVertebra(Vector3 axis, float factor)
     {
         if (PickedVertebra < 0)
         {
             return false;
         }
-        Draft.SetFlat(PickedVertebra, Draft.Flats[PickedVertebra] + delta);
+        int index = PickedVertebra;
+        if (Vector3.Right == axis)
+        {
+            Sculpted.StretchVertebra(index, factor);
+        }
+        else if (Vector3.Up == axis)
+        {
+            Sculpted.SetHeight(index, Sculpted.Heights[index] * factor);
+        }
+        else
+        {
+            Sculpted.SetWidth(index, Sculpted.Widths[index] * factor);
+        }
         return true;
     }
 
     /// <summary>Point symmetry of new parts: they stand this many times around the spine (2..CreatureDesign.MAX_RADIAL), 0 while the axis symmetry or none is on.</summary>
     public int RadialCount { get; private set; }
     public bool IsSpraying { get; private set; }
+
+    /// <summary>The mode of the editor: build (parts and shape), paint (colors, skin, pattern, spray can) or animate (how body and parts move).</summary>
+    public CreatureEditorMode Mode { get; private set; }
+
+    public bool IsPainting => CreatureEditorMode.Paint == Mode;
+
+    /// <summary>Whether the clay on the turntable is sculpted by its handles: in the build mode (the body) and in the sculpt mode (an own part).</summary>
+    public bool HasHandles => CreatureEditorMode.Build == Mode || CreatureEditorMode.Sculpt == Mode;
+
+    /// <summary>Sculpt mode: the id of the own shape on the turntable, 0 for none.</summary>
+    public int PickedShape { get; private set; }
+
+    /// <summary>The clay the vertebra handles work on: the own shape in the sculpt mode, else the body of the draft.</summary>
+    public CreatureDesign Sculpted => CreatureEditorMode.Sculpt == Mode && Draft.ShapeOf(PickedShape) is CustomShape shape ? shape.Form : Draft;
+
+    /// <summary>Puts an own shape on the turntable of the sculpt mode. Raises Changed.</summary>
+    public void PickShape(int id)
+    {
+        PickedShape    = null != Draft.ShapeOf(id) ? id : 0;
+        PickedVertebra = -1;
+        Changed?.Invoke();
+    }
+
+    /// <summary>Adds a fresh own shape and puts it on the turntable. Raises Changed.</summary>
+    public void AddShape()
+    {
+        PickShape(Draft.AddShape().Id);
+    }
+
+    /// <summary>Deletes the own shape on the turntable with every part made of it, the next one takes its place. Raises PaletteChanged and Changed.</summary>
+    public void RemovePickedShape()
+    {
+        if (!Draft.RemoveShape(PickedShape))
+        {
+            return;
+        }
+        PickedPart = -1;
+        PaletteChanged?.Invoke();
+        PickShape(Draft.Shapes.Count > 0 ? Draft.Shapes[^1].Id : 0);
+    }
+
+    /// <summary>Puts a part made of the own shape on the animal (a pair on the flanks, free of charge), picks it and returns to the build mode.</summary>
+    /// <returns>False without a shape or when no spot of the spine took it.</returns>
+    public bool PlacePickedShape()
+    {
+        foreach (float t in new[] { 0.5f, 0.6f, 0.4f, 0.7f, 0.3f, 0.8f, 0.2f })
+        {
+            if (Draft.PlaceShape(PickedShape, t))
+            {
+                SetMode(CreatureEditorMode.Build);
+                PickPart(Draft.Parts.Count - 1, 1);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>Animation mode: the pace the animal moves at on the turntable, 0 standing .. 1 full speed.</summary>
+    public float PreviewSpeed { get; private set; } = 0.6f;
+
+    /// <summary>Animation mode: true shows the walk on land, false the swimming in the water.</summary>
+    public bool PreviewsLand { get; private set; }
+
+    /// <summary>Sets pace and place of the preview of the animation mode. Raises Changed.</summary>
+    public void SetPreview(float speed, bool isOnLand)
+    {
+        PreviewSpeed = Mathf.Clamp(speed, 0f, 1f);
+        PreviewsLand = isOnLand;
+        Changed?.Invoke();
+    }
+
+    /// <summary>Sets how the picked part moves on its own (PartMotion). Raises Changed.</summary>
+    /// <returns>False when no part is picked.</returns>
+    public bool SetPickedMotion(PartMotion motion)
+    {
+        if (PickedPart < 0)
+        {
+            return false;
+        }
+        Draft.SetPartMotion(PickedPart, motion);
+        Changed?.Invoke();
+        return true;
+    }
+
+    /// <summary>Sets the strength of one channel of the model animation of the picked part (CreatureDesign.SetPartChannel). Raises Changed.</summary>
+    /// <returns>False when no part is picked.</returns>
+    public bool SetPickedChannel(string channel, float amount)
+    {
+        if (PickedPart < 0)
+        {
+            return false;
+        }
+        Draft.SetPartChannel(PickedPart, channel, amount);
+        Changed?.Invoke();
+        return true;
+    }
+
+    /// <summary>Switches the own motion of every part on or off at once, their pace and swing stay. Raises Changed.</summary>
+    public void SetAllMotion(bool isOn)
+    {
+        for (int i = 0; i < Draft.Parts.Count; i++)
+        {
+            Draft.SetPartMotion(i, Draft.Parts[i].Movement with { IsOn = isOn });
+        }
+        Changed?.Invoke();
+    }
+
+    /// <summary>Sets the motion of the whole body: swim wave, its pace, the breathing mouth. Raises Changed.</summary>
+    public void SetBodyMotion(float waveAmount, float waveSpeed, bool isBreathing)
+    {
+        Draft.SetBodyMotion(waveAmount, waveSpeed, isBreathing);
+        Changed?.Invoke();
+    }
+
+    private readonly CreatureDraftHistory _history = new();
+    private int _shapeStamp;                         // sum of the versions of the own shapes, see Checkpoint
+
+    public bool CanUndo => _history.CanUndo;
+    public bool CanRedo => _history.CanRedo;
+
+    /// <summary>Switches the mode. Leaving the paint mode puts the spray can down, leaving the build mode lets go of the palette selection and the picked vertebra. Raises Changed.</summary>
+    public void SetMode(CreatureEditorMode mode)
+    {
+        Mode       = mode;
+        IsSpraying = IsSpraying && IsPainting;
+        PickedVertebra = -1;                         // the handles belong to another clay now
+        if (CreatureEditorMode.Build != mode)
+        {
+            Selected = null;
+        }
+        if (CreatureEditorMode.Sculpt == mode)
+        {
+            PickedPart = -1;
+            if (null == Draft.ShapeOf(PickedShape))
+            {
+                PickedShape = Draft.Shapes.Count > 0 ? Draft.Shapes[^1].Id : Draft.AddShape().Id;
+            }
+        }
+        SelectionChanged?.Invoke();
+        Changed?.Invoke();
+    }
+
+    /// <summary>Stores the draft as an undo step when it changed, called while the draft is at rest (no drag running).</summary>
+    public void Checkpoint()
+    {
+        // A shape is a design of its own: its changes count on the draft, so visual and history follow
+        int shapes = Draft.Shapes.Sum(shape => shape.Form.Version);
+        if (shapes != _shapeStamp)
+        {
+            _shapeStamp = shapes;
+            Draft.Touch();
+        }
+        if (!IsChoosingType && _history.Checkpoint(Draft, _spent))
+        {
+            Changed?.Invoke();                       // the undo button wakes up
+        }
+    }
+
+    /// <summary>Takes back the last change of the draft, points included. Raises PaletteChanged and Changed.</summary>
+    /// <returns>False when there is nothing to take back.</returns>
+    public bool Undo()
+    {
+        return Restore(_history.Undo(Draft, ref _spent));
+    }
+
+    /// <summary>Repeats the change taken back last. Raises PaletteChanged and Changed.</summary>
+    /// <returns>False when there is nothing to repeat.</returns>
+    public bool Redo()
+    {
+        return Restore(_history.Redo(Draft, ref _spent));
+    }
+
+    /// <summary>After a step of the history: indices may have moved, so nothing stays picked.</summary>
+    private bool Restore(bool isRestored)
+    {
+        if (!isRestored)
+        {
+            return false;
+        }
+        PickedPart     = -1;
+        PickedVertebra = -1;
+        GizmoFlank     = 0;
+        PaletteChanged?.Invoke();
+        Changed?.Invoke();
+        return true;
+    }
     public CreaturePartKind? Selected { get; private set; }
     public CreatureCategory Category { get; private set; } = CreatureCategory.Fins;
     public int PickedPart { get; private set; } = -1;
@@ -126,8 +333,12 @@ public sealed class CreatureEditorSession
         PickedPart     = -1;
         Category       = CreatureCategory.Fins;
         IsChoosingType = isChoosingType;
+        Mode           = CreatureEditorMode.Build;
+        PickedShape    = 0;
+        _shapeStamp    = source.Shapes.Sum(shape => shape.Form.Version);
         Draft          = new CreatureDesign();
         Draft.CopyFrom(source);
+        _history.Reset(Draft, _spent);
     }
 
     // ===========================================================================
@@ -141,9 +352,13 @@ public sealed class CreatureEditorSession
     //   SetColor         Recolors the draft (null = coral default).
     //   SetPosture       Posture of the whole body in degrees.
     //   SetHover         Hover height above the ground on land.
-    //   SetFlatness      Cross-section of the body, from tall over round to flat.
     //   SetZoneColor     Color of a zone: belly, head, limbs or tail end (null = none).
     //   SetSkin          Surface of the skin: smooth, scales or warts.
+    //   SetPickedPartColor   A color of its own for the picked part.
+    //   CyclePickedLimbLook  The next tube look for the picked limb.
+    //   SetPatternScale, SetPatternWraps   Fineness of the pattern, all around the body.
+    //   SetMouthLine, SetMouthPlace        The face: with or without a mouth, its height and length.
+    //   ShapePickedVertebra  Keel, round or boxy for the upper and lower half of a ring.
     //   SetPattern       Paints a pattern in the second color.
     //   SetPatternColor  Second color of the paint (null = a dark shade of the body).
     //   SetSymmetric     Axis symmetry: new side parts as pairs or as single halves.
@@ -194,6 +409,7 @@ public sealed class CreatureEditorSession
         }
         _spent        += cost;
         IsChoosingType = false;
+        _history.Reset(Draft, _spent);               // the choice of the template is not taken back
         PaletteChanged?.Invoke();
         Changed?.Invoke();
         return true;
@@ -244,18 +460,93 @@ public sealed class CreatureEditorSession
         Changed?.Invoke();
     }
 
-    /// <summary>Sets the flatness of the cross-section of the draft (-1 tall .. 1 flat). Raises Changed.</summary>
-    public void SetFlatness(float flatness)
-    {
-        Draft.SetFlatness(flatness);
-        Changed?.Invoke();
-    }
-
     /// <summary>Picks the color of a zone of the draft (belly, head, limbs, tail end), null takes it away. Raises Changed.</summary>
     public void SetZoneColor(CreatureZone zone, Color? color)
     {
         Draft.SetZoneColor(zone, color);
         Changed?.Invoke();
+    }
+
+    /// <summary>Gives the picked part a color of its own, null takes it away. Raises Changed.</summary>
+    /// <returns>False when no part is picked.</returns>
+    public bool SetPickedPartColor(Color? color)
+    {
+        if (PickedPart < 0)
+        {
+            return false;
+        }
+        Draft.SetPartColor(PickedPart, color);
+        Changed?.Invoke();
+        return true;
+    }
+
+    /// <summary>Paints the picked limb in a second color from one joint outwards (CreatureDesign.SetLimbTip), null takes it away. Raises Changed.</summary>
+    /// <returns>False when the picked part has no joints.</returns>
+    public bool SetPickedTipColor(Color? color, int from)
+    {
+        if (PickedPart < 0 || !Draft.SetLimbTip(PickedPart, color, from))
+        {
+            return false;
+        }
+        Changed?.Invoke();
+        return true;
+    }
+
+    /// <summary>The look of the tube of the picked limb, foot or hand becomes the next limb kind (plain, tentacle, feeler ..). Free of charge. Raises Changed.</summary>
+    /// <returns>False when the picked part has no joints.</returns>
+    public bool CyclePickedLimbLook()
+    {
+        if (PickedPart < 0 || null == Draft.Parts[PickedPart].Joints)
+        {
+            return false;
+        }
+        var looks = System.Enum.GetValues<CreaturePartKind>().Where(kind => CreatureCatalog.Get(kind).IsSculpted).ToList();
+        int next  = (looks.IndexOf(Draft.Parts[PickedPart].LimbStyle) + 1) % looks.Count;
+        Draft.SetLimbKind(PickedPart, looks[next]);
+        Changed?.Invoke();
+        return true;
+    }
+
+    /// <summary>How fine the paint pattern is (CreatureLook.SetPatternScale). Raises Changed.</summary>
+    public void SetPatternScale(float scale)
+    {
+        Draft.SetPatternScale(scale);
+        Changed?.Invoke();
+    }
+
+    /// <summary>Lets the pattern run all around the body instead of only over the back. Raises Changed.</summary>
+    public void SetPatternWraps(bool isWrapping)
+    {
+        Draft.SetPatternWraps(isWrapping);
+        Changed?.Invoke();
+    }
+
+    /// <summary>Shows or hides the mouth line and opening of the face. Raises Changed.</summary>
+    public void SetMouthLine(bool hasMouthLine)
+    {
+        Draft.SetMouthLine(hasMouthLine);
+        Changed?.Invoke();
+    }
+
+    /// <summary>Moves and sizes the mouth opening on the head (CreatureDesign.SetMouthPlace). Raises Changed.</summary>
+    public void SetMouthPlace(float level, float length)
+    {
+        Draft.SetMouthPlace(level, length);
+        Changed?.Invoke();
+    }
+
+    /// <summary>Shapes the ring of the picked vertebra: the upper half (crown) and the lower half (belly), -1 a keel .. 1 boxy. Raises Changed.</summary>
+    /// <returns>False when no vertebra is picked.</returns>
+    public bool ShapePickedVertebra(float crown, float belly)
+    {
+        if (PickedVertebra < 0)
+        {
+            return false;
+        }
+        Sculpted.SetCrown(PickedVertebra, crown);
+        Sculpted.SetBelly(PickedVertebra, belly);
+        Changed?.Invoke();
+        return true;
     }
 
     /// <summary>Picks the surface of the skin of the draft. Raises Changed.</summary>
@@ -550,8 +841,13 @@ public sealed class CreatureEditorSession
         return true;
     }
 
-    /// <summary>Stretches the picked part along one body axis, clamped by the design. Both halves of a pair follow.</summary>
-    /// <param name="axis">(Required) Vector3.Right (along the body), Vector3.Up or Vector3.Back (out of the flank).</param>
+    /// <summary>
+    /// Stretches the picked part along one body axis, clamped by the design. Both halves of a
+    /// pair follow. The stretch is stored along the own axes of the part (before its turn), so
+    /// the body axis is turned back into the part first: a part turned by a quarter grows along
+    /// the axis that points that way now, a part standing askew shares the growth between its axes.
+    /// </summary>
+    /// <param name="axis">(Required) Normalized: Vector3.Right (along the body), Vector3.Up or Vector3.Back (out of the flank).</param>
     /// <param name="factor">(Required) Above 1 longer, below 1 shorter, multiplied onto the stretch of that axis.</param>
     /// <returns>False when no part is picked.</returns>
     /// <example><code>session.StretchPickedPart(Vector3.Right, 1.2f);</code></example>
@@ -561,8 +857,11 @@ public sealed class CreatureEditorSession
         {
             return false;
         }
-        Vector3 grown = Vector3.One + axis.Abs() * (factor - 1f);
-        Draft.SetPartStretch(PickedPart, Draft.Parts[PickedPart].Proportion * grown);
+        CreaturePart part  = Draft.Parts[PickedPart];
+        Vector3      right = GizmoFlank < 0 ? new Vector3(axis.X, axis.Y, -axis.Z) : axis;       // the pose stores the right half
+        Vector3      own   = Basis.FromEuler(part.Rotation).Inverse() * right;
+        Vector3      grown = Vector3.One + own * own * (factor - 1f);                           // squares: the shares sum to 1
+        Draft.SetPartStretch(PickedPart, part.Proportion * grown);
         return true;
     }
 
@@ -574,7 +873,7 @@ public sealed class CreatureEditorSession
     //   ForgetPull           A new drag starts, the gathered end overshoot is dropped.
     //   MovePickedVertebra   Pushes the picked vertebra along the body (X) and lifts it (Y), ends grow or shrink.
     //   ScalePickedVertebra  Scales the girth of the picked vertebra.
-    //   FlattenPickedVertebra  Changes the cross-section of the picked vertebra (flat and wide .. tall and narrow).
+    //   StretchPickedVertebra  Stretches the picked vertebra per axis: length of the body there, height and width of its ring.
     //   PullEnd              One vertebra more or less at the nose or tail end, free of charge.
     //   AddVertebra          One more vertebra in the middle, free of charge.
     //   RemoveVertebra       One vertebra less, free of charge.
@@ -584,7 +883,7 @@ public sealed class CreatureEditorSession
     /// <param name="index">(Required) Vertebra, 0 is the tail end, -1 for none.</param>
     public void PickVertebra(int index)
     {
-        PickedVertebra = index >= 0 && index < Draft.Girths.Count ? index : -1;
+        PickedVertebra = index >= 0 && index < Sculpted.Girths.Count ? index : -1;
         if (PickedVertebra >= 0)
         {
             PickedPart = -1;
@@ -621,21 +920,21 @@ public sealed class CreatureEditorSession
         int index = PickedVertebra;
         if (!Mathf.IsZeroApprox(delta.Y))
         {
-            Draft.SetLift(index, Draft.Lifts[index] + delta.Y);
+            Sculpted.SetLift(index, Sculpted.Lifts[index] + delta.Y);
         }
         if (!Mathf.IsZeroApprox(delta.Z))
         {
-            Draft.SetSway(index, Draft.Sways[index] + delta.Z);
+            Sculpted.SetSway(index, Sculpted.Sways[index] + delta.Z);
         }
         if (Mathf.IsZeroApprox(delta.X))
         {
             return true;
         }
-        float wanted = Draft.Positions[index] + delta.X;
-        float taken  = Draft.SetVertebraX(index, wanted);
+        float wanted = Sculpted.Positions[index] + delta.X;
+        float taken  = Sculpted.SetVertebraX(index, wanted);
 
         // Ends: the overshoot past the clamp grows or shrinks the body
-        bool isNose = Draft.Girths.Count - 1 == index;
+        bool isNose = Sculpted.Girths.Count - 1 == index;
         bool isTail = 0 == index;
         if (!isNose && !isTail)
         {
@@ -650,7 +949,7 @@ public sealed class CreatureEditorSession
         {
             _pull = 0f;
         }
-        PickedVertebra = isNose ? Draft.Girths.Count - 1 : 0;
+        PickedVertebra = isNose ? Sculpted.Girths.Count - 1 : 0;
         return true;
     }
 
@@ -663,7 +962,7 @@ public sealed class CreatureEditorSession
         {
             return false;
         }
-        Draft.SetGirth(PickedVertebra, Draft.Girths[PickedVertebra] * factor);
+        Sculpted.SetGirth(PickedVertebra, Sculpted.Girths[PickedVertebra] * factor);
         return true;
     }
 
@@ -674,7 +973,7 @@ public sealed class CreatureEditorSession
     /// <example><code>session.PullEnd(isNose: true, isGrowing: true);   // the neck gets longer</code></example>
     public bool PullEnd(bool isNose, bool isGrowing)
     {
-        bool isChanged = isGrowing ? Draft.GrowEnd(isNose) : Draft.ShrinkEnd(isNose);
+        bool isChanged = isGrowing ? Sculpted.GrowEnd(isNose) : Sculpted.ShrinkEnd(isNose);
         if (!isChanged)
         {
             return false;
@@ -688,7 +987,7 @@ public sealed class CreatureEditorSession
     /// <returns>False at CreatureDesign.MAX_VERTEBRAE.</returns>
     public bool AddVertebra()
     {
-        bool isAdded = Draft.AddVertebra();
+        bool isAdded = Sculpted.AddVertebra();
         if (isAdded)
         {
             Changed?.Invoke();
@@ -700,7 +999,7 @@ public sealed class CreatureEditorSession
     /// <returns>False at CreatureDesign.MIN_VERTEBRAE.</returns>
     public bool RemoveVertebra()
     {
-        bool isRemoved = Draft.RemoveVertebra();
+        bool isRemoved = Sculpted.RemoveVertebra();
         if (isRemoved)
         {
             Changed?.Invoke();

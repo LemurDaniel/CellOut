@@ -36,7 +36,7 @@ public sealed class CreaturePartPoser
     private static readonly Basis MIRROR = Basis.FromScale(new Vector3(1f, 1f, -1f));
 
     private readonly List<(int Part, int Flank, MeshInstance3D Mesh)> _partMeshes = new();
-    private readonly List<(int Part, int Flank, Vector3 Anchor)> _partAnchors = new();
+    private readonly List<(int Part, int Flank, Vector3 Anchor, Basis Frame)> _partAnchors = new();
 
     /*
       The pieces of a part are the direct children of the pivots built for it.
@@ -114,7 +114,9 @@ public sealed class CreaturePartPoser
                     _partMeshes.Add((index, flank, child));
                 }
             }
-            _partAnchors.Add((index, flank, (toVisual ?? Transform3D.Identity) * (anchor + shift)));
+            // The frame the pose lives in: the pivot (turned with a sideways bent spine), on a limb joint the bud as well
+            Basis frame = (toVisual ?? Transform3D.Identity).Basis * group[0].Pivot.Basis;
+            _partAnchors.Add((index, flank, (toVisual ?? Transform3D.Identity) * (anchor + shift), frame));
         }
         return dropped;
     }
@@ -152,7 +154,9 @@ public sealed class CreaturePartPoser
     // ===========================================================================
     //
     //   PartAt             The placed part under a ray, for picking in the editor.
+    //   PartOf             The part a mesh was built for.
     //   TryGetPartAnchor   Where the gizmo of a part sits.
+    //   TryGetPartFrame    The frame its pose is stored in.
     //
 
     /// <summary>
@@ -185,6 +189,21 @@ public sealed class CreaturePartPoser
         return closest;
     }
 
+    /// <summary>The part a mesh was built for, for looks that follow the part (its own color).</summary>
+    /// <param name="mesh">(Required) A mesh of the creature.</param>
+    /// <returns>Index in Design.Parts, -1 for the body and meshes of no part.</returns>
+    public int PartOf(MeshInstance3D mesh)
+    {
+        foreach ((int part, _, MeshInstance3D own) in _partMeshes)
+        {
+            if (own == mesh)
+            {
+                return part;
+            }
+        }
+        return -1;
+    }
+
     /// <summary>Where the gizmo of a part sits: its shifted anchor (rest pose, without the swim wave).</summary>
     /// <param name="index">(Required) Index in Design.Parts.</param>
     /// <param name="flank">(Required) -1 or 1 for one half of a pair, 0 for a midline part.</param>
@@ -192,7 +211,7 @@ public sealed class CreaturePartPoser
     /// <returns>False when the part has no group on that flank (not built yet).</returns>
     public bool TryGetPartAnchor(int index, int flank, out Vector3 anchor)
     {
-        foreach ((int part, int groupFlank, Vector3 local) in _partAnchors)
+        foreach ((int part, int groupFlank, Vector3 local, _) in _partAnchors)
         {
             if (index == part && flank == groupFlank)
             {
@@ -201,6 +220,29 @@ public sealed class CreaturePartPoser
             }
         }
         anchor = Vector3.Zero;
+        return false;
+    }
+
+    /// <summary>
+    /// The frame the pose of a part lives in (offset, turn and stretch are stored in it): the
+    /// pivot on the spine, on a limb joint the bud too. The editor needs it to turn a drag
+    /// along a world axis into the stored pose.
+    /// </summary>
+    /// <param name="index">(Required) Index in Design.Parts.</param>
+    /// <param name="flank">(Required) -1 or 1 for one half of a pair, 0 for a midline part.</param>
+    /// <param name="frame">From the pose space to the space of the visual.</param>
+    /// <returns>False when the part has no group on that flank (not built yet).</returns>
+    public bool TryGetPartFrame(int index, int flank, out Basis frame)
+    {
+        foreach ((int part, int groupFlank, _, Basis local) in _partAnchors)
+        {
+            if (index == part && flank == groupFlank)
+            {
+                frame = local;
+                return true;
+            }
+        }
+        frame = Basis.Identity;
         return false;
     }
 }

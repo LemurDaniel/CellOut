@@ -1,6 +1,7 @@
 {
   "key": "CRAB",
   "order": 110,
+  "mouthLine": false,
   "type": "MarineMammal",
   "girths": [0.6, 0.8, 0.7],
   "gaps": [0.3, 0.3],
@@ -8,8 +9,8 @@
   "pattern": "Spots",
   "patternColor": "#f4c95a",
   "parts": [
-    { "kind": "PegEye", "t": 1, "free": true, "size": 1.0, "offset": [0.26, 0.16, -0.14] },
-    { "kind": "CrabMouth", "t": 1 },
+    { "kind": "CrabHead", "t": 1, "size": 1.15 },
+    { "kind": "PegEye", "t": 0.95, "free": true },
     { "kind": "Carapace", "t": 0.45, "stretch": [1.5, 1.0, 1.5] },
     { "kind": "CrabLegs", "t": 0.72, "size": 0.75, "limb": "JointedLeg", "joints": [[0.08, 0.14, 0.5], [0.26, -0.1, 0.98], [0.36, -0.56, 1.14]] },
     { "kind": "CrabLegs", "t": 0.5, "size": 0.75, "limb": "JointedLeg", "joints": [[0.02, 0.16, 0.54], [0.06, -0.08, 1.06], [0.08, -0.56, 1.24]] },

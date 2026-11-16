@@ -49,6 +49,10 @@ import models.new_dino
 import models.new_frog
 import models.new_jelly
 import models.new_mammal
+import models.new_heads_mammal
+import models.new_heads_bird
+import models.new_heads_reptile
+import models.new_heads_arthropod
 import models.new_newt
 import models.new_puffer
 import models.new_ray
@@ -114,7 +118,7 @@ from models.helpers import build_scene, export, join_by_material
 from models.defense import build_shell, build_spines
 from models.limbs import build_foot, build_hand, build_pincer, build_sucker_club
 from models.mouths import build_beak, build_filtermouth, build_jaw
-from models.organs import build_brain, build_gills, build_lure, build_stalk_eye, build_wing
+from models.organs import build_gills, build_lure, build_stalk_eye, build_wing
 from models.trees import (
     build_tree_broadleaf,
     build_tree_cycad,
@@ -162,7 +166,6 @@ PARTS = {
     'creature/creature.clawpaw.glb':       lambda scene: build_hand(scene, 'clawpaw'),
     'creature/creature.membranewings.glb': lambda scene: build_wing(scene, 'membranewings'),
     'creature/creature.featherwings.glb':  lambda scene: build_wing(scene, 'featherwings'),
-    'creature/creature.brain.glb':         build_brain,
     'creature/creature.stalkeye.glb':      build_stalk_eye,
     'creature/creature.caudalfin.glb':     build_caudal,
     'creature/creature.fluke.glb':         build_fluke,
@@ -194,6 +197,19 @@ PARTS = {
     'creature/creature.carapace.glb':      models.new_crab.build_carapace,
     'creature/creature.elephantfoot.glb':  models.new_mammal.build_elephantfoot,
     'creature/creature.mane.glb':          models.new_mammal.build_mane,
+    'creature/creature.elephanthead.glb':  models.new_mammal.build_elephanthead,
+    'creature/creature.horsehead.glb':        models.new_heads_mammal.build_horsehead,
+    'creature/creature.cathead.glb':          models.new_heads_mammal.build_cathead,
+    'creature/creature.rhinohead.glb':        models.new_heads_mammal.build_rhinohead,
+    'creature/creature.parrothead.glb':       models.new_heads_bird.build_parrothead,
+    'creature/creature.penguinhead.glb':      models.new_heads_bird.build_penguinhead,
+    'creature/creature.raptorhead.glb':       models.new_heads_bird.build_raptorhead,
+    'creature/creature.crochead.glb':         models.new_heads_reptile.build_crochead,
+    'creature/creature.rexhead.glb':          models.new_heads_reptile.build_rexhead,
+    'creature/creature.ceratopshead.glb':     models.new_heads_reptile.build_ceratopshead,
+    'creature/creature.insecthead.glb':       models.new_heads_arthropod.build_insecthead,
+    'creature/creature.spiderhead.glb':       models.new_heads_arthropod.build_spiderhead,
+    'creature/creature.crabhead.glb':         models.new_heads_arthropod.build_crabhead,
     'creature/creature.parrotbeak.glb':    models.new_bird.build_parrotbeak,
     'creature/creature.tailfeathers.glb':  models.new_bird.build_tailfeathers,
     'creature/creature.crestfeathers.glb': models.new_bird.build_crestfeathers,

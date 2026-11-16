@@ -30,6 +30,7 @@ public sealed class CreatureLimbs3D
     // ===========================================================================
     //
     //   Build       A sculpted limb per flank: a clay tube through its joints, a foot or hand on the tip.
+    //   RadiusAt    Radius of the tube at a point of its path.
     //   RootOn      Where a limb starts on a flank: the body, or the posed joint of its parent (a branch).
     //   AttachEnd   The foot (flat) or hand (along the last segment) on the limb tip.
     //
@@ -44,8 +45,9 @@ public sealed class CreatureLimbs3D
       - Knuckle:      size of the balls on the joints, 0 = a smooth arm without any
       - TipBead:      radius of a bead on the bare tip, 0 = none
       - IsSegmented:  straight hard segments with dark joints instead of one smooth tube
+      - Membrane:     chord of a skin that spans from the limb back to the body (a wing), 0 = none
     */
-    private sealed record LimbLook(float Root, float Tip, float EndTip = 0f, float Knuckle = 1f, float TipBead = 0f, bool IsSegmented = false);
+    private sealed record LimbLook(float Root, float Tip, float EndTip = 0f, float Knuckle = 1f, float TipBead = 0f, bool IsSegmented = false, float Membrane = 0f);
 
     private static readonly LimbLook PLAIN_LOOK = new(CreatureClay.LIMB_ROOT_RADIUS, CreatureClay.LIMB_TIP_RADIUS);
     private static readonly IReadOnlyDictionary<CreaturePartKind, LimbLook> LOOKS = new Dictionary<CreaturePartKind, LimbLook>
@@ -59,8 +61,20 @@ public sealed class CreatureLimbs3D
         [CreaturePartKind.JointedLeg] = new(0.1f, 0.025f, 0.06f, Knuckle: 0.75f, IsSegmented: true),
         // A thick neck or trunk, smooth, with a round end that carries a head
         [CreaturePartKind.Neck]       = new(0.21f, 0.15f, 0.15f, Knuckle: 0f, TipBead: 0.16f),
+        // A second piece of body: as thick as the trunk, a round end
+        [CreaturePartKind.Trunk]      = new(0.3f, 0.24f, 0.24f, Knuckle: 0f, TipBead: 0.25f),
+        // The arm of a wing: thin bones, a skin from them back to the body
+        [CreaturePartKind.WingLimb]   = new(0.06f, 0.02f, 0.04f, Knuckle: 0.8f, Membrane: 0.55f),
+        // A finger or a toe on the joint of another limb
+        [CreaturePartKind.Finger]     = new(0.035f, 0.022f, 0.03f, Knuckle: 0.9f),
     };
     private const float END_SIZE = 1.5f;             // feet and hands on the limb tip, in limb space
+
+    /// <summary>Meta of a tube mesh of a limb: its UV.x runs along the limb, the tip color is cut in the shader.</summary>
+    public const string TUBE_META = "limb_tube";
+
+    /// <summary>Meta of a knuckle, bead or end model: the point of the limb path it sits on (1 the first joint .. the tip).</summary>
+    public const string POINT_META = "limb_point";
 
     private readonly ShaderMaterial _limbClay;
     private readonly ShaderMaterial _knuckleClay;
@@ -103,12 +117,17 @@ public sealed class CreatureLimbs3D
             {
                 float from = Mathf.Lerp(look.Root, tipRadius, (float)i / (path.Count - 1)) * part.WidthAt(i);
                 float to   = (i == path.Count - 2 ? tipRadius : Mathf.Lerp(look.Root, tipRadius, (float)(i + 1) / (path.Count - 1)) * SEGMENT_WAIST) * part.WidthAt(i + 1);
-                tubes.Add(CreatureClay.LimbMesh(new[] { path[i], path[i + 1] }, to, from));
+                tubes.Add(CreatureClay.LimbMesh(new[] { path[i], path[i + 1] }, to, from, null, (float)i / (path.Count - 1), (float)(i + 1) / (path.Count - 1)));
             }
         }
         else
         {
             tubes.Add(CreatureClay.LimbMesh(path, tipRadius, look.Root, part.Widths));
+        }
+        // A wing: the skin from the arm back to the body, its chord follows the thickness at the shoulder
+        if (look.Membrane > 0f)
+        {
+            tubes.Add(CreatureClay.MembraneMesh(path, look.Membrane * part.WidthAt(0)));
         }
         Material joints = look.IsSegmented ? CellVisual3D.Material(color.Darkened(0.4f), 0f, 0.5f) : _knuckleClay;
         // A centered limb grows out of the middle of the back: one piece, no mirror half
@@ -118,7 +137,7 @@ public sealed class CreatureLimbs3D
             pivot.AddChild(piece);
             foreach (ArrayMesh tube in tubes)
             {
-                CellVisual3D.AddMesh(piece, tube, _limbClay, Vector3.Zero, Vector3.One);
+                CellVisual3D.AddMesh(piece, tube, _limbClay, Vector3.Zero, Vector3.One).SetMeta(TUBE_META, true);
             }
             CreatureClay.AddFillet(piece, Vector3.Zero, look.Root * part.WidthAt(0) * CreatureClay.LIMB_FILLET, _knuckleClay);
             for (int i = 1; look.Knuckle > 0f && i < path.Count; i++)
@@ -129,11 +148,11 @@ public sealed class CreatureLimbs3D
                     continue;                        // the foot or hand takes the place of the tip knob, a hard leg ends in a point
                 }
                 float radius = Mathf.Lerp(look.Root, tipRadius, (float)i / (path.Count - 1)) * (isTip ? 1.35f : 1.12f) * look.Knuckle * part.WidthAt(i);
-                CellVisual3D.AddMesh(piece, CellVisual3D.SphereMesh(), joints, path[i], Vector3.One * radius);
+                CellVisual3D.AddMesh(piece, CellVisual3D.SphereMesh(), joints, path[i], Vector3.One * radius).SetMeta(POINT_META, i);
             }
             if (look.TipBead > 0f && !hasEnd)
             {
-                CellVisual3D.AddMesh(piece, CellVisual3D.SphereMesh(), _knuckleClay, path[^1], Vector3.One * look.TipBead);
+                CellVisual3D.AddMesh(piece, CellVisual3D.SphereMesh(), _knuckleClay, path[^1], Vector3.One * look.TipBead).SetMeta(POINT_META, path.Count - 1);
             }
             if (hasEnd)
             {
@@ -141,6 +160,16 @@ public sealed class CreatureLimbs3D
             }
             _built.Add((piece, (int)side));
         }
+    }
+
+    /// <summary>Radius of the tube of a limb at one point of its path in limb space, for what sits on its joints.</summary>
+    /// <param name="part">(Required) A sculpted limb, a foot or a hand.</param>
+    /// <param name="point">(Required) 0 the shoulder, 1 the first joint .. Joints.Count the tip.</param>
+    public static float RadiusAt(CreaturePart part, int point)
+    {
+        LimbLook look  = LOOKS.TryGetValue(part.LimbStyle, out LimbLook known) ? known : PLAIN_LOOK;
+        int      count = Mathf.Max(part.Joints?.Count ?? 1, 1);
+        return Mathf.Lerp(look.Root, look.Tip, Mathf.Clamp((float)point / count, 0f, 1f)) * part.WidthAt(point);
     }
 
     /*
@@ -193,6 +222,7 @@ public sealed class CreatureLimbs3D
             turn  = new Basis(along, aside.Cross(along), aside);
         }
         end.Transform = new Transform3D(turn * Basis.FromScale(Vector3.One * END_SIZE), tip);
+        end.SetMeta(POINT_META, path.Count - 1);
         piece.AddChild(end);
         if (null != CreatureModels.MODELS[kind].Animation)
         {
@@ -282,6 +312,7 @@ public sealed class CreatureLimbs3D
     // =============================   MOVE LIMBS   ==============================
     // ===========================================================================
     //
+    //   Rest   Puts every limb back into its rest pose.
     //   Move   Swings every limb around its shoulder: a walk on land, a paddle in the water, a slow sway at rest.
     //
 
@@ -293,6 +324,18 @@ public sealed class CreatureLimbs3D
 
     private readonly Dictionary<Node3D, Basis> _restPoses = new();
 
+    /// <summary>Puts every limb back into its sculpted rest pose (the editor leaves its animation mode).</summary>
+    public void Rest()
+    {
+        foreach ((Node3D piece, Basis rest) in _restPoses)
+        {
+            if (GodotObject.IsInstanceValid(piece))
+            {
+                piece.Basis = rest;
+            }
+        }
+    }
+
     /*
       The tube of a limb is one rigid piece, so a limb moves as a whole around its shoulder:
       > On land:       a leg swings back and forth with the stride, neighbors and the two
@@ -300,6 +343,7 @@ public sealed class CreatureLimbs3D
       > In the water:  a smaller, slower paddle
       > Soft limbs:    tentacles, feelers and necks sway sideways on their own as well
       A limb that carries branches stands still: its branches hang on the joints of its rest pose.
+      Every limb follows its own PartMotion: off, faster or slower, a wider or smaller swing, an offset in the cycle.
     */
     /// <summary>Swings the limbs, once per frame.</summary>
     /// <param name="design">(Required) The design the limbs belong to.</param>
@@ -324,15 +368,23 @@ public sealed class CreatureLimbs3D
             {
                 _restPoses[piece] = rest = piece.Basis;
             }
+            // The own motion of the part: off stands in its rest pose, else pace, swing and offset in the cycle
+            PartMotion motion = part.Movement;
+            if (!motion.IsOn)
+            {
+                piece.Basis = rest;
+                continue;
+            }
             bool  isSoft = CreaturePartKind.Tentacle == part.LimbStyle || CreaturePartKind.Feeler == part.LimbStyle || CreaturePartKind.Neck == part.LimbStyle;
             bool  isLeg  = design.IsWalkingLimb(part);
             float swing  = isOnLand && isLeg ? WALK_SWING * speedShare
                 : isSoft ? 0f
                 : PADDLE_SWING * speedShare;
             // Neighbors and the two flanks half a step apart
-            float step   = phase + index * Mathf.Pi + (flank < 0 ? Mathf.Pi : 0f);
-            float stride = Mathf.Sin(step) * (swing + IDLE_SWING);
-            float sway   = isSoft ? Mathf.Sin(phase * SOFT_RATE + index * 1.7f) * SOFT_SWING : 0f;
+            float offset = motion.Phase * Mathf.Tau;
+            float step   = phase * motion.Speed + index * Mathf.Pi + (flank < 0 ? Mathf.Pi : 0f) + offset;
+            float stride = Mathf.Sin(step) * (swing + IDLE_SWING) * motion.Amount;
+            float sway   = isSoft ? Mathf.Sin(phase * motion.Speed * SOFT_RATE + index * 1.7f + offset) * SOFT_SWING * motion.Amount : 0f;
             // Around the local Z of the limb (out of the flank) it swings along the body, around its X it sways sideways
             piece.Basis = rest * new Basis(Vector3.Back, stride) * new Basis(Vector3.Right, sway);
         }

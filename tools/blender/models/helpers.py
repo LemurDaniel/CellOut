@@ -113,6 +113,7 @@ MATERIAL_COLORS = {
 #   bind            Parents meshes to the rig, weights by bone distance or rigidly, joins per material.
 #   hinge           Rotation of a bone about a Godot axis, in its rest frame.
 #   animate         One looping action of hinge keys.
+#   slot            A plug point of a head model: where the game puts eyes, ears, horns or a mouth.
 #   export          Writes the scene as .glb.
 #
 
@@ -381,6 +382,44 @@ def animate(armature, name, frames, curves):
     action.name = name
     bpy.context.scene.frame_start = 0
     bpy.context.scene.frame_end = frames
+
+
+SLOT_NAMES = ('Eye', 'Ear', 'Horn', 'Mouth', 'Nose')
+
+
+def slot(scene, name, position, size, out=(0.0, 0.0, 1.0), forward=(1.0, 0.0, 0.0)):
+    """
+    A plug point of a head model (model space Head, scripts/Creature/Visual/CreatureParts3D.cs):
+    the game puts the part of the player there instead of on the body (eyes on SlotEye, ears on
+    SlotEar, horns and tusks on SlotHorn, a mouth model on SlotMouth). An empty named Slot<Name>:
+    - position:  the point on the skin of the RIGHT half of the head (Godot axes, +Z is the right
+                 flank), the game mirrors it for the left half. A mouth sits on the midline (z = 0).
+    - out:       the direction out of the skin there (Godot axes), the local +Z of the part
+    - forward:   the direction the part looks along the head (Godot axes), its local +X;
+                 made perpendicular to out, local +Y completes the frame
+    - size:      how big the part is built, in the units of the model: the radius of an eyeball,
+                 the height of an ear or a horn, the height of the head for a mouth
+    """
+    if name not in SLOT_NAMES:
+        raise ValueError(f"name must be one of {SLOT_NAMES}, got '{name}'.")
+    z_axis = Vector(out).normalized()
+    x_axis = Vector(forward) - z_axis * Vector(forward).dot(z_axis)
+    if x_axis.length < 1e-6:
+        raise ValueError(f"forward must not be parallel to out, got forward {forward} and out {out}.")
+    x_axis.normalize()
+    y_axis = z_axis.cross(x_axis)
+    # Blender local X, Y, Z become Godot local X, -Z, Y on export: the columns are the Godot axes in Blender space
+    columns = (G(*x_axis), -G(*z_axis), G(*y_axis))
+    empty = bpy.data.objects.new(f'Slot{name}', None)
+    empty.empty_display_type = 'ARROWS'
+    empty.matrix_world = Matrix((
+        (columns[0].x * size, columns[1].x * size, columns[2].x * size, G(*position).x),
+        (columns[0].y * size, columns[1].y * size, columns[2].y * size, G(*position).y),
+        (columns[0].z * size, columns[1].z * size, columns[2].z * size, G(*position).z),
+        (0.0, 0.0, 0.0, 1.0),
+    ))
+    scene.collection.objects.link(empty)
+    return empty
 
 
 def export(out_dir, file_name):

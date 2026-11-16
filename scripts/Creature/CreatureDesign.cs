@@ -25,6 +25,11 @@ using Godot;
 
 namespace CellOut;
 
+/// <summary>A shape the player sculpted for own parts: a piece of clay with a spine of its own.</summary>
+/// <param name="Id">Stable id inside its design, parts point at it (CreaturePart.ShapeId).</param>
+/// <param name="Form">The clay: a design without parts, only its spine and ring shapes count.</param>
+public sealed record CustomShape(int Id, CreatureDesign Form);
+
 public sealed class CreatureDesign
 {
     // ===========================================================================
@@ -68,8 +73,11 @@ public sealed class CreatureDesign
     /// <summary>Sideways offset of every vertebra from the straight line, tail first (+Z is the right flank).</summary>
     public IReadOnlyList<float> Sways => _spine.Sways;
 
-    /// <summary>Cross-section of every vertebra, tail first: 0 as the body gives it, 1 flat and wide, -1 tall and narrow.</summary>
-    public IReadOnlyList<float> Flats => _spine.Flats;
+    /// <summary>Height of the ring of every vertebra as a factor, tail first: 1 as the body gives it.</summary>
+    public IReadOnlyList<float> Heights => _spine.Heights;
+
+    /// <summary>Width of the ring of every vertebra as a factor, tail first: 1 as the body gives it.</summary>
+    public IReadOnlyList<float> Widths => _spine.Widths;
 
     /// <summary>Position of every vertebra along the body (X), tail first.</summary>
     public IReadOnlyList<float> Positions => _spine.Positions;
@@ -108,12 +116,62 @@ public sealed class CreatureDesign
         Version++;
     }
 
-    /// <summary>Sets the cross-section of one vertebra (CreatureSpine.SetFlat): a flat head on a round trunk.</summary>
+    /// <summary>Scales the height of the ring of one vertebra (CreatureSpine.SetHeight): a flat head on a round trunk. Looks only.</summary>
     /// <param name="index">(Required) Vertebra, 0 is the tail end.</param>
-    /// <param name="flat">(Required) 0 as the body gives it, 1 flat and wide, -1 tall and narrow.</param>
-    public void SetFlat(int index, float flat)
+    /// <param name="height">(Required) Factor, 1 as the body gives it, clamped to CreatureSpine.MIN_CROSS..MAX_CROSS.</param>
+    /// <example><code>design.SetHeight(design.Girths.Count - 1, 0.5f);   // a flat head</code></example>
+    public void SetHeight(int index, float height)
     {
-        _spine.SetFlat(index, flat);
+        _spine.SetHeight(index, height);
+        Version++;
+    }
+
+    /// <summary>Scales the width of the ring of one vertebra (CreatureSpine.SetWidth). Looks only.</summary>
+    /// <param name="index">(Required) Vertebra, 0 is the tail end.</param>
+    /// <param name="width">(Required) Factor, 1 as the body gives it, clamped to CreatureSpine.MIN_CROSS..MAX_CROSS.</param>
+    public void SetWidth(int index, float width)
+    {
+        _spine.SetWidth(index, width);
+        Version++;
+    }
+
+    /// <summary>Shape of the upper half of the ring of every vertebra, tail first: -1 a keel, 0 round, 1 boxy.</summary>
+    public IReadOnlyList<float> Crowns => _spine.Crowns;
+
+    /// <summary>Shape of the lower half of the ring of every vertebra, tail first: -1 a keel, 0 round, 1 boxy.</summary>
+    public IReadOnlyList<float> Bellies => _spine.Bellies;
+
+    /// <summary>Shapes the upper half of the ring of one vertebra (CreatureSpine.SetCrown). Looks only.</summary>
+    /// <param name="index">(Required) Vertebra, 0 is the tail end.</param>
+    /// <param name="crown">(Required) -1 a keel, 0 round, 1 boxy, clamped.</param>
+    /// <example><code>design.SetCrown(3, -1f);   // a ridge along the back</code></example>
+    public void SetCrown(int index, float crown)
+    {
+        _spine.SetCrown(index, crown);
+        Version++;
+    }
+
+    /// <summary>Shapes the lower half of the ring of one vertebra (CreatureSpine.SetBelly). Looks only.</summary>
+    /// <param name="index">(Required) Vertebra, 0 is the tail end.</param>
+    /// <param name="belly">(Required) -1 a keel, 0 round, 1 boxy (a flat belly), clamped.</param>
+    public void SetBelly(int index, float belly)
+    {
+        _spine.SetBelly(index, belly);
+        Version++;
+    }
+
+    /// <summary>Shape of the upper half of the ring at an X (CreatureSpine.CrownAt).</summary>
+    public float CrownAt(float x) => _spine.CrownAt(x);
+
+    /// <summary>Shape of the lower half of the ring at an X (CreatureSpine.BellyAt).</summary>
+    public float BellyAt(float x) => _spine.BellyAt(x);
+
+    /// <summary>Stretches the body along its length at one vertebra (CreatureSpine.StretchAt): both distances to its neighbors grow or shrink.</summary>
+    /// <param name="index">(Required) Vertebra, 0 is the tail end.</param>
+    /// <param name="factor">(Required) Above 1 longer, below 1 shorter.</param>
+    public void StretchVertebra(int index, float factor)
+    {
+        _spine.StretchAt(index, factor);
         Version++;
     }
 
@@ -345,11 +403,12 @@ public sealed class CreatureDesign
     /// <returns>False when the part is no foot or hand or the kind no sculpted limb.</returns>
     public bool SetLimbKind(int index, CreaturePartKind limb)
     {
-        if (index < 0 || index >= _parts.Count || !_parts[index].Info.IsEnd || !CreatureCatalog.Get(limb).IsSculpted)
+        // A foot, a hand or a bare limb: the tube takes the look of that limb kind, cost and effect stay with the part
+        if (index < 0 || index >= _parts.Count || null == _parts[index].Joints || !CreatureCatalog.Get(limb).IsSculpted)
         {
             return false;
         }
-        _parts[index] = _parts[index] with { LimbKind = limb };
+        _parts[index] = _parts[index] with { LimbKind = limb == _parts[index].Kind ? null : limb };
         Version++;
         return true;
     }
@@ -610,6 +669,164 @@ public sealed class CreatureDesign
         Version++;
     }
 
+    /// <summary>Gives one placed part a color of its own (skin, fins, limb tube), null takes it away: the body color again. Looks only.</summary>
+    /// <param name="index">(Required) Index in Parts.</param>
+    /// <param name="color">(Required) The color, alpha is ignored; null for the body color.</param>
+    /// <example><code>design.SetPartColor(leg, new Color(0.95f, 0.95f, 0.9f));   // white lower legs</code></example>
+    public void SetPartColor(int index, Color? color)
+    {
+        if (index < 0 || index >= _parts.Count)
+        {
+            throw new System.ArgumentOutOfRangeException(nameof(index), $"index must be between 0 and {_parts.Count - 1}, got '{index}'.");
+        }
+        _parts[index] = _parts[index] with { Tint = color is Color own ? own with { A = 1f } : null };
+        Version++;
+    }
+
+    /// <summary>Sets how one placed part moves on its own (PartMotion), clamped. Looks only.</summary>
+    /// <param name="index">(Required) Index in Parts.</param>
+    /// <param name="motion">(Required) The motion, PartMotion.REST takes the setting away.</param>
+    /// <example><code>design.SetPartMotion(fin, PartMotion.REST with { IsOn = false });   // a stiff fin</code></example>
+    public void SetPartMotion(int index, PartMotion motion)
+    {
+        if (index < 0 || index >= _parts.Count)
+        {
+            throw new System.ArgumentOutOfRangeException(nameof(index), $"index must be between 0 and {_parts.Count - 1}, got '{index}'.");
+        }
+        PartMotion clamped = motion.Clamped();
+        _parts[index] = _parts[index] with { Motion = PartMotion.REST == clamped ? null : clamped };
+        Version++;
+    }
+
+    /// <summary>Sets the strength of one channel of the model animation of a part (Core/ModelChannels.cs). Looks only.</summary>
+    /// <param name="index">(Required) Index in Parts.</param>
+    /// <param name="channel">(Required) Name of the channel: the bone or node the animation moves.</param>
+    /// <param name="amount">(Required) 0 off, 1 as built (takes the setting away), clamped to 0..PartMotion.MAX_AMOUNT.</param>
+    /// <example><code>design.SetPartChannel(rattle, "Tail1", 0f);   // the tail holds still, only the bells shake</code></example>
+    public void SetPartChannel(int index, string channel, float amount)
+    {
+        if (index < 0 || index >= _parts.Count)
+        {
+            throw new System.ArgumentOutOfRangeException(nameof(index), $"index must be between 0 and {_parts.Count - 1}, got '{index}'.");
+        }
+        if (string.IsNullOrEmpty(channel))
+        {
+            throw new System.ArgumentException("channel must name a bone or node of the model animation, got an empty name.", nameof(channel));
+        }
+        var channels = new Dictionary<string, float>();
+        foreach ((string name, float value) in _parts[index].Channels ?? channels)
+        {
+            channels[name] = value;
+        }
+        channels[channel] = Mathf.Clamp(amount, 0f, PartMotion.MAX_AMOUNT);
+        if (Mathf.IsEqualApprox(channels[channel], 1f))
+        {
+            channels.Remove(channel);
+        }
+        _parts[index] = _parts[index] with { Channels = 0 == channels.Count ? null : channels };
+        Version++;
+    }
+
+    /// <summary>Factor on the swim wave of the body (CreatureLook.WaveAmount).</summary>
+    public float WaveAmount => _look.WaveAmount;
+
+    /// <summary>Factor on the pace of swim wave and stride (CreatureLook.WaveSpeed).</summary>
+    public float WaveSpeed => _look.WaveSpeed;
+
+    /// <summary>Whether the mouth opening breathes (CreatureLook.IsBreathing).</summary>
+    public bool IsBreathing => _look.IsBreathing;
+
+    /// <summary>Sets the motion of the whole body, clamped (CreatureLook.SetBodyMotion). Looks only.</summary>
+    /// <example><code>design.SetBodyMotion(waveAmount: 0f, waveSpeed: 1f, isBreathing: true);   // a stiff glide</code></example>
+    public void SetBodyMotion(float waveAmount, float waveSpeed, bool isBreathing)
+    {
+        _look.SetBodyMotion(waveAmount, waveSpeed, isBreathing);
+        Version++;
+    }
+
+    /// <summary>Paints a sculpted limb in a second plain color from one joint outwards, its foot or hand included. Looks only.</summary>
+    /// <param name="index">(Required) Index in Parts, a part with joints.</param>
+    /// <param name="color">(Required) The color, alpha is ignored; null takes it away.</param>
+    /// <param name="from">(Required) The joint it begins at: 1 the first joint .. Joints.Count the tip, clamped.</param>
+    /// <returns>False for a part without joints.</returns>
+    /// <example><code>design.SetLimbTip(leg, Colors.White, 2);   // white from the knee down</code></example>
+    public bool SetLimbTip(int index, Color? color, int from)
+    {
+        if (index < 0 || index >= _parts.Count || null == _parts[index].Joints)
+        {
+            return false;
+        }
+        _parts[index] = _parts[index] with
+        {
+            TipColor = color is Color own ? own with { A = 1f } : null,
+            TipFrom  = null == color ? 0 : Mathf.Clamp(from, 1, _parts[index].Joints.Count),
+        };
+        Version++;
+        return true;
+    }
+
+    // ---------------------------------------------------------------------------
+    // Own shapes
+    //   Clay the player sculpted himself, placed as CustomPart.
+    // ---------------------------------------------------------------------------
+
+    private static readonly float[] SHAPE_GIRTHS = { 0.5f, 0.42f, 0.3f, 0.16f };     // a fresh shape: a blunt cone to start from
+
+    private readonly List<CustomShape> _shapes = new();
+    private int _lastShapeId;
+
+    /// <summary>The shapes the player sculpted for own parts (kind CustomPart, CreaturePart.ShapeId).</summary>
+    public IReadOnlyList<CustomShape> Shapes => _shapes;
+
+    /// <summary>The shape with an id, null when there is none.</summary>
+    public CustomShape ShapeOf(int id) => _shapes.FirstOrDefault(shape => id == shape.Id);
+
+    /// <summary>Adds a fresh shape to sculpt: a blunt cone of clay.</summary>
+    /// <example><code>CustomShape horn = design.AddShape();   horn.Form.SetLift(3, 0.4f);   design.Touch();</code></example>
+    public CustomShape AddShape()
+    {
+        CreatureDesign form = FromGirths(CreatureType.MarineMammal, SHAPE_GIRTHS, null);
+        form.SetMouthLine(false);                    // clay, not a face
+        var shape = new CustomShape(++_lastShapeId, form);
+        _shapes.Add(shape);
+        Version++;
+        return shape;
+    }
+
+    /// <summary>Removes a shape and every part made of it.</summary>
+    /// <returns>False when there is no shape with that id.</returns>
+    public bool RemoveShape(int id)
+    {
+        if (0 == _shapes.RemoveAll(shape => id == shape.Id))
+        {
+            return false;
+        }
+        _parts.RemoveAll(part => CreaturePartKind.CustomPart == part.Kind && id == part.ShapeId);
+        Version++;
+        return true;
+    }
+
+    /// <summary>Places a part made of a shape, as a pair on the flanks (looks only, free of charge).</summary>
+    /// <param name="shapeId">(Required) Id of a shape of Shapes.</param>
+    /// <param name="t">(Required) Share of the spine, 0 tail .. 1 nose.</param>
+    /// <returns>False without such a shape or when the spot is taken by the same part.</returns>
+    public bool PlaceShape(int shapeId, float t)
+    {
+        if (null == ShapeOf(shapeId) || !TryPlace(CreaturePartKind.CustomPart, t, 0))
+        {
+            return false;
+        }
+        _parts[^1] = _parts[^1] with { ShapeId = shapeId };
+        Version++;
+        return true;
+    }
+
+    /// <summary>Counts a change made on a shape of this design (its Form is a design of its own): visual and undo follow.</summary>
+    public void Touch()
+    {
+        Version++;
+    }
+
     /// <summary>Number of placed parts of one kind.</summary>
     public int Count(CreaturePartKind kind)
     {
@@ -619,17 +836,30 @@ public sealed class CreatureDesign
     /// <summary>Pairs of limbs that reach the ground (bare or with a foot), they carry the body on land.</summary>
     public int LegPairs => _parts.Count(IsWalkingLimb);
 
+    /*
+      The swim wave of the body comes from its parts (decision of the user 2026-11-15, narrowed 2026-11-16):
+      > Only a real swimming fin at the tail drives it (WAVE_DRIVERS): tail fin, fluke, shark, newt and
+        crocodile tail, mantle fins, fan tails, the fin seam of an eel
+      > Tails that are no fins (rattle, tuft, curl, whip, thick tail, tail feathers) drive nothing: the
+        whole rear of the body bobbed up and down under them
+      > A fin whose own motion is switched off (PartMotion.IsOn) drives nothing either
+      Without a driver the body glides stiff, every part only plays its own animation.
+    */
+    private static readonly HashSet<CreaturePartKind> WAVE_DRIVERS = new()
+    {
+        CreaturePartKind.CaudalFin, CreaturePartKind.Fluke, CreaturePartKind.SharkTail, CreaturePartKind.NewtTail,
+        CreaturePartKind.MantleFins, CreaturePartKind.FanTail, CreaturePartKind.CrocTail, CreaturePartKind.TailFan,
+        CreaturePartKind.FinRibbon,
+    };
+
     /// <summary>
-    /// Whether the body swims with a wave: it carries a tail fin (a part of the Fins tab on the tail mount) or the fin
-    /// seam of an eel (the thin whip of a ray drives nothing). Without one it glides stiff: back fins, flippers and the arms of a jellyfish only play their own
-    /// animation (decision of the user 2026-11-15, the jellyfish bobbed up and down).
+    /// Whether the body carries a head model (tab Heads): the skull replaces the head shaped from vertebrae, so the body
+    /// cuts no mouth and grows no teeth, and parts on the head plug onto the slots of the model (CreatureParts3D).
     /// </summary>
-    public bool SwimsWithWave => _parts.Any(part => CreatureCategory.Fins == part.Info.Category
-        && ((CreatureMount.Tail == part.Info.Mount && CreaturePartKind.WhipTail != part.Kind) || CreaturePartKind.FinRibbon == part.Kind));
+    public bool HasHeadModel => _parts.Any(part => CreatureCategory.Heads == part.Info.Category && !IsOnBud(part));
 
-    /// <summary>Every body needs a lung to breathe air, whatever its type (the type is cosmetic).</summary>
-    public bool BreathesAir => Count(CreaturePartKind.Lung) > 0 || Count(CreaturePartKind.BigLung) > 0;
-
+    /// <summary>Whether the body swims with a wave: it carries a moving swimming fin (WAVE_DRIVERS).</summary>
+    public bool SwimsWithWave => _parts.Any(part => WAVE_DRIVERS.Contains(part.Kind) && part.Movement.IsOn);
     // ---------------------------------------------------------------------------
     // Geometry
     //   Length, profile radius, spine height and slope, cross section, volume and the inside test.
@@ -657,22 +887,16 @@ public sealed class CreatureDesign
     private const float VOLUME_WIDTH_SCALE = 0.72f;
 
     /// <summary>Height of a ring per profile radius: a fish is tall, a marine mammal a little flatter (look only).</summary>
-    public float HeightScale => (CreatureType.Fish == Type ? VOLUME_HEIGHT_SCALE : 0.88f) * (1f - FLAT_HEIGHT * Flatness);
+    public float HeightScale => CreatureType.Fish == Type ? VOLUME_HEIGHT_SCALE : 0.88f;
 
-    /// <summary>Height of a ring per profile radius at an X: the flatness of the whole body plus that of the vertebrae there.</summary>
-    public float HeightScaleAt(float x) => (CreatureType.Fish == Type ? VOLUME_HEIGHT_SCALE : 0.88f) * (1f - FLAT_HEIGHT * FlatnessAt(x));
+    /// <summary>Height of a ring per profile radius at an X: the body type times the height factor of the vertebrae there.</summary>
+    public float HeightScaleAt(float x) => HeightScale * _spine.HeightAt(x);
 
-    /// <summary>Width of a ring per profile radius at an X.</summary>
-    public float WidthScaleAt(float x) => (CreatureType.Fish == Type ? VOLUME_WIDTH_SCALE : 0.95f) * (1f + FLAT_WIDTH * FlatnessAt(x));
-
-    /// <summary>Flatness of the cross-section at an X: the value of the whole body plus the vertebrae there, -1..1.</summary>
-    public float FlatnessAt(float x) => Mathf.Clamp(Flatness + _spine.FlatAt(x), -1f, 1f);
+    /// <summary>Width of a ring per profile radius at an X: the body type times the width factor of the vertebrae there.</summary>
+    public float WidthScaleAt(float x) => WidthScale * _spine.WidthAt(x);
 
     /// <summary>Width of a ring per profile radius: a fish is slim, a marine mammal round (look only).</summary>
-    public float WidthScale => (CreatureType.Fish == Type ? VOLUME_WIDTH_SCALE : 0.95f) * (1f + FLAT_WIDTH * Flatness);
-
-    private const float FLAT_HEIGHT = 0.55f;         // share of the height a fully flat body loses (a tall one gains it)
-    private const float FLAT_WIDTH = 0.4f;           // share of the width it gains (a tall one loses it)
+    public float WidthScale => CreatureType.Fish == Type ? VOLUME_WIDTH_SCALE : 0.95f;
 
     /// <summary>X of a spine share, 0 = last vertebra at the tail, 1 = first at the nose (outside on the caps).</summary>
     public float XAt(float t)
@@ -844,17 +1068,6 @@ public sealed class CreatureDesign
         Version++;
     }
 
-    /// <summary>Cross-section of the body: 0 as its type gives it, 1 pressed flat and wide, -1 tall and narrow. Looks only: volume and weight ignore it.</summary>
-    public float Flatness => _look.Flatness;
-
-    /// <summary>Sets the flatness of the cross-section, clamped to -1..1.</summary>
-    /// <example><code>design.SetFlatness(0.8f);   // a scorpion lies flat</code></example>
-    public void SetFlatness(float flatness)
-    {
-        _look.SetFlatness(flatness);
-        Version++;
-    }
-
     /// <summary>How fine the paint pattern is: 1 as drawn, 2 twice as many stripes, spots or patches. Looks only.</summary>
     public float PatternScale => _look.PatternScale;
 
@@ -878,6 +1091,20 @@ public sealed class CreatureDesign
 
     /// <summary>Whether a body without a mouth part shows the plain closed mouth line.</summary>
     public bool HasMouthLine => _look.HasMouthLine;
+
+    /// <summary>Shift of the mouth line in heights of the head (CreatureLook.MouthLevel), -1 a mouth on the underside.</summary>
+    public float MouthLevel => _look.MouthLevel;
+
+    /// <summary>Factor on the length of the mouth opening (CreatureLook.MouthLength).</summary>
+    public float MouthLength => _look.MouthLength;
+
+    /// <summary>Moves and sizes the mouth opening on the head, clamped (CreatureLook.SetMouthPlace).</summary>
+    /// <example><code>design.SetMouthPlace(-0.6f, 0.7f);   // a small mouth low on the head</code></example>
+    public void SetMouthPlace(float level, float length)
+    {
+        _look.SetMouthPlace(level, length);
+        Version++;
+    }
 
     /// <summary>Switches the plain mouth line of a body without a mouth part (off under the trunk of an elephant).</summary>
     public void SetMouthLine(bool hasMouthLine)
@@ -958,10 +1185,18 @@ public sealed class CreatureDesign
         _look.CopyFrom(other._look);
         _spine.CopyFrom(other._spine);
         _parts.Clear();
+        _shapes.Clear();
         if (isPartsKept)
         {
             _parts.AddRange(other._parts);
             _lastId = other._lastId;
+            foreach (CustomShape shape in other._shapes)
+            {
+                var form = new CreatureDesign();
+                form.CopyFrom(shape.Form);
+                _shapes.Add(new CustomShape(shape.Id, form));
+            }
+            _lastShapeId = other._lastShapeId;
         }
         Version++;
     }

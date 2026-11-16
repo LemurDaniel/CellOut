@@ -146,7 +146,8 @@ public static class MouthShapes
     public static MouthShape For(CreatureDesign design)
     {
         // A bare face (CreatureDesign.HasMouthLine off) cuts nothing, whatever mouth part it carries
-        if (!design.HasMouthLine)
+        // The same under a head model: the skull covers the front of the body
+        if (!design.HasMouthLine || design.HasHeadModel)
         {
             return null;
         }
@@ -155,10 +156,26 @@ public static class MouthShapes
             // A mouth on a limb joint cuts into its own little head there, not into the body
             if (CreatureCategory.Mouths == part.Info.Category && !CreatureDesign.IsOnBud(part))
             {
-                return Current.TryGetValue(part.Kind, out MouthShape shape) ? shape : null;
+                return Current.TryGetValue(part.Kind, out MouthShape shape) ? Placed(design, shape) : null;
             }
         }
-        return design.HasMouthLine ? PLAIN : null;
+        return Placed(design, PLAIN);
+    }
+
+    private const float MAX_LEVEL = 0.92f;           // the line stays on the skin, just short of back and belly
+
+    /// <summary>The shape moved and sized by the look of the design (CreatureDesign.MouthLevel, MouthLength).</summary>
+    private static MouthShape Placed(CreatureDesign design, MouthShape shape)
+    {
+        if (Godot.Mathf.IsZeroApprox(design.MouthLevel) && Godot.Mathf.IsEqualApprox(design.MouthLength, 1f))
+        {
+            return shape;
+        }
+        return shape with
+        {
+            Level  = Godot.Mathf.Clamp(shape.Level + design.MouthLevel, -MAX_LEVEL, MAX_LEVEL),
+            Length = shape.Length * design.MouthLength,
+        };
     }
 
     /// <summary>Reads the file through Godot, so it also works from an exported pack.</summary>

@@ -41,10 +41,10 @@ The editor opens with a library of ready-made animals, each one built from the s
 
 | | |
 |:---:|:---:|
-| ![Sea turtle](docs/creatures/turtle.png) | ![Angler fish](docs/creatures/angler.png) |
-| **Sea turtle** 🐢<br>A shell of honest hexagons, paddles for long calm strokes, the face of someone who has seen it all. | **Angler fish** 🏮<br>Mostly mouth. Brings its own night light, which is also the last thing its dinner sees. |
-| ![Shark](docs/creatures/shark.png) | ![Puffer fish](docs/creatures/puffer.png) |
-| **Shark** 🦈<br>Grey on top, white below, a grin with too many teeth. Everyone knows what the fin means. | **Puffer fish** 🐡<br>A ball of spikes with a permanent pout. Not fast, but nobody has ever asked twice. |
+| ![Scarlet macaw](docs/creatures/parrot.png) | ![Jellyfish](docs/creatures/jellyfish.png) |
+| **Scarlet macaw** 🦜<br>Red, blue and yellow, a beak like a can opener. Sits there as if it owned the branch, and it does. | **Jellyfish** 🪼<br>A striped glass bell trailing ribbons. No brain, no bones, no hurry, and somehow still in charge of the current. |
+| ![Triceratops](docs/creatures/triceratops.png) | ![Alligator](docs/creatures/crocodile.png) |
+| **Triceratops** 🛡️<br>Three horns and a shield for a neck. Eats plants, argues with everything else. | **Alligator** 🐊<br>A log with teeth and a ridge of plates down its back. Smiles the whole time. That is not a good sign. |
 
 ## ▶️ Getting started
 

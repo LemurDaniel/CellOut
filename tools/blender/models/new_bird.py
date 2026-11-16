@@ -16,7 +16,10 @@
 
 import math
 
-from models.helpers import AXIS_OUT, AXIS_UP, FPS, G, animate, bind, digit, ellipsoid, rig, tube, wave
+import bmesh
+import bpy
+
+from models.helpers import AXIS_OUT, AXIS_UP, FPS, G, animate, bind, digit, ellipsoid, link_mesh, material, rig, tube, wave
 from models.new_shark import blade, round_tip
 
 FEATHER_STEPS = 10                   # rows of a feather from the quill to the tip
@@ -24,12 +27,28 @@ FEATHER_QUILL = 0.3                  # width at the root as share of the full wi
 FEATHER_FULL_AT = 0.3                # the vane is full width from this share of the length ...
 FEATHER_TAPER_FROM = 0.55            # ... and runs into the point from here
 
-BEAK_SQUEEZE = 0.7                   # the upper beak is this much narrower than tall
-# The ridge of the upper beak in snout space: forward, up, radius. Out of the forehead, over the nose, down into the hook
-BEAK_RIDGE = ((-0.3, 0.45, 0.9), (0.38, 0.6, 0.96), (0.93, 0.63, 0.84), (1.42, 0.4, 0.68), (1.72, -0.08, 0.5),
-              (1.8, -0.63, 0.32), (1.68, -1.17, 0.17))
-BEAK_HOOK = ((1.68, -1.17, 0.17), (1.55, -1.5, 0.09), (1.43, -1.71, 0.03))            # the dark tip of the hook
-BEAK_LOWER = ((-0.15, -0.63, 0.66), (0.45, -0.93, 0.6), (0.93, -0.93, 0.45), (1.26, -0.63, 0.21))
+# The beak is drawn in head radii around the center of the head (the nose vertebra): x forward, y up, z out.
+# The snout space of the game is stretched differently per axis, HEAD_TO_SNOUT turns one into the other
+# (default mouth of MouthShapes.cs on a marine mammal head: corners 0.12 radii in front of the center, 0.158 below it)
+HEAD_TO_SNOUT = ((0.12, 0.906), (-0.158, 0.655), (0.0, 0.97))        # per axis: origin of the snout space, length of its unit
+HEAD_HEIGHT = 0.88                   # half height and half width of the head in radii
+HEAD_WIDTH = 0.95
+
+BEAK_CENTER = (0.5, -0.2)            # the upper beak is an arc around this point of the face
+BEAK_ARC = 0.56                      # radius of its middle line
+BEAK_FROM = 118.0                    # degrees: the root at the forehead ...
+BEAK_DARK_FROM = -28.0               # ... the dark tip of the hook starts here ...
+BEAK_TO = -62.0                      # ... and ends here, pointing down and a little back
+BEAK_STEPS = 18
+BEAK_AROUND = 14                     # points of a cross-section
+BEAK_THICK = 0.36                    # half thickness of the arc at the root (towards and away from its center)
+BEAK_WIDE = 0.47                     # half width at the root
+
+FACE_CENTER = (0.2, 0.08)            # the bare face patch on the cheek: forward, up
+FACE_SIZE = (0.44, 0.43)              # half length, half height
+FACE_RINGS = 6
+FACE_SPOKES = 20
+FACE_PUFF = 0.035                    # the patch lies this far above the skin in its middle, its rim sinks in
 
 # Tail feathers: angle out of the middle in degrees, length, width, material. The long middle ones lie on top
 TAIL_FEATHERS = ((0.0, 2.35, 0.2, 'Skin'), (4.5, 2.05, 0.2, 'Skin'), (9.0, 1.6, 0.21, 'Skin'), (14.0, 1.2, 0.22, 'BackSkin'), (20.0, 0.85, 0.22, 'BackSkin'))
@@ -41,6 +60,7 @@ CREST_FEATHERS = ((62.0, 0.5), (80.0, 0.72), (98.0, 0.9), (116.0, 0.95), (134.0,
 FOOT_TOES = ((-20.0, 0.25), (17.0, 0.28), (158.0, 0.21), (-163.0, 0.19))              # angle in degrees (0 = forward), length: two forward, two back
 
 FLIPPER_SPAN = 1.45                  # body heights from the shoulder to the tip
+FLIPPER_LINING_DEPTH = 0.012         # faces this far on the body side of the middle of the blade are the pale underside
 
 
 # ===========================================================================
@@ -73,37 +93,107 @@ def feather(scene, name, base, direction, length, width, normal, material_name, 
 # ============================   PARROT PARTS   =============================
 # ===========================================================================
 #
-#   squeeze              Narrows a mesh across the head.
-#   build_parrotbeak     The hooked beak of a macaw with the bare pale face at its root.
+#   to_snout             Turns a mesh drawn around the head into the snout space.
+#   sheet                A smooth skin through rows of points.
+#   beak_rows            Cross-sections of the upper beak along its arc.
+#   build_parrotbeak    The hooked beak of a macaw with the bare pale face at its root.
 #   build_tailfeathers   Long stiff tail feathers, the middle ones the longest.
 #   build_crestfeathers  A fan of crest feathers on the head.
 #   build_birdfoot       A gripping foot: two toes forward, two back.
 #
 
-def squeeze(mesh, factor):
-    """Narrows a mesh across the head (Godot z) by factor."""
+def to_snout(mesh):
+    """Turns a mesh drawn in head radii around the head center into the snout space of the game (HEAD_TO_SNOUT)."""
+    (x0, x_unit), (y0, y_unit), (z0, z_unit) = HEAD_TO_SNOUT
     for vertex in mesh.data.vertices:
-        vertex.co.y *= factor
+        # Blender axes: x forward, -y out of the right flank, z up
+        vertex.co = ((vertex.co.x - x0) / x_unit, (vertex.co.y + z0) / z_unit, (vertex.co.z - y0) / y_unit)
+    return mesh
+
+
+def sheet(scene, name, rows, material_name, is_closed=True):
+    """
+    A smooth skin through rows of points (Blender vectors, every row the same count).
+    Closed: every row is a ring, the last row may be one point given count times (a tip).
+    """
+    bm = bmesh.new()
+    grid = [[bm.verts.new(point) for point in row] for row in rows]
+    count = len(rows[0])
+    for row, following in zip(grid, grid[1:]):
+        for i in range(count if is_closed else count - 1):
+            j = (i + 1) % count
+            bm.faces.new((row[i], row[j], following[j], following[i]))
+    bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=1e-5)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+    mesh = bpy.data.meshes.new(name)
+    bm.to_mesh(mesh)
+    bm.free()
+    obj = link_mesh(scene, name, mesh, material_name)
+    for polygon in obj.data.polygons:
+        polygon.use_smooth = True
+    return obj
+
+
+def beak_rows(start, end, steps):
+    """
+    Cross-sections of the upper beak between two angles of its arc: an ellipse across
+    the arc, thick and wide at the forehead, running into the point of the hook.
+    """
+    rows = []
+    for step in range(steps + 1):
+        angle = start + (end - start) * step / steps
+        share = (BEAK_FROM - angle) / (BEAK_FROM - BEAK_TO)                  # 0 at the forehead .. 1 at the tip
+        taper = max(0.0, 1.0 - share ** 2.2)
+        radial = G(math.cos(math.radians(angle)), math.sin(math.radians(angle)), 0)
+        # The hook leaves the arc at its end: it hangs straight down instead of curling back
+        center = G(*BEAK_CENTER, 0) + radial * (BEAK_ARC * (1.0 + 0.3 * share ** 3))
+        thick = BEAK_THICK * taper + 0.008
+        wide = BEAK_WIDE * (0.25 + 0.75 * taper) * taper ** 0.35 + 0.006
+        rows.append([center + radial * (thick * math.cos(turn)) + G(0, 0, wide * math.sin(turn))
+                     for turn in (math.tau * i / BEAK_AROUND for i in range(BEAK_AROUND))])
+    return rows
 
 
 def build_parrotbeak(scene):
     """
     The beak of a macaw (Snout: x 0 at the mouth corners .. 1 at the nose tip, z the
-    width of the head). A deep pale upper beak grows out of the forehead, bulges over
-    the nose and curves down into a dark hook that hangs far below the small black
-    lower beak. At its root lies the bare pale skin of the face, one patch on each
-    cheek: the eye of the animal sits on it.
+    width of the head), drawn around the face of the head:
+
+            .-''''-.            pale upper beak: a deep arc out of the forehead,
+          /  red    .--.        as deep as it is long, close to the face
+         |  o     /     \\
+         | face  |  pale |
+          \\     /\\      |      dark tip of the hook, hanging over
+           '---' dark\\   /      the short dark lower beak
+                 '---' v
+
+    On each cheek lies the bare pale skin of the face as a thin patch on the curve of
+    the head, from the beak root back past the eye: the eye of the animal sits on it.
     """
-    def line(stations):
-        return [G(x, y, 0) for x, y, _ in stations], [radius for _, _, radius in stations], [(i, i + 1) for i in range(len(stations) - 1)]
+    to_snout(sheet(scene, 'Upper', beak_rows(BEAK_FROM, BEAK_DARK_FROM, BEAK_STEPS), 'Claw'))
+    to_snout(sheet(scene, 'Hook', beak_rows(BEAK_DARK_FROM, BEAK_TO, BEAK_STEPS // 2), 'Dark'))
+    # Lower beak: a short dark scoop under the root of the upper one, tucked behind the hook
+    to_snout(ellipsoid(scene, 'Lower', G(0.6, -0.45, 0), (0.36, 0.42, 0.34), 'Dark', subdivisions=3))
 
-    squeeze(tube(scene, 'Upper', *line(BEAK_RIDGE), 'Claw'), BEAK_SQUEEZE)
-    squeeze(tube(scene, 'Hook', *line(BEAK_HOOK), 'Dark'), BEAK_SQUEEZE)
-    squeeze(tube(scene, 'Lower', *line(BEAK_LOWER), 'Dark'), 0.8)
-
-    # Face: a soft dome of bare skin on each cheek, from the beak root back past the eye
+    # Face: a thin patch on the skin of each cheek, it follows the curve of the head
     for side in (-1, 1):
-        ellipsoid(scene, f'Cheek{side}', G(-0.45, 0.5, side * 0.5), (0.98, 0.8, 0.8), 'Down', subdivisions=3)
+        rows = []
+        for ring in range(FACE_RINGS + 1):
+            share = ring / FACE_RINGS
+            row = []
+            for spoke in range(FACE_SPOKES):
+                turn = math.tau * spoke / FACE_SPOKES
+                x = FACE_CENTER[0] + FACE_SIZE[0] * share * math.cos(turn)
+                y = FACE_CENTER[1] + FACE_SIZE[1] * share * math.sin(turn)
+                # The head: a ball in front of its center, a barrel behind it
+                skin = HEAD_WIDTH * math.sqrt(max(0.0, 1.0 - max(0.0, x) ** 2 - (y / HEAD_HEIGHT) ** 2))
+                row.append(G(x, y, side * skin * (1.0 + FACE_PUFF * (1.0 - 1.6 * share * share))))
+            rows.append(row)
+        face = sheet(scene, f'Face{side}', rows, 'Down')
+        # An open sheet has no inside: turn its faces out of the head
+        if face.data.polygons[0].normal.dot(G(0, 0, side)) < 0.0:
+            face.data.flip_normals()
+        to_snout(face)
 
 
 def build_tailfeathers(scene):
@@ -113,7 +203,7 @@ def build_tailfeathers(scene):
     longest and on top, shorter ones fanned out below them in the pattern color.
     It sways a little from side to side ("Loop", 3 s).
     """
-    meshes = [ellipsoid(scene, 'Rump', G(0.05, 0, 0), (0.3, 0.2, 0.16), 'Skin', subdivisions=3)]
+    meshes = [ellipsoid(scene, 'Rump', G(0.05, 0, 0), (0.24, 0.16, 0.11), 'Skin', subdivisions=3)]
     for index, (angle, length, width, material_name) in enumerate(TAIL_FEATHERS):
         for side in ((0,) if 0 == index else (-1, 1)):
             turn = math.radians(angle) * side
@@ -172,7 +262,7 @@ def build_penguinflipper(scene):
     """
     The flipper of a penguin (FlankPair: origin on the skin of the right flank, out of
     the body is +Z, the game scales it to the height of the body there). A stiff
-    narrow blade without feathers to see: a strong shoulder, the leading edge bows
+    narrow blade without feathers to see, dark outside and pale inside: a strong shoulder, the leading edge bows
     back to a round tip, flat like a paddle. It lies back along the flank (-X) with
     its flat side out, the tip a little off the body: on an upright body it hangs
     down like the wing of a standing penguin. It lifts off the flank and back ("Loop", 2 s).
@@ -191,6 +281,16 @@ def build_penguinflipper(scene):
         center = out * (-0.1 + (FLIPPER_SPAN + 0.1) * share)
         rows.append((center + chord * (middle + half), center + chord * (middle - half), 0.11 - 0.06 * share))
     fin = blade(scene, 'Flipper', rows, 'BackSkin', normal=flat)
+
+    # The blade must face out of itself, else the game shows its far side through the near one
+    probe = max(fin.data.polygons, key=lambda polygon: abs(polygon.center.dot(flat)))
+    if probe.normal.dot(flat) * probe.center.dot(flat) < 0.0:
+        fin.data.flip_normals()
+    # Underside: the faces towards the body are pale, the outside and both edges stay dark
+    fin.data.materials.append(material('Down'))
+    for polygon in fin.data.polygons:
+        if polygon.center.dot(flat) < -FLIPPER_LINING_DEPTH:
+            polygon.material_index = 1
 
     armature = rig(scene, 'Rig', [
         ('Base', out * -0.1, out * 0.5, None),

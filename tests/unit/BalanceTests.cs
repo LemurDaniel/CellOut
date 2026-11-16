@@ -34,7 +34,7 @@ public class BalanceTests
         Balance balance = Balance.Parse(TestSetup.ReadRepoFile(TestSetup.GAME_FILE));
 
         Assert.All(balance.Cell.Parts.Values, part => Assert.InRange(part.MinDiet, -1f, part.MaxDiet));
-        Assert.All(balance.Creature.Parts.Values, part => Assert.True(part.Weight > 0f));
+        Assert.All(balance.Creature.Parts.Values, part => Assert.True(part.Weight >= 0f));       // an own sculpted part weighs nothing
         Assert.True(balance.Player.LevelGrowth > 1f);
     }
 

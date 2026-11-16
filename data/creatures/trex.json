@@ -2,20 +2,20 @@
   "key": "TREX",
   "order": 280,
   "type": "MarineMammal",
-  "girths": [0.68, 0.78, 0.88, 0.92, 0.8, 0.6, 0.84, 0.82, 0.64],
-  "gaps": [0.4, 0.36, 0.32, 0.3, 0.22, 0.24, 0.34, 0.38],
-  "lifts": [0.0, 0.0, 0.02, 0.06, 0.16, 0.36, 0.5, 0.5, 0.42],
+  "girths": [0.68, 0.78, 0.88, 0.92, 0.8, 0.62],
+  "gaps": [0.4, 0.36, 0.32, 0.3, 0.24],
+  "lifts": [0.0, 0.0, 0.02, 0.06, 0.18, 0.38],
   "color": "#7c8f45",
   "pattern": "Stripes",
   "skin": "Scales",
   "patternColor": "#414f26",
   "parts": [
     { "kind": "ThickTail", "t": 0, "free": true, "size": 1.0 },
-    { "kind": "CrocEye", "t": 0.84, "free": true, "size": 0.9, "offset": [0.0, 0.08, -0.04], "rotation": [0, 0.3, 0] },
-    { "kind": "RexMaw", "t": 1 },
-    { "kind": "ClawLegs", "t": 0.3, "size": 1.2, "limb": "Neck",
+    { "kind": "RexHead", "t": 1 },
+    { "kind": "CrocEye", "t": 0.95, "free": true },
+    { "kind": "ClawLegs", "t": 0.47, "size": 1.2, "limb": "Neck",
       "joints": [[0.14, -0.2, 0.28], [-0.08, -0.46, 0.32], [0.02, -0.68, 0.32]] },
-    { "kind": "Claws", "t": 0.62, "size": 0.4,
+    { "kind": "Claws", "t": 0.72, "size": 0.4,
       "joints": [[0.1, -0.16, 0.3], [0.2, -0.32, 0.33], [0.3, -0.32, 0.3]] }
   ]
 }

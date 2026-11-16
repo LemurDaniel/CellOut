@@ -68,7 +68,7 @@ public partial class CreatureSculptHandles : Node3D
     /// <param name="index">(Required) Vertebra, 0 is the tail end.</param>
     public Vector3 HandlePosition(int index)
     {
-        CreatureDesign draft = _session.Draft;
+        CreatureDesign draft = _session.Sculpted;
         float x = draft.VertebraX(index);
         return new Vector3(x, draft.LiftAt(x) + draft.TopAt(x) + HANDLE_LIFT, draft.SwayAt(x));
     }
@@ -78,7 +78,7 @@ public partial class CreatureSculptHandles : Node3D
     {
         frame = Transform3D.Identity;
         int  picked = _session.PickedPart;
-        bool isLimb = !_session.IsChoosingType && picked >= 0 && picked < _session.Draft.Parts.Count && null != _session.Draft.Parts[picked].Joints;
+        bool isLimb = !_session.IsChoosingType && picked >= 0 && picked < _session.Sculpted.Parts.Count && null != _session.Sculpted.Parts[picked].Joints;
         return isLimb && _stage.Clay.TryGetLimbFrame(picked, _session.GizmoFlank, out frame);
     }
 
@@ -115,12 +115,17 @@ public partial class CreatureSculptHandles : Node3D
     /// <returns>False when no vertebra handle is under the cursor.</returns>
     public bool ScrollGirth(Vector2 pixel, float notch)
     {
+        // Only the build mode sculpts: painting and animating show the bare body, its parts are only picked
+        if (!_session.HasHandles)
+        {
+            return false;
+        }
         int girthAt = HandleAt(pixel);
         if (girthAt < 0)
         {
             return false;
         }
-        _session.Draft.SetGirth(girthAt, _session.Draft.Girths[girthAt] + notch * GIRTH_WHEEL_STEP);
+        _session.Sculpted.SetGirth(girthAt, _session.Sculpted.Girths[girthAt] + notch * GIRTH_WHEEL_STEP);
         return true;
     }
 
@@ -132,18 +137,23 @@ public partial class CreatureSculptHandles : Node3D
     /// <returns>False when no joint handle is under the cursor.</returns>
     public bool ScrollJoint(Vector2 pixel, float notch)
     {
+        // Only the build mode sculpts: painting and animating show the bare body, its parts are only picked
+        if (!_session.HasHandles)
+        {
+            return false;
+        }
         int joint = JointAt(pixel);
         if (joint < 0)
         {
             return false;
         }
         int          picked = _session.PickedPart;
-        CreaturePart part   = _session.Draft.Parts[picked];
+        CreaturePart part   = _session.Sculpted.Parts[picked];
         // Joint i is point i + 1 of the path, the first joint also thickens the shoulder with it
-        _session.Draft.SetLimbWidth(picked, joint + 1, part.WidthAt(joint + 1) + notch * WIDTH_WHEEL_STEP);
+        _session.Sculpted.SetLimbWidth(picked, joint + 1, part.WidthAt(joint + 1) + notch * WIDTH_WHEEL_STEP);
         if (0 == joint)
         {
-            _session.Draft.SetLimbWidth(picked, 0, part.WidthAt(0) + notch * WIDTH_WHEEL_STEP);
+            _session.Sculpted.SetLimbWidth(picked, 0, part.WidthAt(0) + notch * WIDTH_WHEEL_STEP);
         }
         return true;
     }
@@ -156,6 +166,11 @@ public partial class CreatureSculptHandles : Node3D
     /// <returns>True when a handle took the press, false for free space.</returns>
     public bool Grab(Vector2 pixel)
     {
+        // Only the build mode sculpts: painting and animating show the bare body, its parts are only picked
+        if (!_session.HasHandles)
+        {
+            return false;
+        }
         _gizmoDrag    = _gizmo.HandleAt(pixel);
         _gizmo.Active = _gizmoDrag;
         bool isGizmo  = GizmoHandle.None != _gizmoDrag;
@@ -180,10 +195,10 @@ public partial class CreatureSculptHandles : Node3D
             {
                 _session.ScalePickedVertebra(_gizmo.ScaleFactor(motion.Position - motion.Relative, motion.Position));
             }
-            else if (GizmoHandle.StretchY == _gizmoDrag)
+            else if (PartGizmo.IsStretch(_gizmoDrag))
             {
-                // Pulled up the ring grows tall and narrow, pushed down flat and wide
-                _session.FlattenPickedVertebra(1f - _gizmo.StretchFactor(_gizmoDrag, motion.Relative));
+                // Cubes: X the length of the body at the vertebra, Y the height and Z the width of its ring
+                _session.StretchPickedVertebra(PartGizmo.AxisOf(_gizmoDrag), _gizmo.StretchFactor(_gizmoDrag, motion.Relative));
             }
             else
             {
@@ -193,22 +208,27 @@ public partial class CreatureSculptHandles : Node3D
         }
         if (GizmoHandle.None != _gizmoDrag)
         {
+            // The gizmo works along the world axes it shows, the pose of a part is stored in the frame of its
+            // pivot (turned with a bent spine, on a limb joint with the limb): the drag goes into that frame first
+            _stage.Clay.TryGetPartFrame(_session.PickedPart, _session.GizmoFlank, out Basis frame);
+            Basis   toPose = frame.Inverse();
+            Vector3 axis   = (toPose * PartGizmo.AxisOf(_gizmoDrag)).Normalized();
             if (PartGizmo.IsStretch(_gizmoDrag))
             {
-                _session.StretchPickedPart(PartGizmo.AxisOf(_gizmoDrag), _gizmo.StretchFactor(_gizmoDrag, motion.Relative));
+                _session.StretchPickedPart(axis, _gizmo.StretchFactor(_gizmoDrag, motion.Relative));
             }
             else if (GizmoHandle.Scale == _gizmoDrag)
             {
-                float size = _session.Draft.Parts[_session.PickedPart].Size;
+                float size = _session.Sculpted.Parts[_session.PickedPart].Size;
                 _session.SetPartSize(size * _gizmo.ScaleFactor(motion.Position - motion.Relative, motion.Position));
             }
             else if (PartGizmo.IsTurn(_gizmoDrag))
             {
-                _session.TurnPickedPart(PartGizmo.AxisOf(_gizmoDrag), _gizmo.TurnDelta(_gizmoDrag, motion.Position - motion.Relative, motion.Position));
+                _session.TurnPickedPart(axis, _gizmo.TurnDelta(_gizmoDrag, motion.Position - motion.Relative, motion.Position));
             }
             else
             {
-                _session.MovePickedPart(_gizmo.MoveDelta(_gizmoDrag, motion.Relative));
+                _session.MovePickedPart(toPose * _gizmo.MoveDelta(_gizmoDrag, motion.Relative));
             }
             return;
         }
@@ -239,6 +259,11 @@ public partial class CreatureSculptHandles : Node3D
     /// <returns>True when the cursor is over a gizmo handle, a joint or a vertebra handle.</returns>
     public bool Hover(Vector2 pixel)
     {
+        // Only the build mode sculpts: painting and animating show the bare body, its parts are only picked
+        if (!_session.HasHandles)
+        {
+            return false;
+        }
         _gizmo.Hovered = _gizmo.HandleAt(pixel);
         _hoverJoint    = GizmoHandle.None == _gizmo.Hovered ? JointAt(pixel) : -1;
         _hoverHandle   = GizmoHandle.None == _gizmo.Hovered && _hoverJoint < 0 ? HandleAt(pixel) : -1;
@@ -250,7 +275,7 @@ public partial class CreatureSculptHandles : Node3D
         Camera3D camera   = _stage.Camera;
         int      closest  = -1;
         float    bestDist = HANDLE_PICK_PIXELS;
-        for (int i = 0; i < _session.Draft.Girths.Count; i++)
+        for (int i = 0; i < _session.Sculpted.Girths.Count; i++)
         {
             Vector3 position = HandlePosition(i);
             if (camera.IsPositionBehind(position))
@@ -274,7 +299,7 @@ public partial class CreatureSculptHandles : Node3D
             return -1;
         }
         Camera3D               camera   = _stage.Camera;
-        IReadOnlyList<Vector3> joints   = _session.Draft.Parts[_session.PickedPart].Joints;
+        IReadOnlyList<Vector3> joints   = _session.Sculpted.Parts[_session.PickedPart].Joints;
         int                    closest  = -1;
         float                  bestDist = HANDLE_PICK_PIXELS;
         for (int i = 0; i < joints.Count; i++)
@@ -306,10 +331,10 @@ public partial class CreatureSculptHandles : Node3D
         }
         Camera3D camera = _stage.Camera;
         int      picked = _session.PickedPart;
-        Vector3  world  = frame * _session.Draft.Parts[picked].Joints[_dragJoint];
+        Vector3  world  = frame * _session.Sculpted.Parts[picked].Joints[_dragJoint];
         float    depth  = (world - camera.GlobalPosition).Dot(-camera.GlobalBasis.Z);
         Vector3  moved  = camera.ProjectPosition(pixel, depth);
-        _session.Draft.SetLimbJoint(picked, _dragJoint, frame.AffineInverse() * moved);
+        _session.Sculpted.SetLimbJoint(picked, _dragJoint, frame.AffineInverse() * moved);
     }
 
     // ===========================================================================
@@ -326,8 +351,8 @@ public partial class CreatureSculptHandles : Node3D
     /// <param name="time">(Required) Clock of the stage, drives the breathing of the handles.</param>
     public void Update(float time)
     {
-        CreatureDesign draft      = _session.Draft;
-        bool           isChoosing = _session.IsChoosingType;
+        CreatureDesign draft      = _session.Sculpted;
+        bool           isChoosing = _session.IsChoosingType || !_session.HasHandles;   // all show the bare body
 
         // Handles: one per vertebra above the back, hidden while the type is open
         while (_handles.Count < draft.Girths.Count)
@@ -353,7 +378,7 @@ public partial class CreatureSculptHandles : Node3D
 
         // Joint handles of the picked limb, on the flank of the gizmo
         int  pickedPart = _session.PickedPart;
-        bool hasLimb    = TryGetLimbFrame(out Transform3D limbFrame);
+        bool hasLimb    = TryGetLimbFrame(out Transform3D limbFrame) && !isChoosing;
         int  jointCount = hasLimb ? draft.Parts[pickedPart].Joints.Count : 0;
         while (_jointHandles.Count < jointCount)
         {
@@ -391,8 +416,10 @@ public partial class CreatureSculptHandles : Node3D
                 _isGizmoOnVertebra = isVertebra;
                 if (isVertebra)
                 {
-                    // Along the body, up and down, sideways (the body curls), the golden ring scales the girth, the green cube flattens
-                    _gizmo.ShowHandles(GizmoHandle.MoveX, GizmoHandle.MoveY, GizmoHandle.MoveZ, GizmoHandle.Scale, GizmoHandle.StretchY);
+                    // Arrows push it along the body, up and down, sideways (the body curls), the golden ring scales
+                    // the girth, the cubes stretch per axis: length of the body there, height and width of the ring
+                    _gizmo.ShowHandles(GizmoHandle.MoveX, GizmoHandle.MoveY, GizmoHandle.MoveZ, GizmoHandle.Scale,
+                        GizmoHandle.StretchX, GizmoHandle.StretchY, GizmoHandle.StretchZ);
                 }
                 else
                 {

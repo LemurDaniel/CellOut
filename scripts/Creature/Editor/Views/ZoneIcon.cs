@@ -2,6 +2,7 @@
 //   A small button that shows one color zone of a creature on a little animal: the whole
 //   body, the belly, the head, the limbs or the tail, filled in the color the zone has
 //   right now. The CreatureToolbar shows one per zone, the picked one takes the swatches.
+//   With IsPart it stands for the picked part instead (a single fin): its own color.
 //
 //   var icon = new ZoneIcon { Zone = CreatureZone.Belly, CustomMinimumSize = new Vector2(38, 30) };
 //   icon.Pressed += () => PickZone(icon.Zone);
@@ -52,6 +53,15 @@ public partial class ZoneIcon : Button
         set { _fill = value; QueueRedraw(); }
     }
 
+    private bool _isPart;
+
+    /// <summary>True: the icon stands for the picked part instead of a zone, drawn as a single fin.</summary>
+    public bool IsPart
+    {
+        get => _isPart;
+        set { _isPart = value; QueueRedraw(); }
+    }
+
     /// <summary>The picked zone wears a bright frame.</summary>
     public bool IsPicked
     {
@@ -77,9 +87,24 @@ public partial class ZoneIcon : Button
         Vector2 center = Size * 0.5f + Vector2.Up * 2f;
         float   half   = Mathf.Min(Size.X * 0.36f, Size.Y * 0.5f);
         var     body   = new Vector2(half, half * 0.6f);
-        Color   plain  = _body with { A = 1f };
-        Color   zone   = (_fill ?? plain.Lightened(0.35f)) with { A = 1f };
+        // The rest of the animal steps back (dark), the zone stands out in the color it wears (the body color while it has none)
+        Color   plain  = _body.Darkened(0.6f) with { A = 1f };
+        Color   zone   = (_fill ?? _body) with { A = 1f };
         Color   ink    = _isPicked ? Colors.White : new Color(EditorStyle.RIM_COLOR, 0.75f);
+
+        // The picked part: one fin on its own, in its color (faded while no part is picked)
+        if (_isPart)
+        {
+            Vector2[] fin =
+            {
+                center + new Vector2(-half * 0.9f, half * 0.75f),
+                center + new Vector2(half * 0.15f, -half * 0.95f),
+                center + new Vector2(half * 0.9f, half * 0.75f),
+            };
+            DrawColoredPolygon(fin, zone with { A = Disabled ? 0.35f : 1f });
+            DrawPolyline(new[] { fin[0], fin[1], fin[2], fin[0] }, ink with { A = Disabled ? 0.3f : ink.A }, _isPicked ? 2.4f : 1.3f, true);
+            return;
+        }
 
         Vector2[] tail =
         {

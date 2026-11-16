@@ -313,6 +313,9 @@ public sealed class CreatureStats
                 case CreaturePartKind.Feeler:
                 case CreaturePartKind.JointedLeg:
                 case CreaturePartKind.Neck:
+                case CreaturePartKind.Trunk:
+                case CreaturePartKind.WingLimb:
+                case CreaturePartKind.Finger:
                     stats.SwimSpeed *= Scaled(effects.LimbDrag);
                     if (design.IsWalkingLimb(part))
                     {
@@ -355,23 +358,9 @@ public sealed class CreatureStats
                 case CreaturePartKind.Suckers:
                     stats.MagnetBonus += effects.SuckersMagnet * share;
                     break;
-                // Brain: more evolution points per level, the big one also steers better
-                case CreaturePartKind.SmallBrain:
-                    stats.EpPerLevelBonus += effects.SmallBrainEp;
-                    break;
-                case CreaturePartKind.BigBrain:
-                    stats.EpPerLevelBonus += effects.BigBrainEp;
-                    stats.Acceleration    *= effects.BigBrainAcceleration;
-                    break;
-                // Lungs: more air means more health (nobody needs air on land any more)
-                case CreaturePartKind.Lung:
-                    stats.Health *= effects.LungHealth;
-                    break;
+                // Blowhole: more air means more health
                 case CreaturePartKind.Blowhole:
                     stats.Health *= effects.BlowholeHealth;
-                    break;
-                case CreaturePartKind.BigLung:
-                    stats.Health *= effects.BigLungHealth;
                     break;
                 // Gills: more oxygen under water, no air on land
                 case CreaturePartKind.Gills:
@@ -384,6 +373,22 @@ public sealed class CreatureStats
                 case CreaturePartKind.FeatherWings:
                     stats.SwimSpeed *= Scaled(effects.LimbDrag);
                     wingPairs       += share;
+                    break;
+                // Head models: looks only, the parts plugged onto them bring the effects
+                case CreaturePartKind.CustomPart:
+                case CreaturePartKind.ElephantHead:
+                case CreaturePartKind.HorseHead:
+                case CreaturePartKind.CatHead:
+                case CreaturePartKind.RhinoHead:
+                case CreaturePartKind.ParrotHead:
+                case CreaturePartKind.PenguinHead:
+                case CreaturePartKind.RaptorHead:
+                case CreaturePartKind.CrocHead:
+                case CreaturePartKind.RexHead:
+                case CreaturePartKind.CeratopsHead:
+                case CreaturePartKind.InsectHead:
+                case CreaturePartKind.SpiderHead:
+                case CreaturePartKind.CrabHead:
                     break;
                 default:
                     throw new System.ArgumentOutOfRangeException(nameof(design), $"design must hold known CreaturePartKinds, got '{part.Kind}'.");

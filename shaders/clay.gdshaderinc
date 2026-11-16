@@ -33,7 +33,9 @@ uniform float tail_to = -9.0;        // X where the tail zone ends
 uniform mat4 to_body = mat4(1.0);    // from this mesh into the space of the body: parts and limbs continue the paint of the body
 uniform float body_lift = 0.0;       // height of the spine where a part sits (the body mesh carries it per vertex instead)
 uniform bool is_body = true;         // false on parts and limbs: the plates only step the body itself
-uniform int skin = 0;                // 0 smooth, 1 scales of a reptile, 2 warts of a toad, 3 hard plates across the body, 4 feathers, 5 fur (CreatureSkin)
+uniform int skin = 0;                // 0 smooth, 1 scales of a reptile, 2 warts of a toad, 3 hard plates across the body, 4 feathers, 5 fur, 6 wrinkles (CreatureSkin)
+uniform vec4 tip_color : source_color = vec4(0.0);   // limb tubes: a plain color from a joint outwards, alpha 0 = none (CreaturePart.TipColor)
+uniform float tip_from = 2.0;        // share along the tube (UV.x, 0 shoulder .. 1 tip) where that color begins
 uniform int splat_count = 0;
 uniform vec4 splat_pos[160];         // xyz center in model space, w radius
 uniform vec4 splat_color[160];
@@ -215,6 +217,9 @@ void fragment() {
 	col = mix(col, head_color.rgb * (0.9 + 0.18 * grain), smoothstep(head_from - 0.05, head_from + 0.05, paint_pos.x + zone_edge) * head_color.a);
 	col = mix(col, tail_color.rgb * (0.9 + 0.18 * grain), (1.0 - smoothstep(tail_to - 0.05, tail_to + 0.05, paint_pos.x + zone_edge)) * tail_color.a);
 
+	// A limb in a second color from a joint outwards (white lower legs): plain, over pattern and zones
+	col = mix(col, tip_color.rgb * (0.9 + 0.18 * grain), smoothstep(tip_from - 0.015, tip_from + 0.015, UV.x + zone_edge * 0.25) * tip_color.a);
+
 	// Skin surface, under the spray paint: the paint lies on the scales
 	// Every scale and wart is a dome: the light sees its slope (bump), the color only follows
 	float sheen = 0.0;                  // domes catch a little more light
@@ -254,6 +259,19 @@ void fragment() {
 		col *= 0.8 + 0.3 * streak + 0.1 * tuft;
 		sheen = -0.6;
 		bump = vec3(0.0, streak - 0.5, tuft - 0.5) * 0.35;
+	}
+	if (skin == 6) {
+		// Wrinkles: folds running around body and limbs like the hide of an elephant, a fine crackle between them.
+		// A fold is the thin line where a noise stretched along the body crosses its middle
+		vec3 stretch = vec3(30.0, 5.0, 5.0);
+		float fold = noise(local_pos * stretch + vec3(seed));
+		float ahead = noise((local_pos + vec3(0.004, 0.0, 0.0)) * stretch + vec3(seed));
+		float crease = 1.0 - smoothstep(0.0, 0.1, abs(fold - 0.5));
+		vec4 cell = cell_offset(local_pos * 24.0 + vec3(seed * 3.0));
+		float crack = smoothstep(0.36, 0.5, cell.w);
+		col *= 1.0 - 0.3 * crease - 0.14 * crack;
+		sheen = -0.5;                    // dry hide, no shine
+		bump = vec3((ahead - fold) / 0.004 * 0.02 * crease, 0.0, 0.0) + cell.xyz * crack * 0.25;
 	}
 	if (skin == 3 && is_body) {
 		// Plates: dark in the groove, lit on the rising edge, the slope runs along the body
@@ -298,7 +316,9 @@ void fragment() {
 
 	// Countershading of the living body: darker back, lighter belly
 	float belly = 1.0 - smoothstep(-0.25, 0.2, body_pos.y);
-	col = mix(col, mix(col * 0.82, col * 1.3 + vec3(0.06), belly), (1.0 - knead) * 0.8 * (1.0 - in_maw));
+	// Only on and near the body: a leg or a foot far below it is no belly, it keeps the plain tone (feet rendered pale)
+	float near_body = is_body ? 1.0 : 1.0 - smoothstep(0.35, 0.8, -body_pos.y);
+	col = mix(col, mix(col * 0.82, col * 1.3 + vec3(0.06), belly), (1.0 - knead) * 0.8 * (1.0 - in_maw) * near_body);
 	col = mix(col, vec3(1.0, 0.35, 0.35), flash * 0.7);
 
 #ifdef CLAY_TRANSLUCENT

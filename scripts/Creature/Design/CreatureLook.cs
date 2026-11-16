@@ -33,7 +33,7 @@ namespace CellOut;
 public enum CreaturePattern { None, Stripes, Spots, Patches, Saddle, Net }
 
 /// <summary>Surface of the skin: smooth clay, the scales of a reptile, the warts of a toad or the hard plates of a lobster (shaders/clay.gdshaderinc). Looks only.</summary>
-public enum CreatureSkin { Smooth, Scales, Warts, Plates, Feathers, Fur }
+public enum CreatureSkin { Smooth, Scales, Warts, Plates, Feathers, Fur, Wrinkles }
 
 /// <summary>A zone of the body with a color of its own: the whole body, the underside, the head, the limbs, the tail end.</summary>
 public enum CreatureZone { Body, Belly, Head, Limbs, Tail }
@@ -82,15 +82,6 @@ public sealed class CreatureLook
         Pitch = Mathf.Clamp(pitch, -MAX_PITCH, MAX_PITCH);
     }
 
-    /// <summary>Cross-section of the body: 0 as its type gives it, 1 pressed flat and wide (a crab, a scorpion, a ray), -1 tall and narrow (a chameleon). Looks only.</summary>
-    public float Flatness { get; private set; }
-
-    /// <summary>Sets the flatness, clamped to -1..1.</summary>
-    public void SetFlatness(float flatness)
-    {
-        Flatness = Mathf.Clamp(flatness, -1f, 1f);
-    }
-
     /// <summary>Whether the pattern runs all around the body, belly and legs too (a giraffe), instead of fading out towards the belly.</summary>
     public bool PatternWraps { get; private set; }
 
@@ -119,6 +110,43 @@ public sealed class CreatureLook
     public void SetMouthLine(bool hasMouthLine)
     {
         HasMouthLine = hasMouthLine;
+    }
+
+    public const float MIN_MOUTH_LENGTH = 0.3f;
+    public const float MAX_MOUTH_LENGTH = 1.8f;
+
+    /// <summary>Shift of the mouth line up (positive) or down in heights of the head, on top of the shape of the mouth kind: -1 a mouth on the underside (a ray). Looks only.</summary>
+    public float MouthLevel { get; private set; }
+
+    /// <summary>Factor on the length of the mouth opening: below 1 a small mouth at the nose, above 1 a grin far back. Looks only.</summary>
+    public float MouthLength { get; private set; } = 1f;
+
+    /// <summary>Moves and sizes the mouth opening, both clamped (level -1..1, length MIN_MOUTH_LENGTH..MAX_MOUTH_LENGTH).</summary>
+    public void SetMouthPlace(float level, float length)
+    {
+        MouthLevel  = Mathf.Clamp(level, -1f, 1f);
+        MouthLength = Mathf.Clamp(length, MIN_MOUTH_LENGTH, MAX_MOUTH_LENGTH);
+    }
+
+    public const float MAX_WAVE_AMOUNT = 2.5f;
+    public const float MIN_WAVE_SPEED = 0.25f;
+    public const float MAX_WAVE_SPEED = 3f;
+
+    /// <summary>Factor on the swim wave of the body: 0 a stiff glide, 1 as its parts give it, above a wild wriggle. Looks only.</summary>
+    public float WaveAmount { get; private set; } = 1f;
+
+    /// <summary>Factor on the pace of the swim wave and the stride of the limbs. Looks only.</summary>
+    public float WaveSpeed { get; private set; } = 1f;
+
+    /// <summary>Whether the mouth opening breathes (widens and narrows a little).</summary>
+    public bool IsBreathing { get; private set; } = true;
+
+    /// <summary>Sets the motion of the whole body, clamped (amount 0..MAX_WAVE_AMOUNT, speed MIN_WAVE_SPEED..MAX_WAVE_SPEED).</summary>
+    public void SetBodyMotion(float waveAmount, float waveSpeed, bool isBreathing)
+    {
+        WaveAmount  = Mathf.Clamp(waveAmount, 0f, MAX_WAVE_AMOUNT);
+        WaveSpeed   = Mathf.Clamp(waveSpeed, MIN_WAVE_SPEED, MAX_WAVE_SPEED);
+        IsBreathing = isBreathing;
     }
 
     public const float MAX_HOVER = 1.5f;
@@ -287,7 +315,11 @@ public sealed class CreatureLook
         PatternScale = other.PatternScale;
         PatternWraps = other.PatternWraps;
         HasMouthLine = other.HasMouthLine;
-        Flatness     = other.Flatness;
+        MouthLevel   = other.MouthLevel;
+        MouthLength  = other.MouthLength;
+        WaveAmount   = other.WaveAmount;
+        WaveSpeed    = other.WaveSpeed;
+        IsBreathing  = other.IsBreathing;
         PatternColor = other.PatternColor;
         _splats.Clear();
         _splats.AddRange(other._splats);

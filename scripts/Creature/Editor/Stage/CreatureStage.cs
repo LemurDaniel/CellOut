@@ -29,6 +29,9 @@ namespace CellOut;
 
 public partial class CreatureStage : SubViewportContainer
 {
+    /// <summary>Swim wave of the clay outside the animation mode: nearly still, so the handles stay on the back.</summary>
+    public const float STILL_SWIM_SCALE = 0.3f;
+
     // ===========================================================================
     // =============================   BUILD STAGE   =============================
     // ===========================================================================
@@ -114,7 +117,7 @@ public partial class CreatureStage : SubViewportContainer
 
         // The clay, nearly still so the handles stay on the back. It always lies level in its unit space, where
         // handles, gizmo and rays work: its posture is shown by tilting camera and surroundings the other way
-        _clay = new CreatureVisual3D { Design = _session.Draft, Knead = CreatureVisual3D.EDITOR_KNEAD, SwimScale = 0.3f, Seed = 7f, ShowsPosture = false, IsMoving = false };
+        _clay = new CreatureVisual3D { Design = _session.Sculpted, Knead = CreatureVisual3D.EDITOR_KNEAD, SwimScale = STILL_SWIM_SCALE, Seed = 7f, ShowsPosture = false, IsMoving = false };
         _scene.AddChild(_clay);
 
         // Marker where a selected part would land
@@ -133,7 +136,7 @@ public partial class CreatureStage : SubViewportContainer
     /// <summary>Puts the draft of the session on the turntable, in its color. Called when a sitting begins.</summary>
     public void ShowDraft()
     {
-        _clay.Design    = _session.Draft;
+        _clay.Design    = _session.Sculpted;
         _clay.BodyColor = _session.DraftColor;
     }
 
@@ -152,7 +155,7 @@ public partial class CreatureStage : SubViewportContainer
         TiltSurroundings(delta);
 
         // The body stands on the turntable with its lowest part, or floats above it by its hover height
-        float top = _clay.Lowest - _session.Draft.Hover - TURNTABLE_TOP;
+        float top = _clay.Lowest - _session.Sculpted.Hover - TURNTABLE_TOP;
         _turntable.Position = new Vector3(0f, Mathf.Lerp(_turntable.Position.Y, top, Mathf.Clamp(delta * TILT_EASE, 0f, 1f)), 0f);
     }
 
@@ -164,7 +167,7 @@ public partial class CreatureStage : SubViewportContainer
     */
     private void TiltSurroundings(float delta)
     {
-        float goal = _session.Draft.Pitch;
+        float goal = _session.Sculpted.Pitch;
         if (Mathf.IsEqualApprox(_tilt, goal))
         {
             return;
@@ -305,7 +308,7 @@ public partial class CreatureStage : SubViewportContainer
         for (int i = 0; i < RAY_STEPS; i++)
         {
             Vector3 point = origin + direction * (i * step);
-            if (_session.Draft.Contains(point))
+            if (_session.Sculpted.Contains(point))
             {
                 return point;
             }
@@ -319,7 +322,7 @@ public partial class CreatureStage : SubViewportContainer
     /// <param name="pixel">(Required) Position in the stage.</param>
     public int NearestJoint(int index, int flank, Vector2 pixel)
     {
-        IReadOnlyList<Vector3> joints = _session.Draft.Parts[index].Joints;
+        IReadOnlyList<Vector3> joints = _session.Sculpted.Parts[index].Joints;
         int                    nearest = joints.Count - 1;
         if (!_clay.TryGetLimbFrame(index, 0 == flank ? 1 : flank, out Transform3D frame)
             && !_clay.TryGetLimbFrame(index, -flank, out frame))

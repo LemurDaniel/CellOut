@@ -59,12 +59,12 @@ public class CreatureTests
     [Fact]
     public void BodyTypeOffersEveryPart()
     {
-        CreaturePartKind[] fishLungs = CreatureCatalog.ForCategory(CreatureType.Fish, CreatureCategory.Lungs).Select(part => part.Kind).ToArray();
+        CreaturePartKind[] fishDefense = CreatureCatalog.ForCategory(CreatureType.Fish, CreatureCategory.Defense).Select(part => part.Kind).ToArray();
 
-        // The tab lists its kinds for a fish as for a marine mammal, lung and blowhole side by side
-        Assert.Contains(CreaturePartKind.Lung, fishLungs);
-        Assert.Contains(CreaturePartKind.Blowhole, fishLungs);
-        Assert.Equal(CreatureCatalog.ForCategory(CreatureType.MarineMammal, CreatureCategory.Lungs).Select(part => part.Kind), fishLungs);
+        // The tab lists its kinds for a fish as for a marine mammal; blowhole and gills moved here with the lung tab gone
+        Assert.Contains(CreaturePartKind.Gills, fishDefense);
+        Assert.Contains(CreaturePartKind.Blowhole, fishDefense);
+        Assert.Equal(CreatureCatalog.ForCategory(CreatureType.MarineMammal, CreatureCategory.Defense).Select(part => part.Kind), fishDefense);
         Assert.True(CreatureCatalog.Get(CreaturePartKind.Fluke).IsFor(CreatureType.Fish));
         Assert.True(CreatureCatalog.Get(CreaturePartKind.CaudalFin).IsFor(CreatureType.MarineMammal));
         Assert.Equal(CreatureCatalog.All().Count, CreatureCatalog.ForType(CreatureType.MarineMammal).Count);
@@ -139,9 +139,6 @@ public class CreatureTests
         Assert.Equal(fishStats.Health, mammalStats.Health, PRECISION);
         Assert.Equal(fishStats.SwimSpeed, mammalStats.SwimSpeed, PRECISION);
         Assert.Equal(fishStats.Weight, mammalStats.Weight, PRECISION);
-        Assert.False(mammal.BreathesAir);
-        Place(mammal, CreaturePartKind.Lung);
-        Assert.True(mammal.BreathesAir);
     }
 
     [Fact]
@@ -187,20 +184,6 @@ public class CreatureTests
         Assert.Equal(weight, legged.Weight, PRECISION);
         Assert.Equal(bare.SwimSpeed * 0.95f, legged.SwimSpeed, PRECISION);
         Assert.Equal(0.85f * 1f * loadFactor, legged.LandSpeed, PRECISION);
-    }
-
-    [Fact]
-    public void BrainPaysEvolutionPoints()
-    {
-        CreatureDesign design = CreatureDesign.Blob();
-        CreatureStats  bare   = CreatureStats.From(design);
-        Place(design, CreaturePartKind.BigBrain);
-
-        CreatureStats smart = CreatureStats.From(design);
-
-        Assert.Equal(0, bare.EpPerLevelBonus);
-        Assert.Equal(2, smart.EpPerLevelBonus);
-        Assert.Equal(bare.Acceleration * 1.15f, smart.Acceleration, PRECISION);
     }
 
     [Fact]

@@ -326,17 +326,13 @@ public partial class Player : CellBody
         EmitSignal(SignalName.StatsChanged);
     }
 
-    /// <summary>Cheat (F10): a pair of legs and (for a fish) a lung for free, wherever they still fit.</summary>
+    /// <summary>Cheat (F10): a pair of legs for free, wherever they still fit (lungs are gone, the name stayed).</summary>
     public void GiveLegsAndLung()
     {
         var design = new CreatureDesign();
         design.CopyFrom(Creature);
         float[] spots = { 0.3f, 0.45f, 0.75f, 0.15f, 0.6f, 0.9f };
-        foreach (CreaturePartKind kind in new[] { CreaturePartKind.Legs, CreaturePartKind.Lung })
-        {
-            bool isNeeded = CreaturePartKind.Legs == kind ? 0 == design.LegPairs : !design.BreathesAir;
-            for (int i = 0; isNeeded && i < spots.Length && !design.TryPlace(kind, spots[i], 0); i++) { }
-        }
+        for (int i = 0; 0 == design.LegPairs && i < spots.Length && !design.TryPlace(CreaturePartKind.Legs, spots[i], 0); i++) { }
         CommitCreature(design, EvolutionPoints);
     }
 

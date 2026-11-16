@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://bet36ygqtpeme"
-path="res://.godot/imported/creature.brain.glb-a32c98c7d36136ca3592aed72d8428d7.scn"
+uid="uid://ch836lltv3snn"
+path="res://.godot/imported/creature.cathead.glb-b5529eb73b3cb5c568f48a07a829cad4.scn"
 
 [deps]
 
-source_file="res://assets/models/creature/creature.brain.glb"
-dest_files=["res://.godot/imported/creature.brain.glb-a32c98c7d36136ca3592aed72d8428d7.scn"]
+source_file="res://assets/models/creature/creature.cathead.glb"
+dest_files=["res://.godot/imported/creature.cathead.glb-b5529eb73b3cb5c568f48a07a829cad4.scn"]
 
 [params]
 
