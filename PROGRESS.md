@@ -118,7 +118,7 @@ Danach: Landleben (Futterquellen wie Früchte an Bäumen, Landtiere), Stamm und 
 
 ## TODO: Animationen der Kreatur-Teile (2026-11-15)
 Reihenfolge wie mit dem User besprochen, erst nach Abschluss der Vorlagen-Runde 4 (Schnecke, Nautilus, Frosch, Krokodil, Qualle, Krake):
-- [ ] Glieder bewegen: Beine, Tentakel, Fühler, Hals und Gliederbeine sind starre Röhren (`CreatureLimbs3D`). Laufzyklus an Land, Paddeln und Wiegen im Wasser, Tentakel schlängeln. Größte Lücke, seit Schwimmen ohne Flossen steif ist (`CreatureDesign.SwimsWithWave`).
+- [x] (2026-11-16, prozedural, nur als Standbild und per Test geprüft) Glieder bewegen: Beine, Tentakel, Fühler, Hals und Gliederbeine sind starre Röhren (`CreatureLimbs3D`). Laufzyklus an Land, Paddeln und Wiegen im Wasser, Tentakel schlängeln. Größte Lücke, seit Schwimmen ohne Flossen steif ist (`CreatureDesign.SwimsWithWave`).
 - [ ] Maul auf und zu: die geschnittene Öffnung (`CreatureClay.CarveMouth`, `data/mouths.json`) ist starr. Leicht atmen, beim Fressen schnappen, die Zähne (`MouthTeeth`) gehen mit. Betrifft Hai-, Orca-, Klaff-, Nadel- und Krokodilmaul.
 - [ ] Flossensaum des Aals (`FinRibbon`) wellen lassen, Kiemen (`Gills`) atmen lassen.
 - [ ] Neue Teile aus Runde 4 prüfen: Quallenschirm pulsiert (beim Agenten angefragt), Mundarme, Schwimmfüße.
@@ -130,3 +130,31 @@ Reihenfolge wie mit dem User besprochen, erst nach Abschluss der Vorlagen-Runde 
 - Körperwelle nur noch mit Schwanzflosse oder Flossensaum; Muster zählt von der Wirbelsäule aus.
 - Offen: Qualle im Vier-Ansichten- und Hero-Bild unten angeschnitten, ihre Fäden noch als vier Paare statt als Ring. Krokodil-Schnauze rund statt flach. Ring-Kopien eines Glieds tragen keine Äste. Ein Auge am Glied kommt als Paar (Schnecke trickst). Haltung im Editor nur beim Halten des Reglers sichtbar. Neue Editor-Leiste nur auf einem Standbild gesehen, nicht bedient. Nichts davon in Bewegung oder an Land im Spiel geprüft, Renders nur auf Standard-Grafikstufe.
 - Land und Höhe (2026-11-15): Luft/Ersticken an Land entfernt (Lunge +10 % Lebenspunkte). An Land ruht das unterste Teil auf dem Boden, Schwebehöhe (`hover`) hebt darüber; im Editor steht das Tier auf dem Drehteller, die Haltung bleibt sichtbar (Kamera und Umgebung kippen). Offen: an Land im Spiel nicht angesehen (das Reel kommt mit Vorlage nicht an Land), der Luft-Bogen im `VitalsDial` ist jetzt toter Code, Regler nicht von Hand bedient.
+
+## Runde 5: zehn weitere Tiere (2026-11-16)
+- Vorlagen: Seestern (5 EP), Seeigel (2), Spinne (10), Skorpion (13, zwei Runden), Mantarochen (5), Hummer (12), Klapperschlange (2), Chamäleon (8), T. rex (9), Triceratops (11). Alle nach angesehenen Referenzfotos.
+- Neue Teile: Seesternarm, Seeigelstacheln, Giftklauen, Spinnenaugen, Stachelschwanz, Mantaflügel, Peitschenschwanz, Schwanzfächer, gespaltene Zunge, Rassel, Helmkamm, Tyrannenmaul, Wuchtschwanz, Hörner, Nackenschild.
+- Engine: Querschnitt `flat`, Glieder dürfen 7 % der Wirbelsäule auseinander sitzen, Paare an den Flanken spielen ihre Animation synchron, Peitschenschwanz löst keine Körperwelle aus, `Show-Creature` rahmt auf alle gebauten Teile.
+- Offen: Wirbelsäule biegt nur nach oben/unten (Schlange von oben ein gerader Stab). Sattel-Muster wirkt auf flachen Rücken blockig. Chamäleon hat einen Dorn über dem Auge (Seepferdchen-Auge). Spinnenbeine noch nicht vorne gebündelt. Kopfdetails von T. rex und Triceratops (Knubbel, Nasenhorn) passen nur auf den Kopf ihrer Vorlage. Hufe und dicke Unterschenkel fehlen. Seestern und Seeigel haben ein Cartoon-Gesicht, das die Fotos nicht zeigen. Nichts in Bewegung, im Editor oder an Land geprüft; Renders nur auf Standard-Grafikstufe.
+
+## Baukasten-Erweiterung (2026-11-16)
+Umgesetzt aus der Liste „Wie wir Tiere aufbauen“:
+- Wirbelsäule: seitliche Biegung (`sways`) und Querschnitt je Wirbel (`flats`). Schlange (S-Form, flacher Kopf) und Krokodil (flacher Kopf) nutzen es.
+- Glieder: Dicke je Gelenk (`widths`), mittige Glieder und einzelne Teile an Gelenken (`middle`), prozedurale Bewegung, Maul atmet.
+- Farbe: Bauchfarbe (`bellyColor`, Frosch), Muster läuft auf Teilen und Gliedern weiter.
+- Relief: Hauttyp Platten mit echtem Umriss (Hummer, Skorpion).
+- Teile an der Wirbelsäule: Reihen-Raum `Row` mit dem neuen Teil Rückenkamm, `Top`-Teile folgen der Rückenlinie.
+- Offen daraus: Kopfdetails im Raum `Snout` (Nasenhöcker, Knubbel) sind weiter auf den Kopf ihrer Vorlage gebaut. Schuppen und Warzen haben keinen echten Umriss. Bestehende Rückenplatten, Panzer und der Flossensaum sind noch starre Stücke (nicht auf `Row` umgestellt). Ring-Kopien und Glieder mit Ästen bewegen sich nicht. Maul schnappt nicht beim Fressen, Zähne atmen nicht mit. Farbzonen: nur Bauch, kein eigener Kopf oder Gelenke; Iris und Krallen bleiben fest. Bewegung, Gizmo in Z, Mausrad am Gelenk und mittiges Ablegen sind nicht von Hand ausprobiert; alles nur als Standbild gesehen.
+
+## TODO: Baukasten, was noch fehlt (2026-11-16)
+- [ ] Kopfdetails im Raum `Snout` (Nasenhöcker, Knubbel, Nüstern) vom Spiel an gemessene Punkte des Kopfs setzen, wie die Zähne; heute passen sie nur auf den Kopf ihrer Vorlage.
+- [ ] Schuppen und Warzen mit echtem Umriss (feineres Körper-Mesh oder Verschiebung), heute nur Licht-Relief. Platten haben ihn schon.
+- [ ] Bestehende starre Stücke auf den Reihen-Raum `Row` umstellen: Rückenplatten, Flossensaum des Aals, Kämme. Panzer und Schalen (Raum `Hug`) werden auf anderen Körpern oval.
+- [ ] Bewegung: Glieder mit Ästen und Ring-Kopien stehen still; Maul schnappt nicht beim Fressen, Zähne atmen nicht mit; Flossensaum und Kiemen starr. Alles in Bewegung ansehen (bisher nur Standbilder).
+- [ ] Farbzonen: Kopf, Bauch, Glieder, Schwanzende gibt es. Offen: Iris, Krallen, Schnabel und Hörner haben feste Farben; Gelenke und Rücken als eigene Zone; Grenzen der Zonen (Kopf ab 84 %, Schwanz bis 16 % der Wirbelsäule) sind fest.
+- [ ] Vorlagen nachziehen: Bauchfarbe und Zonen, Querschnitt je Wirbel (Manta, Chamäleon, Krabbe), dicke Schenkel (T. rex, Frosch statt Hals-Trick), einzelnes Auge am Fühler (Schnecke statt Verschiebe-Trick), Qualle als 8er-Ring, Spinnenbeine vorne bündeln, Chamäleon ohne Seepferdchen-Dorn.
+- [ ] Von Hand im Editor prüfen: Gizmo eines Wirbels in Z, Würfel zum Abflachen, Mausrad am Gelenk, mittiges Ablegen, Zonen-Icons, Sprühfarben, Laufen an Land.
+- [ ] Sattel-Muster wirkt auf flachen Rücken blockig.
+- [ ] Smoke-Check "Stamm" wackelt: bisher 2 Fehlschläge bei rund 30 Läufen, jeweils ohne Code-Änderung beim nächsten Lauf grün. Ursache suchen (vermutlich Zufall im Dorf-Aufbau).
+- Freie Platzierung (2026-11-16): jedes Teil überall und beliebig oft, der Editor setzt es an den Abwurfpunkt (`CreaturePartPlacer.MoveToHit`). Offen: nicht von Hand im Editor ausprobiert; die Drop-Vorschau (Geist) zeigt noch den alten Platz des Teils, nicht den Abwurfpunkt; Wirkung mehrfacher Teile (zwei Mäuler, drei Schwänze) summiert sich ungebremst.
+- [ ] Abschaltbare Animationen pro Teil (Wunsch des Users 2026-11-16): je platziertem Teil ein Schalter „bewegt sich / steht still" (z. B. Feld am `CreaturePart`, in Vorlagen `"still": true`, im Editor ein Knopf am gewählten Teil). Betrifft die Modell-Animationen (`PartModels.PlayLoop` in `CreatureParts3D`: Flattern, Greifen, Wiegen, Pulsieren) und die prozedurale Bewegung der Glieder (`CreatureLimbs3D.Move`).

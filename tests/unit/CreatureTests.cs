@@ -230,13 +230,37 @@ public class CreatureTests
     }
 
     [Fact]
-    public void HeadHoldsOneMouth()
+    public void EveryPartFitsAnywhereAndAnyNumberOfTimes()
     {
         CreatureDesign design = CreatureDesign.Blob();
 
+        // No slot per mount: several mouths, several tails, a fin right next to another
         Assert.True(design.TryPlace(CreaturePartKind.Beak, 1f, paidCost: 0));
-        Assert.False(design.TryPlace(CreaturePartKind.Jaw, 1f, paidCost: 0));
-        Assert.False(design.TryPlace(CreaturePartKind.FilterMouth, 1f, paidCost: 0));
+        Assert.True(design.TryPlace(CreaturePartKind.Jaw, 1f, paidCost: 0));
+        Assert.True(design.TryPlace(CreaturePartKind.CaudalFin, 0f, paidCost: 0));
+        Assert.True(design.TryPlace(CreaturePartKind.Fluke, 0f, paidCost: 0));
+        Assert.True(design.TryPlace(CreaturePartKind.DorsalFin, 0.5f, paidCost: 0));
+        Assert.True(design.TryPlace(CreaturePartKind.DorsalFin, 0.55f, paidCost: 0));
+        Assert.True(design.TryPlace(CreaturePartKind.Eye, 0f, paidCost: 0));           // the very ends are free too
+
+        // Only the same part on the very same spot is a double click, until the first one was shifted away
+        Assert.False(design.TryPlace(CreaturePartKind.Beak, 1f, paidCost: 0));
+        design.SetPartPose(0, new Vector3(0f, 0.3f, 0f), Vector3.Zero);
+        Assert.True(design.TryPlace(CreaturePartKind.Beak, 1f, paidCost: 0));
+    }
+
+    [Fact]
+    public void NaturalAnchorIsWhereAPartIsBuilt()
+    {
+        CreatureDesign design = CreatureDesign.Blob();
+        Assert.True(design.TryPlace(CreaturePartKind.CaudalFin, 0f, paidCost: 0));
+        Assert.True(design.TryPlace(CreaturePartKind.DorsalFin, 0.5f, paidCost: 0));
+        Assert.True(design.TryPlace(CreaturePartKind.Eye, 0.8f, paidCost: 0));
+
+        Assert.Equal(design.TailTipX, design.NaturalAnchor(design.Parts[0]).X, PRECISION);
+        float x = design.XAt(0.5f);
+        Assert.Equal(design.LiftAt(x) + design.TopAt(x), design.NaturalAnchor(design.Parts[1]).Y, PRECISION);
+        Assert.True(design.NaturalAnchor(design.Parts[2]).Z > 0f, "an eye is built on the right flank");
     }
 
     [Fact]

@@ -123,6 +123,33 @@ public partial class SkinIcon : Button
                 }
                 break;
 
+            // Feathers: a few long drops lying side by side
+            case CreatureSkin.Feathers:
+                foreach (Vector2 feather in WARTS)
+                {
+                    DrawLine(center + feather * radius * 0.8f + new Vector2(-0.22f, 0f) * radius, center + feather * radius * 0.8f + new Vector2(0.22f, 0f) * radius, dark, radius * 0.16f, true);
+                }
+                break;
+
+            // Fur: short strokes all over
+            case CreatureSkin.Fur:
+                for (int i = 0; i < 14; i++)
+                {
+                    float   angle = i * 2.4f;
+                    Vector2 at    = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius * (0.2f + 0.05f * (i % 9));
+                    DrawLine(center + at, center + at + new Vector2(radius * 0.2f, radius * 0.08f), dark, 1.4f, true);
+                }
+                break;
+
+            // Plates: broad bands across, each with a dark groove below
+            case CreatureSkin.Plates:
+                foreach (float y in new[] { -0.45f, 0f, 0.45f })
+                {
+                    float reach = Mathf.Sqrt(1f - y * y) * radius * 0.95f;
+                    DrawLine(center + new Vector2(-reach, y * radius), center + new Vector2(reach, y * radius), dark, radius * 0.12f, true);
+                }
+                break;
+
             // Warts: a few light bumps, each with a dark ring
             case CreatureSkin.Warts:
                 foreach (Vector2 wart in WARTS)
@@ -162,6 +189,14 @@ public partial class SkinIcon : Button
             case CreaturePattern.Patches:
                 DrawCircle(center + new Vector2(-0.3f, -0.25f) * radius, radius * 0.36f, paint);
                 DrawCircle(center + new Vector2(0.35f, 0.3f) * radius, radius * 0.3f, paint);
+                break;
+            // Net: the disc in the paint color, a few light lines across
+            case CreaturePattern.Net:
+                DrawCircle(center, radius * 0.97f, paint);
+                Color line = _tint with { A = 1f };
+                DrawLine(center + new Vector2(-0.9f, -0.2f) * radius, center + new Vector2(0.85f, 0.35f) * radius, line, radius * 0.1f, true);
+                DrawLine(center + new Vector2(-0.1f, -0.95f) * radius, center + new Vector2(0.2f, 0.95f) * radius, line, radius * 0.1f, true);
+                DrawLine(center + new Vector2(-0.8f, 0.5f) * radius, center + new Vector2(0.1f, 0.1f) * radius, line, radius * 0.1f, true);
                 break;
             case CreaturePattern.Saddle:
                 DrawArc(center, radius * 0.5f, Mathf.Pi, Mathf.Tau, 24, paint, radius, true);

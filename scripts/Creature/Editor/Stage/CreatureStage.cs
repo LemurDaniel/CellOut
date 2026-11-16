@@ -114,7 +114,7 @@ public partial class CreatureStage : SubViewportContainer
 
         // The clay, nearly still so the handles stay on the back. It always lies level in its unit space, where
         // handles, gizmo and rays work: its posture is shown by tilting camera and surroundings the other way
-        _clay = new CreatureVisual3D { Design = _session.Draft, Knead = CreatureVisual3D.EDITOR_KNEAD, SwimScale = 0.3f, Seed = 7f, ShowsPosture = false };
+        _clay = new CreatureVisual3D { Design = _session.Draft, Knead = CreatureVisual3D.EDITOR_KNEAD, SwimScale = 0.3f, Seed = 7f, ShowsPosture = false, IsMoving = false };
         _scene.AddChild(_clay);
 
         // Marker where a selected part would land

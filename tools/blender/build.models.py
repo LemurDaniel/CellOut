@@ -43,12 +43,19 @@ import models.mouths
 import models.defense
 import models.cells
 import models.new_angler
+import models.new_bird
 import models.new_crab
+import models.new_dino
 import models.new_frog
 import models.new_jelly
+import models.new_mammal
 import models.new_newt
 import models.new_puffer
+import models.new_ray
 import models.new_snail
+import models.new_snake
+import models.new_spider
+import models.new_star
 import models.new_seahorse
 import models.new_shark
 import models.new_squid
@@ -185,6 +192,34 @@ PARTS = {
     'creature/creature.paddle.glb':        models.new_turtle.build_flipper,
     'creature/creature.needlemaw.glb':     models.new_angler.build_needlemaw,
     'creature/creature.carapace.glb':      models.new_crab.build_carapace,
+    'creature/creature.elephantfoot.glb':  models.new_mammal.build_elephantfoot,
+    'creature/creature.mane.glb':          models.new_mammal.build_mane,
+    'creature/creature.parrotbeak.glb':    models.new_bird.build_parrotbeak,
+    'creature/creature.tailfeathers.glb':  models.new_bird.build_tailfeathers,
+    'creature/creature.crestfeathers.glb': models.new_bird.build_crestfeathers,
+    'creature/creature.penguinflipper.glb':models.new_bird.build_penguinflipper,
+    'creature/creature.birdfoot.glb':      models.new_bird.build_birdfoot,
+    'creature/creature.tusks.glb':         models.new_mammal.build_tusks,
+    'creature/creature.ossicones.glb':     models.new_mammal.build_ossicones,
+    'creature/creature.bigears.glb':       models.new_mammal.build_bigears,
+    'creature/creature.tufttail.glb':      models.new_mammal.build_tufttail,
+    'creature/creature.hoof.glb':          models.new_mammal.build_hoof,
+    'creature/creature.spinecrest.glb':    models.defense.build_spinecrest,
+    'creature/creature.stararm.glb':       models.new_star.build_stararm,
+    'creature/creature.mantawing.glb':     models.new_ray.build_mantawing,
+    'creature/creature.whiptail.glb':      models.new_ray.build_whiptail,
+    'creature/creature.tailfan.glb':       models.new_ray.build_tailfan,
+    'creature/creature.rattle.glb':        models.new_snake.build_rattle,
+    'creature/creature.thicktail.glb':     models.new_dino.build_thicktail,
+    'creature/creature.fangs.glb':         models.new_spider.build_fangs,
+    'creature/creature.forktongue.glb':    models.new_snake.build_forktongue,
+    'creature/creature.rexmaw.glb':        models.new_dino.build_rexmaw,
+    'creature/creature.urchinspines.glb':  models.new_star.build_urchinspines,
+    'creature/creature.stinger.glb':       models.new_spider.build_stinger,
+    'creature/creature.casque.glb':        models.new_snake.build_casque,
+    'creature/creature.horns.glb':         models.new_dino.build_horns,
+    'creature/creature.neckfrill.glb':     models.new_dino.build_neckfrill,
+    'creature/creature.spidereyes.glb':    models.new_spider.build_spidereyes,
     'creature/creature.croctail.glb':      models.new_frog.build_croctail,
     'creature/creature.crocfoot.glb':      models.new_frog.build_crocfoot,
     'creature/creature.croceye.glb':       models.new_frog.build_croceye,

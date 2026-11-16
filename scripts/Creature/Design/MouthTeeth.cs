@@ -112,8 +112,10 @@ public static class MouthTeeth
                 float width  = shape.ToothWidth * head;
                 foreach (float side in new[] { 1f, -1f })
                 {
-                    var mirror = new Vector3(1f, 1f, side);
-                    teeth.Add(new Tooth(root * mirror, isUpper ? Vector3.Down : Vector3.Up, along * mirror, length, width));
+                    // Mirrored about the spine, which may lie beside the middle (sway)
+                    var     mirror = new Vector3(1f, 1f, side);
+                    Vector3 sway   = Vector3.Back * design.SwayAt(root.X);
+                    teeth.Add(new Tooth((root - sway) * mirror + sway, isUpper ? Vector3.Down : Vector3.Up, along * mirror, length, width));
                 }
             }
         }
@@ -144,7 +146,7 @@ public static class MouthTeeth
         {
             return false;
         }
-        float z   = design.FlankAt(x) * Mathf.Sqrt(1f - across * across) * INSET;
+        float z   = design.SwayAt(x) + design.FlankAt(x) * Mathf.Sqrt(1f - across * across) * INSET;
         float jut = isUpper ? 0f : shape.Jut * head * Mathf.SmoothStep(0f, 1f, s) * Mathf.Clamp(gape / Mathf.Max(head * 0.6f, 0.001f), 0f, 1f);
         point = new Vector3(x + jut, y, z);
         return true;

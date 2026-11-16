@@ -70,7 +70,7 @@ public partial class CreatureSculptHandles : Node3D
     {
         CreatureDesign draft = _session.Draft;
         float x = draft.VertebraX(index);
-        return new Vector3(x, draft.LiftAt(x) + draft.TopAt(x) + HANDLE_LIFT, 0f);
+        return new Vector3(x, draft.LiftAt(x) + draft.TopAt(x) + HANDLE_LIFT, draft.SwayAt(x));
     }
 
     /// <summary>Frame of the picked limb on the flank of the gizmo, false when no limb is picked.</summary>
@@ -88,6 +88,7 @@ public partial class CreatureSculptHandles : Node3D
     //
     //   IsDragging        A gizmo handle or a joint is being dragged.
     //   ScrollGirth       The wheel over a vertebra handle sets its girth.
+    //   ScrollJoint       The wheel over a joint handle sets the thickness of the limb there.
     //   Grab              Left press: the gizmo, a joint or a vertebra handle takes it.
     //   Drag              The gizmo shifts, turns or scales, a joint sculpts the limb.
     //   Release           Left release: every drag ends.
@@ -123,6 +124,30 @@ public partial class CreatureSculptHandles : Node3D
         return true;
     }
 
+    private const float WIDTH_WHEEL_STEP = 0.12f;      // per wheel notch over a joint handle
+
+    /// <summary>Wheel over a joint handle of the picked limb: makes the limb thicker or thinner there.</summary>
+    /// <param name="pixel">(Required) Position in the stage.</param>
+    /// <param name="notch">(Required) 1 wheel up (thicker), -1 wheel down (thinner).</param>
+    /// <returns>False when no joint handle is under the cursor.</returns>
+    public bool ScrollJoint(Vector2 pixel, float notch)
+    {
+        int joint = JointAt(pixel);
+        if (joint < 0)
+        {
+            return false;
+        }
+        int          picked = _session.PickedPart;
+        CreaturePart part   = _session.Draft.Parts[picked];
+        // Joint i is point i + 1 of the path, the first joint also thickens the shoulder with it
+        _session.Draft.SetLimbWidth(picked, joint + 1, part.WidthAt(joint + 1) + notch * WIDTH_WHEEL_STEP);
+        if (0 == joint)
+        {
+            _session.Draft.SetLimbWidth(picked, 0, part.WidthAt(0) + notch * WIDTH_WHEEL_STEP);
+        }
+        return true;
+    }
+
     /// <summary>
     /// Left press: the gizmo shifts or turns, a joint sculpts the limb, a vertebra handle
     /// picks its vertebra (and bends the spine through the gizmo it gets).
@@ -154,6 +179,11 @@ public partial class CreatureSculptHandles : Node3D
             if (GizmoHandle.Scale == _gizmoDrag)
             {
                 _session.ScalePickedVertebra(_gizmo.ScaleFactor(motion.Position - motion.Relative, motion.Position));
+            }
+            else if (GizmoHandle.StretchY == _gizmoDrag)
+            {
+                // Pulled up the ring grows tall and narrow, pushed down flat and wide
+                _session.FlattenPickedVertebra(1f - _gizmo.StretchFactor(_gizmoDrag, motion.Relative));
             }
             else
             {
@@ -350,7 +380,7 @@ public partial class CreatureSculptHandles : Node3D
         if (isVertebra)
         {
             float x = draft.Positions[pickedVertebra];
-            anchor = _stage.Clay.ToGlobal(new Vector3(x, draft.LiftAt(x), 0f));
+            anchor = _stage.Clay.ToGlobal(draft.CenterAt(x));
         }
         _gizmo.Visible = isVertebra || (isPicked && _stage.Clay.TryGetPartAnchor(pickedPart, _session.GizmoFlank, out anchor));
         if (_gizmo.Visible)
@@ -361,7 +391,8 @@ public partial class CreatureSculptHandles : Node3D
                 _isGizmoOnVertebra = isVertebra;
                 if (isVertebra)
                 {
-                    _gizmo.ShowHandles(GizmoHandle.MoveX, GizmoHandle.MoveY, GizmoHandle.Scale);
+                    // Along the body, up and down, sideways (the body curls), the golden ring scales the girth, the green cube flattens
+                    _gizmo.ShowHandles(GizmoHandle.MoveX, GizmoHandle.MoveY, GizmoHandle.MoveZ, GizmoHandle.Scale, GizmoHandle.StretchY);
                 }
                 else
                 {

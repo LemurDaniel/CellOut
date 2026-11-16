@@ -29,11 +29,14 @@ namespace CellOut;
 //   PaintSplat        One dot of spray paint, stored relative to the spine so it follows reshaping.
 //
 
-/// <summary>Paint of the second color: none, stripes across, round spots, big patches or a dark saddle.</summary>
-public enum CreaturePattern { None, Stripes, Spots, Patches, Saddle }
+/// <summary>Paint of the second color: none, stripes across, round spots, big patches, a dark saddle or a net of fields with light lines between them.</summary>
+public enum CreaturePattern { None, Stripes, Spots, Patches, Saddle, Net }
 
-/// <summary>Surface of the skin: smooth clay, the scales of a reptile or the warts of a toad (shaders/clay.gdshaderinc). Looks only.</summary>
-public enum CreatureSkin { Smooth, Scales, Warts }
+/// <summary>Surface of the skin: smooth clay, the scales of a reptile, the warts of a toad or the hard plates of a lobster (shaders/clay.gdshaderinc). Looks only.</summary>
+public enum CreatureSkin { Smooth, Scales, Warts, Plates, Feathers, Fur }
+
+/// <summary>A zone of the body with a color of its own: the whole body, the underside, the head, the limbs, the tail end.</summary>
+public enum CreatureZone { Body, Belly, Head, Limbs, Tail }
 
 /// <summary>One dot of spray paint on the body.</summary>
 /// <param name="T">Spine share of its center, 0 tail .. 1 nose (outside on the caps).</param>
@@ -79,6 +82,45 @@ public sealed class CreatureLook
         Pitch = Mathf.Clamp(pitch, -MAX_PITCH, MAX_PITCH);
     }
 
+    /// <summary>Cross-section of the body: 0 as its type gives it, 1 pressed flat and wide (a crab, a scorpion, a ray), -1 tall and narrow (a chameleon). Looks only.</summary>
+    public float Flatness { get; private set; }
+
+    /// <summary>Sets the flatness, clamped to -1..1.</summary>
+    public void SetFlatness(float flatness)
+    {
+        Flatness = Mathf.Clamp(flatness, -1f, 1f);
+    }
+
+    /// <summary>Whether the pattern runs all around the body, belly and legs too (a giraffe), instead of fading out towards the belly.</summary>
+    public bool PatternWraps { get; private set; }
+
+    /// <summary>Lets the pattern run all around the body or fade out towards the belly.</summary>
+    public void SetPatternWraps(bool isWrapping)
+    {
+        PatternWraps = isWrapping;
+    }
+
+    public const float MIN_PATTERN_SCALE = 0.4f;
+    public const float MAX_PATTERN_SCALE = 4f;
+
+    /// <summary>How fine the paint pattern is: 1 as drawn, 2 twice as many stripes, spots or patches (the dense net of a giraffe). Looks only.</summary>
+    public float PatternScale { get; private set; } = 1f;
+
+    /// <summary>Sets how fine the paint pattern is, clamped to MIN_PATTERN_SCALE..MAX_PATTERN_SCALE.</summary>
+    public void SetPatternScale(float scale)
+    {
+        PatternScale = Mathf.Clamp(scale, MIN_PATTERN_SCALE, MAX_PATTERN_SCALE);
+    }
+
+    /// <summary>Whether a body without a mouth part shows the plain closed mouth line. Off for a face that has none (an elephant under its trunk).</summary>
+    public bool HasMouthLine { get; private set; } = true;
+
+    /// <summary>Switches the plain mouth line of a body without a mouth part.</summary>
+    public void SetMouthLine(bool hasMouthLine)
+    {
+        HasMouthLine = hasMouthLine;
+    }
+
     public const float MAX_HOVER = 1.5f;
 
     /// <summary>How high the body floats above the ground on land, in body sizes: 0 rests its lowest part on the ground. Looks only.</summary>
@@ -97,6 +139,45 @@ public sealed class CreatureLook
     public void SetSkin(CreatureSkin skin)
     {
         Skin = skin;
+    }
+
+    private readonly System.Collections.Generic.Dictionary<CreatureZone, Color> _zoneColors = new();
+
+    /// <summary>Color of the underside, null for none (the belly is only a lighter shade of the body then).</summary>
+    public Color? BellyColor => ZoneColor(CreatureZone.Belly);
+
+    /// <summary>Picks the color of the underside, null for none.</summary>
+    public void SetBellyColor(Color? color)
+    {
+        SetZoneColor(CreatureZone.Belly, color);
+    }
+
+    /// <summary>The color of a zone: the body color for Body, null for a zone without a color of its own.</summary>
+    public Color? ZoneColor(CreatureZone zone)
+    {
+        if (CreatureZone.Body == zone)
+        {
+            return Color;
+        }
+        return _zoneColors.TryGetValue(zone, out Color color) ? color : null;
+    }
+
+    /// <summary>Picks the color of a zone, null takes it away again (Body: back to the default color).</summary>
+    /// <example><code>look.SetZoneColor(CreatureZone.Head, new Color(0.9f, 0.4f, 0.2f));</code></example>
+    public void SetZoneColor(CreatureZone zone, Color? color)
+    {
+        if (CreatureZone.Body == zone)
+        {
+            Color = color;
+        }
+        else if (null == color)
+        {
+            _zoneColors.Remove(zone);
+        }
+        else
+        {
+            _zoneColors[zone] = color.Value with { A = 1f };
+        }
     }
 
     /// <summary>Picks the body color, null goes back to the default.</summary>
@@ -195,9 +276,18 @@ public sealed class CreatureLook
     {
         Color        = other.Color;
         Pattern      = other.Pattern;
+        _zoneColors.Clear();
+        foreach ((CreatureZone zone, Color color) in other._zoneColors)
+        {
+            _zoneColors[zone] = color;
+        }
         Skin         = other.Skin;
         Pitch        = other.Pitch;
         Hover        = other.Hover;
+        PatternScale = other.PatternScale;
+        PatternWraps = other.PatternWraps;
+        HasMouthLine = other.HasMouthLine;
+        Flatness     = other.Flatness;
         PatternColor = other.PatternColor;
         _splats.Clear();
         _splats.AddRange(other._splats);

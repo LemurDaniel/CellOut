@@ -82,7 +82,8 @@ public partial class CreatureParts3D : Node3D
         [CreaturePartKind.PoisonGland] = 1.4f,
     };
 
-    private sealed record Attached(Node3D Pivot, float X, float Y, bool IsOnLimb = false);   // Y: height of the bent spine there, IsOnLimb: rides its limb, not the swim wave
+    // Y and Z: height and sideways offset of the bent spine there, Yaw: how the spine turns sideways there, IsOnLimb: rides its limb, not the swim wave
+    private sealed record Attached(Node3D Pivot, float X, float Y, float Z, float Yaw, bool IsOnLimb = false);
 
     private readonly List<Attached> _attached = new();
     private readonly List<Node3D> _eyes = new();
@@ -147,6 +148,58 @@ public partial class CreatureParts3D : Node3D
         foreach (Node3D eye in _eyes)
         {
             _eyeScales[eye] = eye.Scale;
+        }
+        ContinuePaint(design, limbClay, knuckleClay);
+    }
+
+    /*
+      The clay of parts and limbs paints by position like the body does, but every mesh has
+      a space of its own: stripes would start anew on a tail, a leg would get no pale
+      underside. So every mesh wearing the shared clay gets a copy that knows the way into
+      the space of the body (to_body, rest pose) and the height of the spine there
+      (body_lift): pattern, belly color and countershading run on from the body.
+    */
+    private void ContinuePaint(CreatureDesign design, ShaderMaterial limbClay, ShaderMaterial knuckleClay)
+    {
+        Color? limbColor = design.ZoneColor(CreatureZone.Limbs);
+        foreach (MeshInstance3D mesh in FindChildren("*", nameof(MeshInstance3D), true, false).OfType<MeshInstance3D>())
+        {
+            Transform3D toBody = Transform3D.Identity;
+            for (Node node = mesh; node != this && node is Node3D node3D; node = node.GetParent())
+            {
+                toBody = node3D.Transform * toBody;
+            }
+            ShaderMaterial Painted()
+            {
+                // Always from the limb clay: it carries the pattern, the knuckle clay left it out for its own space
+                var painted = (ShaderMaterial)limbClay.Duplicate();
+                painted.SetShaderParameter("to_body", new Projection(toBody));
+                painted.SetShaderParameter("body_lift", design.LiftAt(toBody.Origin.X));
+                painted.SetShaderParameter("is_body", false);
+                // The limb zone: every limb with its knuckles, foot or hand in one color, no other zone on top
+                if (limbColor is Color zone && _limbs.IsOnLimb(mesh))
+                {
+                    var none = new Color(0f, 0f, 0f, 0f);
+                    painted.SetShaderParameter("clay_color", zone);
+                    painted.SetShaderParameter("pattern", 0);
+                    painted.SetShaderParameter("belly_color", none);
+                    painted.SetShaderParameter("head_color", none);
+                    painted.SetShaderParameter("tail_color", none);
+                }
+                return painted;
+            }
+            if (mesh.MaterialOverride == limbClay || mesh.MaterialOverride == knuckleClay)
+            {
+                mesh.MaterialOverride = Painted();
+            }
+            for (int surface = 0; surface < mesh.GetSurfaceOverrideMaterialCount(); surface++)
+            {
+                Material worn = mesh.GetSurfaceOverrideMaterial(surface);
+                if (worn == limbClay || worn == knuckleClay)
+                {
+                    mesh.SetSurfaceOverrideMaterial(surface, Painted());
+                }
+            }
         }
     }
 
@@ -240,11 +293,30 @@ public partial class CreatureParts3D : Node3D
                 head.SetShaderParameter("half_length", Mathf.Max(bud.HalfLength, 0.1f));
                 CellVisual3D.AddMesh(budSpace, CreatureClay.BuildBodyMesh(bud), head, Vector3.Zero, Vector3.One);
             }
+            int firstPivot = _attached.Count;
             _pivotParent = budSpace;
             _pivotDesign = bud;
             BuildPart(bud, part with { ParentId = 0, T = CreatureDesign.BudShare(part.Kind) }, color);
             _pivotParent = null;
             _pivotDesign = null;
+
+            // Centered: one piece on the axis of the limb instead of a pair beside it (one eye on a stalk)
+            for (int i = firstPivot; part.IsCentered && i < _attached.Count; i++)
+            {
+                foreach (Node3D half in _attached[i].Pivot.GetChildren().OfType<Node3D>().ToList())
+                {
+                    if (half.Position.Z < -0.005f)
+                    {
+                        _attached[i].Pivot.RemoveChild(half);
+                        _eyes.Remove(half);
+                        half.QueueFree();
+                    }
+                    else
+                    {
+                        half.Position = new Vector3(half.Position.X, half.Position.Y, 0f);
+                    }
+                }
+            }
         }
     }
 
@@ -395,7 +467,7 @@ public partial class CreatureParts3D : Node3D
             // Back: a pair of wings
             case CreaturePartKind.MembraneWings:
             case CreaturePartKind.FeatherWings:
-                BuildWings(part.Kind, x, top, flank, radius, color);
+                BuildWings(part.Kind, x, top, flank, radius, color, back);
                 break;
 
             // Lung: two nostrils on top of the nose, wherever it was placed inside.
@@ -498,7 +570,7 @@ public partial class CreatureParts3D : Node3D
     private const float MODEL_RATE = 0.8f;           // loops per second of the animation of a placed model
 
     /// <summary>The model spaces a part model can be built in (tools/blender, see Visual/CreatureModels.cs).</summary>
-    private enum ModelSpace { Snout, Hug, FlankPair, Top, Belly, Tail, Eye }
+    private enum ModelSpace { Snout, Hug, FlankPair, Top, Belly, Tail, Eye, Row }
 
     /// <summary>How the model of a kind sits on the body.</summary>
     /// <param name="Space">The space the model is built in, it decides the pivot and the stretch.</param>
@@ -516,6 +588,8 @@ public partial class CreatureParts3D : Node3D
       - Belly:      under the belly, hanging down
       - Tail:       behind the tail tip, reaching back
       - Eye:        an eyeball of radius 1 on both flanks where the plain eyes sit, +Z out of the head, it blinks
+      - Row:        one element (a plate, a spike) the game repeats along the back over Reach of the body length:
+                    every copy on its own spot of the spine, so the row follows each bend and looks alike on every body
     */
     private static readonly IReadOnlyDictionary<CreaturePartKind, Placement> PLACEMENTS = new Dictionary<CreaturePartKind, Placement>
     {
@@ -554,6 +628,31 @@ public partial class CreatureParts3D : Node3D
         [CreaturePartKind.TurretEye]     = new(ModelSpace.Eye),
         [CreaturePartKind.FrogEye]       = new(ModelSpace.Eye),
         [CreaturePartKind.CrocEye]       = new(ModelSpace.Eye),
+        [CreaturePartKind.Mane]          = new(ModelSpace.Row, Reach: 0.4f),
+        [CreaturePartKind.ParrotBeak]    = new(ModelSpace.Snout),
+        [CreaturePartKind.TailFeathers]  = new(ModelSpace.Tail),
+        [CreaturePartKind.CrestFeathers] = new(ModelSpace.Top),
+        [CreaturePartKind.PenguinFlipper]= new(ModelSpace.FlankPair),
+        [CreaturePartKind.Tusks]         = new(ModelSpace.FlankPair),
+        [CreaturePartKind.Ossicones]     = new(ModelSpace.Top),
+        [CreaturePartKind.BigEars]       = new(ModelSpace.FlankPair),
+        [CreaturePartKind.TuftTail]      = new(ModelSpace.Tail),
+        [CreaturePartKind.SpineCrest]    = new(ModelSpace.Row, Reach: 0.6f),
+        [CreaturePartKind.StarArm]       = new(ModelSpace.FlankPair),
+        [CreaturePartKind.MantaWing]     = new(ModelSpace.FlankPair),
+        [CreaturePartKind.WhipTail]      = new(ModelSpace.Tail),
+        [CreaturePartKind.TailFan]       = new(ModelSpace.Tail),
+        [CreaturePartKind.Rattle]        = new(ModelSpace.Tail),
+        [CreaturePartKind.ThickTail]     = new(ModelSpace.Tail),
+        [CreaturePartKind.Fangs]         = new(ModelSpace.Snout),
+        [CreaturePartKind.ForkTongue]    = new(ModelSpace.Snout),
+        [CreaturePartKind.RexMaw]        = new(ModelSpace.Snout),
+        [CreaturePartKind.UrchinSpines]  = new(ModelSpace.Hug, Reach: 0.9f),
+        [CreaturePartKind.Stinger]       = new(ModelSpace.Tail),
+        [CreaturePartKind.Casque]        = new(ModelSpace.Top),
+        [CreaturePartKind.Horns]         = new(ModelSpace.Top),
+        [CreaturePartKind.NeckFrill]     = new(ModelSpace.Hug, Reach: 0.35f),
+        [CreaturePartKind.SpiderEyes]    = new(ModelSpace.Eye),
         [CreaturePartKind.CrocTail]      = new(ModelSpace.Tail),
         [CreaturePartKind.SpiralShell]   = new(ModelSpace.Hug, Size: 1.1f, Reach: 0.6f),
         [CreaturePartKind.NautilusShell] = new(ModelSpace.Hug, Size: 1.1f, Reach: 0.7f),
@@ -600,7 +699,24 @@ public partial class CreatureParts3D : Node3D
                 }
                 break;
             case ModelSpace.Top:
-                models.Add(CreatureModels.Attach(AddPivot(x), part.Kind, color, new Vector3(0f, top * 0.92f, 0f), size, 1f, overrides: finSkin));
+                Node3D crown = CreatureModels.Attach(AddPivot(x), part.Kind, color, new Vector3(0f, top * 0.92f, 0f), size, 1f, overrides: finSkin);
+                crown.Basis = new Basis(Vector3.Back, BackSlope(design, x)) * crown.Basis;       // it stands on the back as the back runs there
+                models.Add(crown);
+                break;
+            case ModelSpace.Row:
+                // One element every ROW_STEP along the back, smaller towards both ends of the row
+                float span  = design.Length * placement.Reach;
+                int   count = Mathf.Clamp(Mathf.RoundToInt(span / ROW_STEP), ROW_MIN, ROW_MAX);
+                for (int i = 0; i < count; i++)
+                {
+                    float share = count > 1 ? (float)i / (count - 1) : 0.5f;
+                    float spot  = Mathf.Clamp(x + (share - 0.5f) * span, design.TailTipX + 0.05f, design.NoseTipX - 0.05f);
+                    float taper = 0.55f + 0.45f * Mathf.Sin(share * Mathf.Pi);
+                    Node3D plate = CreatureModels.Attach(AddPivot(spot), part.Kind, color, new Vector3(0f, design.TopAt(spot) * 0.94f, 0f),
+                        (0.28f + design.RadiusAt(spot) * 0.5f) * placement.Size * taper, 1f, overrides: finSkin);
+                    plate.Basis = new Basis(Vector3.Back, BackSlope(design, spot)) * plate.Basis;
+                    models.Add(plate);
+                }
                 break;
             case ModelSpace.Belly:
                 models.Add(CreatureModels.Attach(AddPivot(x), part.Kind, color, new Vector3(0f, -top * 0.92f, 0f), size, 1f, overrides: finSkin));
@@ -627,7 +743,8 @@ public partial class CreatureParts3D : Node3D
         string animation = CreatureModels.MODELS[part.Kind].Animation ?? "Loop";
         for (int i = 0; i < models.Count; i++)
         {
-            PartModels.PlayLoop(models[i], animation, i * 0.15f, MODEL_RATE);
+            // The two halves of a pair on the flanks move together (wings beat as one), the rest a little apart
+            PartModels.PlayLoop(models[i], animation, ModelSpace.FlankPair == placement.Space ? 0f : i * 0.15f, MODEL_RATE);
         }
     }
 
@@ -676,6 +793,19 @@ public partial class CreatureParts3D : Node3D
         }
     }
 
+    private const float ROW_STEP = 0.17f;            // distance between two elements of a row along the back
+    private const int ROW_MIN = 3;
+    private const int ROW_MAX = 16;
+    private const float MAX_BACK_SLOPE = 1.1f;
+
+    /// <summary>How steeply the back runs at an X, as an angle: the spine with its lift plus the growing or shrinking body.</summary>
+    private static float BackSlope(CreatureDesign design, float x)
+    {
+        const float H = 0.06f;
+        float rise = (design.LiftAt(x + H) + design.TopAt(x + H)) - (design.LiftAt(x - H) + design.TopAt(x - H));
+        return Mathf.Clamp(Mathf.Atan(rise / (2f * H)), -MAX_BACK_SLOPE, MAX_BACK_SLOPE);
+    }
+
     /// <summary>A model that hugs the body (spines, shell): built around a unit sphere, stretched to the body at its pivot.</summary>
     private static void AttachHugging(Node3D pivot, CreaturePartKind kind, Color color, Vector3 scale)
     {
@@ -685,13 +815,16 @@ public partial class CreatureParts3D : Node3D
     }
 
     /// <summary>A pair of wing models on the back, flapping together.</summary>
-    private void BuildWings(CreaturePartKind kind, float x, float top, float flank, float radius, Color color)
+    /// <param name="back">(Required) The pattern color of the design (the body color without a pattern): the feathers take it, so a red parrot can have blue wings.</param>
+    private void BuildWings(CreaturePartKind kind, float x, float top, float flank, float radius, Color color, Color back)
     {
         Node3D shoulders = AddPivot(x);
         float  span      = (0.7f + radius * 0.8f) * 1.15f;
         foreach (float side in new[] { -1f, 1f })
         {
-            Node3D model = CreatureModels.Attach(shoulders, kind, color, new Vector3(0f, top * 0.8f, side * flank * 0.4f), span, side);
+            // Feathers in the pattern color, a lighter band towards the tips comes from the model's own second feather material
+            var plumage = new Dictionary<string, Material> { ["Feather"] = CellVisual3D.Material(back, 0f, 0.7f), ["Skin"] = _knuckleClay };
+            Node3D model = CreatureModels.Attach(shoulders, kind, color, new Vector3(0f, top * 0.8f, side * flank * 0.4f), span, side, overrides: plumage);
             CreatureClay.AddFillet(shoulders, new Vector3(0f, top * 0.8f, side * flank * 0.4f), span * CreatureClay.WING_FILLET, _knuckleClay);
             PartModels.PlayLoop(model, CreatureModels.MODELS[kind].Animation, 0f, FLAP_RATE);
         }
@@ -713,10 +846,13 @@ public partial class CreatureParts3D : Node3D
     /// <summary>A pivot on the bent spine at an X: parts built on it sit at the height of the spine there.</summary>
     private Node3D AddPivot(float x)
     {
-        float y     = (_pivotDesign ?? _design).LiftAt(x);
-        var   pivot = new Node3D { Position = new Vector3(x, y, 0f) };
+        // On the bent spine: up by its lift, sideways by its sway, turned with the sideways curve
+        CreatureDesign body  = _pivotDesign ?? _design;
+        Vector3        at    = body.CenterAt(x);
+        float          yaw   = -Mathf.Atan(body.SideSlopeAt(x));
+        var            pivot = new Node3D { Position = at, Rotation = new Vector3(0f, yaw, 0f) };
         (_pivotParent ?? this).AddChild(pivot);
-        _attached.Add(new Attached(pivot, x, y, null != _pivotParent));
+        _attached.Add(new Attached(pivot, x, at.Y, at.Z, yaw, null != _pivotParent));
         return pivot;
     }
 
@@ -725,6 +861,7 @@ public partial class CreatureParts3D : Node3D
     // ===========================================================================
     //
     //   Swim    Moves and turns every pivot with the swim wave.
+    //   MoveLimbs   Swings the limbs: a walk on land, a paddle in the water.
     //   Blink   Closes or opens the eyes.
     //   Spout   Lets the droplets of the blowhole rise and fade.
     //
@@ -744,9 +881,15 @@ public partial class CreatureParts3D : Node3D
             }
             float bend  = SwimWave.Bend(part.X, halfLength, amplitude, phase);
             float slope = (SwimWave.Bend(part.X + 0.01f, halfLength, amplitude, phase) - SwimWave.Bend(part.X - 0.01f, halfLength, amplitude, phase)) / 0.02f;
-            part.Pivot.Position = isVertical ? new Vector3(part.X, part.Y + bend, 0f) : new Vector3(part.X, part.Y, bend);
-            part.Pivot.Rotation = isVertical ? new Vector3(0f, 0f, Mathf.Atan(slope)) : new Vector3(0f, -Mathf.Atan(slope), 0f);
+            part.Pivot.Position = isVertical ? new Vector3(part.X, part.Y + bend, part.Z) : new Vector3(part.X, part.Y, part.Z + bend);
+            part.Pivot.Rotation = isVertical ? new Vector3(0f, part.Yaw, Mathf.Atan(slope)) : new Vector3(0f, part.Yaw - Mathf.Atan(slope), 0f);
         }
+    }
+
+    /// <summary>Swings the limbs with the stride of the body (CreatureLimbs3D.Move).</summary>
+    public void MoveLimbs(float phase, float speedShare, bool isOnLand)
+    {
+        _limbs?.Move(_design, phase, speedShare, isOnLand);
     }
 
     /// <summary>Closes or opens the eyes.</summary>

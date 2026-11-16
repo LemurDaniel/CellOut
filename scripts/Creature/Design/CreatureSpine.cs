@@ -38,7 +38,7 @@ public sealed class CreatureSpine
 
     // ---------------------------------------------------------------------------
     // Vertebrae
-    //   Girth, height and position per vertebra, a fresh straight spine, copies.
+    //   Girth, height, sideways offset, cross-section and position per vertebra, a fresh straight spine, copies.
     // ---------------------------------------------------------------------------
 
     public const int MIN_VERTEBRAE = 3;
@@ -51,6 +51,8 @@ public sealed class CreatureSpine
 
     private readonly List<float> _girths = new();
     private readonly List<float> _lifts = new();
+    private readonly List<float> _sways = new();    // sideways offset of every vertebra (+Z is the right flank)
+    private readonly List<float> _flats = new();    // cross-section of every vertebra: -1 tall and narrow .. 1 flat and wide
     private readonly List<float> _xs = new();       // position of every vertebra along the body, tail first, rising
 
     /// <summary>Number of vertebrae.</summary>
@@ -61,6 +63,12 @@ public sealed class CreatureSpine
 
     /// <summary>Height of every vertebra above the straight line, tail first, -MAX_LIFT..MAX_LIFT.</summary>
     public IReadOnlyList<float> Lifts => _lifts;
+
+    /// <summary>Sideways offset of every vertebra from the straight line, tail first, -MAX_LIFT..MAX_LIFT (+Z is the right flank).</summary>
+    public IReadOnlyList<float> Sways => _sways;
+
+    /// <summary>Cross-section of every vertebra, tail first: 0 as the body gives it, 1 flat and wide, -1 tall and narrow.</summary>
+    public IReadOnlyList<float> Flats => _flats;
 
     /// <summary>Position of every vertebra along the body (X), tail first.</summary>
     public IReadOnlyList<float> Positions => _xs;
@@ -82,6 +90,10 @@ public sealed class CreatureSpine
         _xs.Clear();
         _girths.AddRange(girths);
         _lifts.AddRange(new float[girths.Count]);   // a straight spine
+        _sways.Clear();
+        _sways.AddRange(new float[girths.Count]);
+        _flats.Clear();
+        _flats.AddRange(new float[girths.Count]);
 
         // Evenly spaced, or by the given distances (short ones make a ball), then centered
         float x = 0f;
@@ -105,6 +117,10 @@ public sealed class CreatureSpine
         _girths.AddRange(other._girths);
         _lifts.Clear();
         _lifts.AddRange(other._lifts);
+        _sways.Clear();
+        _sways.AddRange(other._sways);
+        _flats.Clear();
+        _flats.AddRange(other._flats);
         _xs.Clear();
         _xs.AddRange(other._xs);
     }
@@ -128,7 +144,7 @@ public sealed class CreatureSpine
 
     // ---------------------------------------------------------------------------
     // Bending
-    //   Lifts one vertebra, the neighbors follow smoothly.
+    //   Lifts one vertebra or pushes it sideways, the neighbors follow smoothly; the cross-section per vertebra.
     // ---------------------------------------------------------------------------
 
     /*
@@ -146,14 +162,45 @@ public sealed class CreatureSpine
         {
             throw new System.ArgumentOutOfRangeException(nameof(index), $"index must be between 0 and {_lifts.Count - 1}, got '{index}'.");
         }
-        _lifts[index] = Mathf.Clamp(lift, -MAX_LIFT, MAX_LIFT);
-        for (int i = index + 1; i < _lifts.Count; i++)
+        Bend(_lifts, index, lift);
+    }
+
+    /// <summary>Pushes one vertebra sideways, the neighbors follow smoothly like with SetLift: the body curls.</summary>
+    /// <param name="index">(Required) Vertebra, 0 is the tail end.</param>
+    /// <param name="sway">(Required) Offset towards the right flank (+Z), clamped to -MAX_LIFT..MAX_LIFT.</param>
+    /// <example><code>spine.SetSway(0, 0.5f);   // the tail swings to the right</code></example>
+    public void SetSway(int index, float sway)
+    {
+        if (index < 0 || index >= _sways.Count)
         {
-            _lifts[i] = Mathf.Clamp(_lifts[i], _lifts[i - 1] - MAX_LIFT_STEP, _lifts[i - 1] + MAX_LIFT_STEP);
+            throw new System.ArgumentOutOfRangeException(nameof(index), $"index must be between 0 and {_sways.Count - 1}, got '{index}'.");
+        }
+        Bend(_sways, index, sway);
+    }
+
+    /// <summary>Sets the cross-section of one vertebra, clamped to -1..1.</summary>
+    /// <param name="index">(Required) Vertebra, 0 is the tail end.</param>
+    /// <param name="flat">(Required) 0 as the body gives it, 1 flat and wide, -1 tall and narrow.</param>
+    public void SetFlat(int index, float flat)
+    {
+        if (index < 0 || index >= _flats.Count)
+        {
+            throw new System.ArgumentOutOfRangeException(nameof(index), $"index must be between 0 and {_flats.Count - 1}, got '{index}'.");
+        }
+        _flats[index] = Mathf.Clamp(flat, -1f, 1f);
+    }
+
+    /// <summary>Sets one value of a bending list, the neighbors follow outwards within MAX_LIFT_STEP.</summary>
+    private static void Bend(List<float> values, int index, float value)
+    {
+        values[index] = Mathf.Clamp(value, -MAX_LIFT, MAX_LIFT);
+        for (int i = index + 1; i < values.Count; i++)
+        {
+            values[i] = Mathf.Clamp(values[i], values[i - 1] - MAX_LIFT_STEP, values[i - 1] + MAX_LIFT_STEP);
         }
         for (int i = index - 1; i >= 0; i--)
         {
-            _lifts[i] = Mathf.Clamp(_lifts[i], _lifts[i + 1] - MAX_LIFT_STEP, _lifts[i + 1] + MAX_LIFT_STEP);
+            values[i] = Mathf.Clamp(values[i], values[i + 1] - MAX_LIFT_STEP, values[i + 1] + MAX_LIFT_STEP);
         }
     }
 
@@ -216,6 +263,8 @@ public sealed class CreatureSpine
         int middle = _girths.Count / 2;
         _girths.Insert(middle, (_girths[middle - 1] + _girths[middle]) * 0.5f);
         _lifts.Insert(middle, (_lifts[middle - 1] + _lifts[middle]) * 0.5f);
+        _sways.Insert(middle, (_sways[middle - 1] + _sways[middle]) * 0.5f);
+        _flats.Insert(middle, (_flats[middle - 1] + _flats[middle]) * 0.5f);
         for (int i = 0; i < _xs.Count; i++)
         {
             _xs[i] += i < middle ? -SPACING * 0.5f : SPACING * 0.5f;
@@ -235,6 +284,8 @@ public sealed class CreatureSpine
         int middle = _girths.Count / 2;
         _girths.RemoveAt(middle);
         _lifts.RemoveAt(middle);
+        _sways.RemoveAt(middle);
+        _flats.RemoveAt(middle);
         _xs.RemoveAt(middle);
         for (int i = 0; i < _xs.Count; i++)
         {
@@ -270,6 +321,8 @@ public sealed class CreatureSpine
         float lift  = Mathf.Clamp(_lifts[end] + (_lifts[end] - _lifts[next]), -MAX_LIFT, MAX_LIFT);
         _girths.Insert(isNose ? count : 0, girth);
         _lifts.Insert(isNose ? count : 0, lift);
+        _sways.Insert(isNose ? count : 0, Mathf.Clamp(_sways[end] + (_sways[end] - _sways[next]), -MAX_LIFT, MAX_LIFT));
+        _flats.Insert(isNose ? count : 0, _flats[end]);
         _xs.Insert(isNose ? count : 0, isNose ? _xs[^1] + SPACING : _xs[0] - SPACING);
         Recenter();
         return true;
@@ -287,6 +340,8 @@ public sealed class CreatureSpine
         int count = _girths.Count;
         _girths.RemoveAt(isNose ? count - 1 : 0);
         _lifts.RemoveAt(isNose ? count - 1 : 0);
+        _sways.RemoveAt(isNose ? count - 1 : 0);
+        _flats.RemoveAt(isNose ? count - 1 : 0);
         _xs.RemoveAt(isNose ? count - 1 : 0);
         Recenter();
         return true;
@@ -298,7 +353,7 @@ public sealed class CreatureSpine
     //
     //   Extent   Length of the vertebra span, the ends and the tips of the caps.
     //   Shares   Spine share and bone number of an X and back.
-    //   Curves   Profile radius, spine height and slope at an X.
+    //   Curves   Profile radius, spine height, sideways offset, cross-section and slopes at an X.
     //   Body     Volume of the lofted body and the inside test.
     //
 
@@ -381,7 +436,7 @@ public sealed class CreatureSpine
 
     // ---------------------------------------------------------------------------
     // Curves
-    //   Profile radius, spine height and slope at an X.
+    //   Profile radius, spine height, sideways offset, cross-section and slopes at an X.
     // ---------------------------------------------------------------------------
 
     /// <summary>Profile radius at an X, 0 beyond the tips.</summary>
@@ -409,6 +464,25 @@ public sealed class CreatureSpine
     public float LiftAt(float x)
     {
         return SplineAt(_lifts, Mathf.Clamp(x, _xs[0], _xs[^1]));
+    }
+
+    /// <summary>Sideways offset of the spine at an X (+Z is the right flank), the caps keep the offset of their end vertebra.</summary>
+    public float SwayAt(float x)
+    {
+        return SplineAt(_sways, Mathf.Clamp(x, _xs[0], _xs[^1]));
+    }
+
+    /// <summary>Sideways slope of the spine (dZ / dX) at an X over a wide window: parts turn with the curve.</summary>
+    public float SideSlopeAt(float x)
+    {
+        const float H = 0.12f;
+        return (SwayAt(x + H) - SwayAt(x - H)) / (2f * H);
+    }
+
+    /// <summary>Cross-section at an X: 0 as the body gives it, 1 flat and wide, -1 tall and narrow. The caps keep the value of their end vertebra.</summary>
+    public float FlatAt(float x)
+    {
+        return Mathf.Clamp(SplineAt(_flats, Mathf.Clamp(x, _xs[0], _xs[^1])), -1f, 1f);
     }
 
     /// <summary>Slope of the spine (dY / dX) at an X over a wide window, for the tilt of the rings (smooth, no kinks).</summary>
@@ -469,7 +543,7 @@ public sealed class CreatureSpine
             return false;
         }
         float y = (point.Y - LiftAt(point.X)) / (radius * heightScale);
-        float z = point.Z / (radius * widthScale);
+        float z = (point.Z - SwayAt(point.X)) / (radius * widthScale);
         return y * y + z * z <= 1f;
     }
 }

@@ -1,0 +1,23 @@
+{
+  "key": "TRICERATOPS",
+  "order": 290,
+  "type": "MarineMammal",
+  "girths": [0.4, 0.62, 0.92, 1.0, 0.98, 0.86, 0.7, 0.86, 0.8, 0.5],
+  "gaps": [0.36, 0.3, 0.3, 0.3, 0.26, 0.22, 0.24, 0.34, 0.34],
+  "lifts": [-0.05, 0.08, 0.18, 0.2, 0.16, 0.06, -0.02, -0.04, -0.1, -0.22],
+  "color": "#8c8474",
+  "pattern": "Saddle",
+  "skin": "Scales",
+  "patternColor": "#a8623c",
+  "parts": [
+    { "kind": "ThickTail", "t": 0, "free": true, "size": 0.62, "stretch": [0.7, 1, 1] },
+    { "kind": "CrocEye", "t": 0.84, "free": true, "size": 0.75, "offset": [0.0, 0.0, -0.02], "rotation": [0, 0.3, 0] },
+    { "kind": "Beak", "t": 1, "size": 1.25 },
+    { "kind": "Horns", "t": 0.88 },
+    { "kind": "NeckFrill", "t": 0.68, "size": 1.2 },
+    { "kind": "StubbyLegs", "t": 0.54, "limb": "Neck", "size": 0.85,
+      "joints": [[0.02, -0.26, 0.3], [0.0, -0.58, 0.32], [0.02, -0.88, 0.32]] },
+    { "kind": "StubbyLegs", "t": 0.24, "limb": "Neck", "size": 0.85,
+      "joints": [[0.0, -0.28, 0.32], [0.05, -0.62, 0.34], [0.0, -0.94, 0.34]] }
+  ]
+}

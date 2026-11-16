@@ -60,6 +60,9 @@ public partial class CreatureVisual3D : Node3D
     private const float SPOUT_SECONDS = 0.9f;
     private const float MIN_LAND_LIFT = -0.45f;      // a flat body sinks at most this far to lay its belly on the ground
     private const float MAX_LAND_LIFT = 4f;          // an upright body with long arms rises at most this far
+    private const float BREATH_MIN_GAPE = 0.03f;     // only an open mouth breathes, a closed line stays a line
+    private const float BREATH_SHARE = 0.18f;        // how far the opening widens and narrows
+    private const float BREATH_RATE = 1.7f;
     private const float POSTURE_EASE = 5f;           // how fast the body pitches into its posture (per second)
     private const float CRAWL_WAVE = 0.25f;          // share of the swim wave left on land without legs: the wiggle is its crawl
     private const float WAVE_EASE = 4f;              // per second, the wave fades in and out at the shore
@@ -90,6 +93,9 @@ public partial class CreatureVisual3D : Node3D
 
     /// <summary>Whether the body stands in the posture of its design (CreatureDesign.Pitch). The editor sculpts it level and turns this off.</summary>
     public bool ShowsPosture { get; set; } = true;
+
+    /// <summary>Whether the limbs move (walk, paddle, sway). The editor turns it off: its joint handles sit on the rest pose.</summary>
+    public bool IsMoving { get; set; } = true;
 
     /// <summary>(Optional) A camera that frames the parts after every rebuild (palette tiles). Defaults to none.</summary>
     public Camera3D FitCamera { get; set; }
@@ -213,6 +219,19 @@ public partial class CreatureVisual3D : Node3D
         SetClay("swim_amp", amplitude);
         SetClay("flash", null != Body ? Body.HurtFlash : 0f);
         _parts.Swim(design.HalfLength, amplitude, _phase, isVertical);
+
+        // Limbs: a walk on land, a paddle in the water; the sculpted pose of the editor stays still
+        if (IsMoving)
+        {
+            _parts.MoveLimbs(_phase, speedShare, isOnLand);
+        }
+
+        // The mouth breathes: the opening widens and narrows a little
+        float gape = MouthShapes.For(design)?.Gape ?? -1f;
+        if (gape > BREATH_MIN_GAPE)
+        {
+            SetClay("mouth_gape", gape * (1f + BREATH_SHARE * Mathf.Sin(_time * BREATH_RATE)));
+        }
 
         // ---------------------------------------------------------------------------
         // Posture
@@ -386,6 +405,15 @@ public partial class CreatureVisual3D : Node3D
         SetClay("pattern", (int)design.Pattern);
         SetClay("pattern_color", design.PatternColor ?? color.Darkened(0.45f));
         SetClay("skin", (int)design.Skin);
+        SetClay("pattern_scale", design.PatternScale);
+        SetClay("pattern_wrap", design.PatternWraps ? 1f : 0f);
+        // Color zones: alpha 0 switches a zone off
+        var none = new Color(0f, 0f, 0f, 0f);
+        SetClay("belly_color", design.BellyColor ?? none);
+        SetClay("head_color", design.ZoneColor(CreatureZone.Head) ?? none);
+        SetClay("tail_color", design.ZoneColor(CreatureZone.Tail) ?? none);
+        SetClay("head_from", design.XAt(CreatureDesign.HEAD_SHARE));
+        SetClay("tail_to", design.XAt(CreatureDesign.TAIL_SHARE));
         SetClay("clay_color", color);
         SetClay("seed", null != Body ? Body.AnimSeed : Seed);
         SetClay("knead", Knead);

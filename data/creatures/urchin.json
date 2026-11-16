@@ -1,0 +1,14 @@
+{
+  "key": "URCHIN",
+  "order": 210,
+  "type": "MarineMammal",
+  "girths": [0.75, 1.0, 0.8],
+  "gaps": [0.2, 0.2],
+  "color": "#4a2352",
+  "pattern": "Spots",
+  "patternColor": "#a468cc",
+  "parts": [
+    { "kind": "UrchinSpines", "t": 0.5, "stretch": [1.5, 1, 1], "offset": [0.08, 0, 0] },
+    { "kind": "Eye", "t": 1, "free": true, "size": 1.4 }
+  ]
+}

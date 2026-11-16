@@ -1,0 +1,16 @@
+{
+  "key": "STARFISH",
+  "order": 200,
+  "type": "MarineMammal",
+  "pitch": 90,
+  "skin": "Warts",
+  "girths": [0.8, 0.7, 0.35],
+  "gaps": [0.1, 0.1],
+  "color": "#f08a2c",
+  "pattern": "Spots",
+  "patternColor": "#b8431f",
+  "parts": [
+    { "kind": "StarArm", "t": 0.1, "size": 1.1, "offset": [-0.08, 0, 0], "radial": 5, "rotation": [0, 0, -1.5708] },
+    { "kind": "Eye", "t": 1, "free": true, "size": 1.25, "offset": [0.02, 0.05, 0], "rotation": [0, 0.9, 0] }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "key": "MANTA",
+  "order": 240,
+  "type": "MarineMammal",
+  "girths": [0.3, 0.42, 0.58, 0.66, 0.66, 0.62, 0.56],
+  "gaps": [0.3, 0.3, 0.3, 0.3, 0.3, 0.3],
+  "color": "#eef0f2",
+  "pattern": "Saddle",
+  "patternColor": "#262a36",
+  "parts": [
+    { "kind": "WhipTail", "t": 0, "free": true, "size": 1.0 },
+    { "kind": "BeadEye", "t": 0.78, "free": true, "size": 1.1, "offset": [0.3, -0.02, 0.0] },
+    { "kind": "MantaWing", "t": 0.45, "size": 2.1 },
+    { "kind": "Tentacle", "t": 0.9, "size": 1.0, "joints": [[0.2, 0.02, 0.14], [0.38, -0.02, 0.15], [0.5, -0.07, 0.09]] },
+    { "kind": "Gills", "t": 0.66, "offset": [0, -0.16, -0.06] }
+  ]
+}

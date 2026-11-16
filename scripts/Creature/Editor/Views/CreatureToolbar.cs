@@ -1,7 +1,7 @@
 // NOTE:
 //   The tool column right of the turntable of the creature editor, from top to bottom:
-//   an icon each for body color, skin surface and paint pattern (a click unfolds the
-//   choices, so the column stays short), the spray can with undo
+//   an icon each for color, skin surface and paint pattern (a click unfolds the
+//   choices, so the column stays short; the colors come with one icon per color zone), the spray can with undo
 //   and wipe, the symmetry switch and - and + for vertebrae. A view: it only reports
 //   clicks (events) and shows the state of the session (Refresh).
 //
@@ -38,13 +38,16 @@ public partial class CreatureToolbar : PanelContainer
     //   ColorPicked             A body color was clicked (null = coral default).
     //   PatternPicked           A pattern pill was clicked.
     //   SkinPicked              A skin icon was clicked.
+    //   ZoneColorPicked         A color was clicked for a zone other than the body (null = no color of its own).
+    //   SprayColorPicked        A color of the spray can was clicked (null = dark shade of the body).
     //   PostureChanged          The posture slider moved (degrees, 0 level, 90 upright).
     //   HoverChanged            The hover slider moved (body sizes above the ground on land).
+    //   FlatnessChanged         The flatness slider moved (-1 tall and narrow .. 1 flat and wide).
     //   PatternColorPicked      A second color was clicked (null = dark shade of the body).
     //   Setup                   The panel and its sections from top to bottom.
     //   BuildColorRows          The color and skin icons with their choices, pattern pills and the second color.
     //   Open                    Unfolds the choices of one icon, folds the other.
-    //   BuildSprayButtons       Spray can, undo and wipe.
+    //   BuildSprayButtons       Spray can with its own colors, undo and wipe.
     //   BuildSculptButtons      The symmetry switch and - and + for vertebrae.
     //   AddSliderRow            A label and its slider side by side.
     //   NewSeparator            A thin line between two sections.
@@ -63,8 +66,11 @@ public partial class CreatureToolbar : PanelContainer
     public event System.Action<Color?> ColorPicked;
     public event System.Action<CreaturePattern> PatternPicked;
     public event System.Action<CreatureSkin> SkinPicked;
+    public event System.Action<CreatureZone, Color?> ZoneColorPicked;
+    public event System.Action<Color?> SprayColorPicked;
     public event System.Action<float> PostureChanged;
     public event System.Action<float> HoverChanged;
+    public event System.Action<float> FlatnessChanged;
     public event System.Action<Color?> PatternColorPicked;
 
     private CreatureEditorSession _session;
@@ -82,6 +88,8 @@ public partial class CreatureToolbar : PanelContainer
     private HFlowContainer _patternRow;
     private HFlowContainer _paintRow;
     private readonly List<(CreaturePattern Pattern, Button Button)> _patternButtons = new();
+    private Label _flatLabel;
+    private HSlider _flatSlider;
     private Label _hoverLabel;
     private HSlider _hoverSlider;
     private Label _postureLabel;
@@ -91,6 +99,11 @@ public partial class CreatureToolbar : PanelContainer
     private SkinIcon _patternIcon;
     private Label _iconLabel;
     private HFlowContainer _skinRow;
+    private HFlowContainer _sprayRow;
+    private readonly List<(Color? Color, Button Swatch)> _spraySwatches = new();
+    private HFlowContainer _zoneRow;
+    private readonly List<ZoneIcon> _zoneIcons = new();
+    private CreatureZone _zone = CreatureZone.Body;      // the zone the swatches paint
     private readonly List<SkinIcon> _skinTiles = new();
     private readonly List<(Color? Color, Button Swatch)> _patternSwatches = new();
 
@@ -147,11 +160,40 @@ public partial class CreatureToolbar : PanelContainer
         foreach (Color? swatchColor in swatchColors)
         {
             var swatch = new Button { CustomMinimumSize = new Vector2(30, 30), FocusMode = FocusModeEnum.None };
-            swatch.Pressed      += () => ColorPicked?.Invoke(swatchColor);
+            // The swatches paint the picked zone; a see-through color only fits the whole body
+            swatch.Pressed      += () =>
+            {
+                if (CreatureZone.Body == _zone)
+                {
+                    ColorPicked?.Invoke(swatchColor);
+                }
+                else if (null == swatchColor || swatchColor.Value.A >= 0.99f)
+                {
+                    ZoneColorPicked?.Invoke(_zone, swatchColor);
+                }
+            };
             swatch.MouseEntered += () => EditorStyle.ScaleTo(swatch, 1.15f);
             swatch.MouseExited  += () => EditorStyle.ScaleTo(swatch, 1f);
             _swatchRow.AddChild(swatch);
             _swatches.Add((swatchColor, swatch));
+        }
+
+        // Color zones: one icon per zone (body, belly, head, limbs, tail end). The picked one takes the swatches above:
+        // their first swatch is the default for the body and "no color of its own" for every other zone
+        _zoneRow = new HFlowContainer { Visible = false };
+        _zoneRow.AddThemeConstantOverride("h_separation", 4);
+        _zoneRow.AddThemeConstantOverride("v_separation", 4);
+        _sections.AddChild(_zoneRow);
+        foreach (CreatureZone zone in System.Enum.GetValues<CreatureZone>())
+        {
+            var icon = new ZoneIcon { Zone = zone, CustomMinimumSize = new Vector2(40, 32) };
+            icon.Pressed += () =>
+            {
+                _zone = zone;
+                Refresh();
+            };
+            _zoneRow.AddChild(icon);
+            _zoneIcons.Add(icon);
         }
 
         // Skin: one icon per surface (smooth, scales, warts), drawn in the body color
@@ -205,9 +247,11 @@ public partial class CreatureToolbar : PanelContainer
     {
         bool wasOpen = row.Visible;
         _swatchRow.Visible  = false;
+        _zoneRow.Visible    = false;
         _skinRow.Visible    = false;
         _patternRow.Visible = false;
         row.Visible        = !wasOpen;
+        _zoneRow.Visible   = _swatchRow.Visible;      // the zones belong to the colors
         Refresh();
     }
 
@@ -221,7 +265,29 @@ public partial class CreatureToolbar : PanelContainer
         _undoSprayButton.Pressed += () => UndoSprayPressed?.Invoke();
         _clearSprayButton       = CreatureEditorUi.NewPillButton(new Vector2(0, 34), 14);
         _clearSprayButton.Pressed += () => ClearSprayPressed?.Invoke();
-        foreach (Button button in new[] { _sprayButton, _undoSprayButton, _clearSprayButton })
+        EditorStyle.ApplyButton(_sprayButton, EditorStyle.RIM_COLOR);
+        _sections.AddChild(_sprayButton);
+
+        // The colors of the can, its own choice apart from the pattern: only while the can is on (Refresh)
+        _sprayRow = new HFlowContainer { Visible = false };
+        _sprayRow.AddThemeConstantOverride("h_separation", 6);
+        _sprayRow.AddThemeConstantOverride("v_separation", 6);
+        _sections.AddChild(_sprayRow);
+        var sprayColors = new List<Color?> { null };
+        foreach (Color color in EditorStyle.BODY_SWATCHES.Where(color => color.A >= 0.99f))
+        {
+            sprayColors.Add(color);
+        }
+        foreach (Color? sprayColor in sprayColors)
+        {
+            var swatch = new Button { CustomMinimumSize = new Vector2(24, 24), FocusMode = FocusModeEnum.None, SizeFlagsVertical = SizeFlags.ShrinkCenter };
+            swatch.Pressed      += () => SprayColorPicked?.Invoke(sprayColor);
+            swatch.MouseEntered += () => EditorStyle.ScaleTo(swatch, 1.15f);
+            swatch.MouseExited  += () => EditorStyle.ScaleTo(swatch, 1f);
+            _sprayRow.AddChild(swatch);
+            _spraySwatches.Add((sprayColor, swatch));
+        }
+        foreach (Button button in new[] { _undoSprayButton, _clearSprayButton })
         {
             EditorStyle.ApplyButton(button, EditorStyle.RIM_COLOR);
             _sections.AddChild(button);
@@ -242,6 +308,12 @@ public partial class CreatureToolbar : PanelContainer
         _hoverSlider = new HSlider { MinValue = 0, MaxValue = CreatureLook.MAX_HOVER, Step = 0.1 };
         _hoverSlider.ValueChanged += value => HoverChanged?.Invoke((float)value);
         AddSliderRow(_hoverLabel, _hoverSlider);
+
+        // Flatness: the cross-section from tall and narrow over round to pressed flat
+        _flatLabel  = new Label { CustomMinimumSize = new Vector2(SLIDER_LABEL_WIDTH, 0f) };
+        _flatSlider = new HSlider { MinValue = -1, MaxValue = 1, Step = 0.1 };
+        _flatSlider.ValueChanged += value => FlatnessChanged?.Invoke((float)value);
+        AddSliderRow(_flatLabel, _flatSlider);
 
         // Symmetry: two icons that exclude each other. The axis icon mirrors new parts (a second click turns it
         // off: single halves), the ring icon sets them in a ring around the spine, one more per click up to the maximum
@@ -313,6 +385,8 @@ public partial class CreatureToolbar : PanelContainer
         _postureSlider.SetValueNoSignal(degrees);
         _hoverLabel.Text = string.Format(Tr("CREATURE_HOVER"), draft.Hover.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture));
         _hoverSlider.SetValueNoSignal(draft.Hover);
+        _flatLabel.Text = string.Format(Tr("CREATURE_FLATNESS"), draft.Flatness.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture));
+        _flatSlider.SetValueNoSignal(draft.Flatness);
         _addButton.Text           = Tr("CREATURE_ADD_VERTEBRA");
         _removeButton.Text        = Tr("CREATURE_REMOVE_VERTEBRA");
         _sprayButton.Text         = Tr("CREATURE_SPRAY");
@@ -355,22 +429,39 @@ public partial class CreatureToolbar : PanelContainer
         _patternIcon.TooltipText = Tr($"CREATURE_PATTERN_{draft.Pattern}".ToUpperInvariant());
         _iconLabel.Text = _skinRow.Visible ? Tr($"CREATURE_SKIN_{draft.Skin}".ToUpperInvariant())
             : _patternRow.Visible ? Tr($"CREATURE_PATTERN_{draft.Pattern}".ToUpperInvariant())
-            : _swatchRow.Visible ? Tr("CREATURE_TOOL_COLOR") : "";
+            : _swatchRow.Visible ? Tr($"CREATURE_ZONE_{_zone}".ToUpperInvariant()) : "";
         foreach (SkinIcon tile in _skinTiles)
         {
             tile.Tint        = _session.DraftColor;
             tile.IsPicked    = tile.Skin == draft.Skin;
             tile.TooltipText = Tr($"CREATURE_SKIN_{tile.Skin}".ToUpperInvariant());
         }
-        // The second color shows with the open pattern choices, and always while the spray can is on (it sprays that color)
-        _paintRow.Visible = (_patternRow.Visible && CreaturePattern.None != draft.Pattern) || _session.IsSpraying;
+        // The second color belongs to the pattern, the can has colors of its own
+        _paintRow.Visible = _patternRow.Visible && CreaturePattern.None != draft.Pattern;
+        _sprayRow.Visible = _session.IsSpraying;
+        foreach ((Color? sprayColor, Button swatch) in _spraySwatches)
+        {
+            EditorStyle.ApplySwatch(swatch, sprayColor ?? _session.DraftColor.Darkened(0.45f), sprayColor == _session.PickedSprayColor);
+        }
         foreach ((Color? paintColor, Button swatch) in _patternSwatches)
         {
             EditorStyle.ApplySwatch(swatch, paintColor ?? _session.DraftColor.Darkened(0.45f), paintColor == draft.PatternColor);
         }
+        // Zone icons in their colors, the swatches show what the picked zone wears
+        foreach (ZoneIcon icon in _zoneIcons)
+        {
+            icon.Body        = _session.DraftColor;
+            icon.Fill        = CreatureZone.Body == icon.Zone ? _session.DraftColor : draft.ZoneColor(icon.Zone);
+            icon.IsPicked    = icon.Zone == _zone;
+            icon.TooltipText = Tr($"CREATURE_ZONE_{icon.Zone}".ToUpperInvariant());
+        }
+        Color? worn = draft.ZoneColor(_zone);
         foreach ((Color? swatchColor, Button swatch) in _swatches)
         {
-            EditorStyle.ApplySwatch(swatch, swatchColor ?? Player.ORGANISM_COLOR, swatchColor == draft.Color);
+            // The first swatch: the default color for the body, the plain body color (no zone) for the others
+            Color shown = swatchColor ?? (CreatureZone.Body == _zone ? Player.ORGANISM_COLOR : _session.DraftColor);
+            EditorStyle.ApplySwatch(swatch, shown, swatchColor == worn);
+            swatch.Disabled = CreatureZone.Body != _zone && null != swatchColor && swatchColor.Value.A < 0.99f;
         }
     }
 

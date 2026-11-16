@@ -86,14 +86,15 @@ public partial class CreatureShot : Node
         AddView(grid, design, middle, new Vector3(1f, 0.1f, 0f), Vector3.Up, span * 1.1f);
     }
 
-    private static void AddView(GridContainer grid, CreatureDesign design, Vector3 middle, Vector3 from, Vector3 up, float span, int perRow = 2)
+    private void AddView(GridContainer grid, CreatureDesign design, Vector3 middle, Vector3 from, Vector3 up, float span, int perRow = 2)
     {
         Vector2I size = (Vector2I)(grid.GetViewportRect().Size / perRow);
         var container = new SubViewportContainer { Stretch = true, CustomMinimumSize = size };
         grid.AddChild(container);
         SubViewport viewport = PartIcon.NewStudio(size);
         container.AddChild(viewport);
-        viewport.AddChild(new CreatureVisual3D { Design = design, BodyColor = design.Color ?? Player.ORGANISM_COLOR, Knead = CreatureVisual3D.LIVING_KNEAD });
+        var visual = new CreatureVisual3D { Design = design, BodyColor = design.Color ?? Player.ORGANISM_COLOR, Knead = CreatureVisual3D.LIVING_KNEAD };
+        viewport.AddChild(visual);
 
         // The camera backs off until the whole span fits the width of the view
         float   distance = span * 0.5f / Mathf.Tan(Mathf.DegToRad(FOV * 0.5f)) / ((float)size.X / size.Y) * 1.0f;
@@ -101,11 +102,52 @@ public partial class CreatureShot : Node
         var camera = new Camera3D { Fov = FOV, Current = true };
         camera.Transform = new Transform3D(Basis.LookingAt(-offset, up), middle + offset);
         viewport.AddChild(camera);
+        _views.Add((camera, visual, from.Normalized(), up));
+    }
+
+    private const int FIT_FRAME = 4;                 // the visuals are built by then
+    private const float FIT_MARGIN = 0.84f;          // below 1: the bounding sphere is a loose fit for a long animal in a wide picture
+
+    private readonly System.Collections.Generic.List<(Camera3D Camera, CreatureVisual3D Visual, Vector3 From, Vector3 Up)> _views = new();
+
+    /*
+      The first guess of the camera only knows the spine. Once the visual is built, every
+      view backs off until the bounding sphere of all its meshes fits: legs, tails, a
+      bell on an upright body and the tips of long arms stay inside the picture.
+    */
+    private void FitViews()
+    {
+        foreach ((Camera3D camera, CreatureVisual3D visual, Vector3 from, Vector3 up) in _views)
+        {
+            Aabb? bounds = null;
+            foreach (MeshInstance3D mesh in System.Linq.Enumerable.OfType<MeshInstance3D>(visual.FindChildren("*", nameof(MeshInstance3D), true, false)))
+            {
+                Transform3D toVisual = Transform3D.Identity;
+                for (Node node = mesh; node != visual && node is Node3D node3D; node = node.GetParent())
+                {
+                    toVisual = node3D.Transform * toVisual;
+                }
+                Aabb box = toVisual * mesh.GetAabb();
+                bounds = null == bounds ? box : bounds.Value.Merge(box);
+            }
+            if (null == bounds)
+            {
+                continue;
+            }
+            Vector3 center   = bounds.Value.GetCenter();
+            float   radius   = Mathf.Max(bounds.Value.Size.Length() * 0.5f, 0.05f);
+            Vector3 offset   = from * (radius / Mathf.Sin(Mathf.DegToRad(FOV * 0.5f)) * FIT_MARGIN);
+            camera.Transform = new Transform3D(Basis.LookingAt(-offset, up), center + offset);
+        }
     }
 
     public override void _Process(double delta)
     {
         _frame++;
+        if (FIT_FRAME == _frame)
+        {
+            FitViews();
+        }
         if (_frame >= QUIT_FRAME)
         {
             GetTree().Quit();

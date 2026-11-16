@@ -79,7 +79,7 @@ public partial class CreatureSprayCan : Node
         bool isSprayed = draft.AddSplat(hit, Radius, _session.SprayColor, id);
         if (isSprayed && _session.IsSymmetric && Mathf.Abs(hit.Z) > MIRROR_EPSILON)
         {
-            draft.AddSplat(new Vector3(hit.X, hit.Y, -hit.Z), Radius, _session.SprayColor, id);
+            draft.AddSplat(new Vector3(hit.X, hit.Y, 2f * draft.SwayAt(hit.X) - hit.Z), Radius, _session.SprayColor, id);
         }
         return isSprayed;
     }

@@ -187,6 +187,12 @@ public sealed class CreatureStats
                 case CreaturePartKind.SharkTail:
                 case CreaturePartKind.NewtTail:
                 case CreaturePartKind.CrocTail:
+                case CreaturePartKind.TuftTail:
+                case CreaturePartKind.TailFeathers:
+                case CreaturePartKind.WhipTail:
+                case CreaturePartKind.TailFan:
+                case CreaturePartKind.Rattle:
+                case CreaturePartKind.ThickTail:
                 case CreaturePartKind.MantleFins:
                     stats.SwimSpeed *= effects.CaudalFinSwim;
                     break;
@@ -203,6 +209,8 @@ public sealed class CreatureStats
                 case CreaturePartKind.DorsalFin:
                 case CreaturePartKind.SharkFin:
                 case CreaturePartKind.TallFin:
+                case CreaturePartKind.Mane:
+                case CreaturePartKind.CrestFeathers:
                 case CreaturePartKind.FinRibbon:
                 case CreaturePartKind.OralArms:
                     stats.Acceleration *= effects.DorsalFinAcceleration;
@@ -210,6 +218,10 @@ public sealed class CreatureStats
                 case CreaturePartKind.PectoralFin:
                 case CreaturePartKind.Flipper:
                 case CreaturePartKind.Paddle:
+                case CreaturePartKind.BigEars:
+                case CreaturePartKind.PenguinFlipper:
+                case CreaturePartKind.StarArm:
+                case CreaturePartKind.MantaWing:
                 case CreaturePartKind.SickleFin:
                 case CreaturePartKind.RoundFlipper:
                 case CreaturePartKind.HindPaddle:
@@ -221,6 +233,9 @@ public sealed class CreatureStats
                 case CreaturePartKind.NeedleMaw:
                 case CreaturePartKind.SharkMaw:
                 case CreaturePartKind.CrocMaw:
+                case CreaturePartKind.Fangs:
+                case CreaturePartKind.ForkTongue:
+                case CreaturePartKind.RexMaw:
                 case CreaturePartKind.OrcaMaw:
                 case CreaturePartKind.GapeMaw:
                 case CreaturePartKind.SquidBeak:
@@ -234,6 +249,7 @@ public sealed class CreatureStats
                     break;
                 case CreaturePartKind.Beak:
                 case CreaturePartKind.PufferMouth:
+                case CreaturePartKind.ParrotBeak:
                 case CreaturePartKind.CrabMouth:
                 case CreaturePartKind.Smile:
                     stats.DigestPlant *= effects.BeakDigestPlant;
@@ -249,6 +265,14 @@ public sealed class CreatureStats
                 case CreaturePartKind.NautilusShell:
                 case CreaturePartKind.BackPlates:
                 case CreaturePartKind.JellyBell:
+                case CreaturePartKind.Ossicones:
+                case CreaturePartKind.Tusks:
+                case CreaturePartKind.UrchinSpines:
+                case CreaturePartKind.Stinger:
+                case CreaturePartKind.Casque:
+                case CreaturePartKind.Horns:
+                case CreaturePartKind.NeckFrill:
+                case CreaturePartKind.SpineCrest:
                     stats._plateAngles.AddRange(BACK_AND_FLANKS);
                     stats.Health    *= effects.ShellHealth;
                     stats.SwimSpeed *= effects.ShellSwim;
@@ -271,6 +295,7 @@ public sealed class CreatureStats
                 case CreaturePartKind.TurretEye:
                 case CreaturePartKind.FrogEye:
                 case CreaturePartKind.CrocEye:
+                case CreaturePartKind.SpiderEyes:
                     stats.MagnetBonus += effects.EyeMagnet * share;
                     break;
                 case CreaturePartKind.StalkEye:
@@ -306,6 +331,9 @@ public sealed class CreatureStats
                 case CreaturePartKind.CrabLegs:
                 case CreaturePartKind.WebbedFeet:
                 case CreaturePartKind.CrocFeet:
+                case CreaturePartKind.ElephantFeet:
+                case CreaturePartKind.Hooves:
+                case CreaturePartKind.BirdFeet:
                     stats.SwimSpeed *= Scaled(effects.LimbDrag);
                     break;
                 // Hands grab food, claws scratch at both front flanks (a single claw at its own flank,

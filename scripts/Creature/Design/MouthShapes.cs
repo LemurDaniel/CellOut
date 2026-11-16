@@ -145,6 +145,11 @@ public static class MouthShapes
     /// <returns>The shape of its mouth kind, PLAIN without a mouth part, null when its kind cuts no opening (a beak, a tube).</returns>
     public static MouthShape For(CreatureDesign design)
     {
+        // A bare face (CreatureDesign.HasMouthLine off) cuts nothing, whatever mouth part it carries
+        if (!design.HasMouthLine)
+        {
+            return null;
+        }
         foreach (CreaturePart part in design.Parts)
         {
             // A mouth on a limb joint cuts into its own little head there, not into the body
@@ -153,7 +158,7 @@ public static class MouthShapes
                 return Current.TryGetValue(part.Kind, out MouthShape shape) ? shape : null;
             }
         }
-        return PLAIN;
+        return design.HasMouthLine ? PLAIN : null;
     }
 
     /// <summary>Reads the file through Godot, so it also works from an exported pack.</summary>

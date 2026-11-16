@@ -30,7 +30,7 @@ public static class CreatureClay
     //   AddFillet       A soft clay ball where a part grows out of the body.
     //
 
-    private const int RINGS = 96;                   // rings along the body, fine enough for a smooth silhouette
+    private const int RINGS = 144;                  // rings along the body: fine enough for a smooth silhouette and for the steps of the plate skin
     private const int SEGMENTS = 40;
     private const float LIFT_RANGE = 2f;            // spine heights up to this are carried in the vertex color (clay.gdshaderinc, LIFT_RANGE)
     private const float RING_TILT = 0.6f;           // share of the spine slope the rings tilt by: full tilt folds the inside of a bend
@@ -55,12 +55,14 @@ public static class CreatureClay
             float x      = Mathf.Lerp(design.TailTipX, design.NoseTipX, u);
             float radius = 0 == i || RINGS == i ? 0f : design.RadiusAt(x);
             // The ring sits on the bent spine and tilts with it: its up axis is perpendicular to the slope
-            var     center = new Vector3(x, design.LiftAt(x), 0f);
+            Vector3 center = design.CenterAt(x);
+            float   height = design.HeightScaleAt(x);
+            float   width  = design.WidthScaleAt(x);
             Vector3 up     = new Vector3(-design.SlopeAt(x) * RING_TILT, 1f, 0f).Normalized();
             for (int j = 0; j < SEGMENTS; j++)
             {
                 float   angle  = Mathf.Tau * j / SEGMENTS;
-                Vector3 vertex = center + up * (Mathf.Sin(angle) * radius * design.HeightScale) + Vector3.Back * (Mathf.Cos(angle) * radius * design.WidthScale);
+                Vector3 vertex = center + up * (Mathf.Sin(angle) * radius * height) + Vector3.Back * (Mathf.Cos(angle) * radius * width);
                 // The shader draws the mouth line per pixel from this mark, sharper than the mesh could cut it
                 // In UV2: primitive meshes sharing the clay (fillets, knuckles) bring their own UV, but no UV2
                 surface.SetUV2(null == mouth ? Vector2.Zero : CarveMouth(design, mouth, center, ref vertex));
@@ -158,8 +160,9 @@ public static class CreatureClay
     /// <param name="path">(Required) The shoulder and every joint, in limb space.</param>
     /// <param name="tipRadius">(Optional) Radius at the tip. Defaults to LIMB_TIP_RADIUS.</param>
     /// <param name="rootRadius">(Optional) Radius at the shoulder. Defaults to LIMB_ROOT_RADIUS.</param>
+    /// <param name="widths">(Optional) Thickness factor per point of the path, blended along the tube. Defaults to 1 everywhere.</param>
     /// <returns>The tube mesh in limb space.</returns>
-    public static ArrayMesh LimbMesh(IReadOnlyList<Vector3> path, float tipRadius = LIMB_TIP_RADIUS, float rootRadius = LIMB_ROOT_RADIUS)
+    public static ArrayMesh LimbMesh(IReadOnlyList<Vector3> path, float tipRadius = LIMB_TIP_RADIUS, float rootRadius = LIMB_ROOT_RADIUS, IReadOnlyList<float> widths = null)
     {
         // Smoothed samples, thick at the shoulder, thin at the tip
         var samples = new List<Vector3>();
@@ -186,7 +189,11 @@ public static class CreatureClay
             }
             normal = (normal - tangent * normal.Dot(tangent)).Normalized();   // parallel transport
             Vector3 binormal = tangent.Cross(normal);
-            float   radius   = Mathf.Lerp(rootRadius, tipRadius, (float)i / (samples.Count - 1));
+            // The factor of the two path points around this sample, blended smoothly between them
+            float   along    = (float)i / LIMB_STEPS;
+            int     point    = Mathf.Min(Mathf.FloorToInt(along), path.Count - 2);
+            float   width    = null == widths ? 1f : Mathf.Lerp(WidthOf(widths, point), WidthOf(widths, point + 1), Mathf.SmoothStep(0f, 1f, along - point));
+            float   radius   = Mathf.Lerp(rootRadius, tipRadius, (float)i / (samples.Count - 1)) * width;
             for (int j = 0; j < LIMB_SEGMENTS; j++)
             {
                 float angle = Mathf.Tau * j / LIMB_SEGMENTS;
@@ -211,6 +218,11 @@ public static class CreatureClay
         }
         surface.GenerateNormals();
         return surface.Commit();
+    }
+
+    private static float WidthOf(IReadOnlyList<float> widths, int point)
+    {
+        return point >= 0 && point < widths.Count ? widths[point] : 1f;
     }
 
     /*

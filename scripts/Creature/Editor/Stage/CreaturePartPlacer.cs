@@ -78,13 +78,54 @@ public partial class CreaturePartPlacer : Node
         return true;
     }
 
-    /// <summary>Places a part where a point of the clay was hit; with symmetry off a side part goes to that flank only.</summary>
+    /*
+      Every part lands where it was dropped: it is built on its own spot (a tail at the
+      tail tip, a fin on the back) and shifted from there to the hit. Parts of the back and
+      the flanks also turn around the spine, so they stand out of the skin where they landed
+      (a back fin dropped on the flank points sideways). A paired part stores its right
+      half, a hit on the left flank is mirrored first.
+    */
+    private static void MoveToHit(CreatureDesign draft, int index, Vector3 hit)
+    {
+        CreaturePart part   = draft.Parts[index];
+        float        sway   = draft.SwayAt(hit.X);
+        bool         isPair = part.Info.IsPaired;
+        Vector3      target = isPair ? new Vector3(hit.X, hit.Y, sway + Mathf.Abs(hit.Z - sway)) : hit;
+        Vector3      anchor = draft.NaturalAnchor(part);
+        Vector3      turn   = Vector3.Zero;
+        if (CreatureMount.Top == part.Info.Mount || CreatureMount.Flank == part.Info.Mount)
+        {
+            // Angle around the spine, 0 out of the right flank, a quarter turn on the back
+            float lift  = draft.LiftAt(hit.X);
+            float own   = Mathf.Atan2(anchor.Y - lift, anchor.Z - sway);
+            float wanted = Mathf.Atan2(target.Y - lift, target.Z - sway);
+            turn = new Vector3(own - wanted, 0f, 0f);
+        }
+        draft.SetPartPose(index, target - anchor, turn);
+    }
+
+    private const float CENTER_ZONE = 0.3f;          // share of the flank width around the middle of the back that counts as the middle
+
+    /// <summary>Places a part where a point of the clay was hit; with symmetry off a side part goes to that flank only, a limb on the middle of the back grows from there.</summary>
     /// <param name="kind">(Required) The part to place.</param>
     /// <param name="hit">(Required) Point on or in the clay, unit space.</param>
     /// <returns>True when the part was placed and paid.</returns>
     public bool PlaceAt(CreaturePartKind kind, Vector3 hit)
     {
-        return TryPlace(kind, _session.Draft.TAt(hit.X), _session.SideAt(hit));
+        if (!TryPlace(kind, _session.Draft.TAt(hit.X), _session.SideAt(hit)))
+        {
+            return false;
+        }
+        CreatureDesign draft = _session.Draft;
+        MoveToHit(draft, draft.Parts.Count - 1, hit);
+
+        // With symmetry off a limb dropped on the middle of the back grows from there: a neck, a trunk, a second tail
+        bool isOnMiddle = Mathf.Abs(hit.Z - draft.SwayAt(hit.X)) < CENTER_ZONE * draft.FlankAt(hit.X) && hit.Y > draft.LiftAt(hit.X);
+        if (isOnMiddle && !_session.IsSymmetric && _session.RadialCount < 2 && null != draft.Parts[^1].Joints)
+        {
+            draft.SetPartCentered(draft.Parts.Count - 1, true);
+        }
+        return true;
     }
 
     /// <summary>

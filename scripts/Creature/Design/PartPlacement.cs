@@ -36,7 +36,7 @@ public static class PartPlacement
 
     public const float MIN_FREE_T = 0.1f;           // back and flank parts stay off the very ends
     public const float MAX_FREE_T = 0.92f;
-    public const float MIN_PART_GAP = 0.14f;        // share of the spine between two parts on the same mount
+    public const float SAME_SPOT = 0.02f;           // the same part this close to itself (and not shifted) is a double click, not a second part
     public const float REMOVE_DISTANCE = 0.18f;
 
     /// <summary>The side a part really takes: only paired parts can be a single half.</summary>
@@ -65,24 +65,23 @@ public static class PartPlacement
             return false;
         }
 
-        switch (info.Mount)
-        {
-            // Tail, nose and skull: one part each
-            case CreatureMount.Tail:
-                return !parts.Any(part => CreatureMount.Tail == part.Info.Mount);
-            case CreatureMount.Head:
-            case CreatureMount.Skull:
-                snapped = 1f;
-                return !parts.Any(part => info.Mount == part.Info.Mount);
-            // Back, flanks and inside: anywhere between the ends with a gap to parts on the same mount and side
-            default:
-                float spot     = Mathf.Clamp(t, MIN_FREE_T, MAX_FREE_T);
-                int   resolved = SideFor(kind, side);
-                snapped = spot;
-                return !parts.Any(part => 0 == part.ParentId && info.Mount == part.Info.Mount
-                    && Mathf.Abs(part.T - spot) < MIN_PART_GAP
-                    && IsSideShared(resolved, part.Side));
-        }
+        /*
+          Every part may sit anywhere and as often as the points reach (decision of the user
+          2026-11-16): no slot per mount, no gap to the neighbors. The mount only says where a
+          part is built by itself (a tail at the tail tip, a mouth at the nose, the rest at its
+          share of the spine); the editor shifts it from there to where it was dropped
+          (CreatureDesign.SetPartPose). Refused is only the same part twice on the very same
+          spot: a double click must not stack two.
+        */
+        int resolved = SideFor(kind, side);
+        snapped = CreatureMount.Tail == info.Mount ? 0f
+            : CreatureMount.Head == info.Mount || CreatureMount.Skull == info.Mount ? 1f
+            : Mathf.Clamp(t, 0f, 1f);
+        float spot = snapped;
+        return !parts.Any(part => 0 == part.ParentId && kind == part.Kind
+            && Mathf.Abs(part.T - spot) < SAME_SPOT
+            && part.Offset.LengthSquared() < SAME_SPOT * SAME_SPOT
+            && IsSideShared(resolved, part.Side));
     }
 
     /// <summary>A pair covers both flanks, two single halves only clash on the same flank.</summary>

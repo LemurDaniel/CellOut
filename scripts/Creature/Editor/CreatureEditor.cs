@@ -429,10 +429,10 @@ public partial class CreatureEditor : CanvasLayer
         }
         switch (@event)
         {
-            // Wheel over a vertebra handle: girth, over the picked part: size, anywhere else: zoom
+            // Wheel over a vertebra handle: girth, over a joint handle: thickness of the limb there, over the picked part: size, anywhere else: zoom
             case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.WheelUp or MouseButton.WheelDown } wheel:
                 float notch = MouseButton.WheelUp == wheel.ButtonIndex ? 1f : -1f;
-                if (_handles.ScrollGirth(wheel.Position, notch))
+                if (_handles.ScrollGirth(wheel.Position, notch) || _handles.ScrollJoint(wheel.Position, notch))
                 {
                     break;
                 }
@@ -660,8 +660,11 @@ public partial class CreatureEditor : CanvasLayer
         _toolbar.ColorPicked           += PickColor;
         _toolbar.PatternPicked         += PickPattern;
         _toolbar.SkinPicked            += PickSkin;
+        _toolbar.ZoneColorPicked       += (zone, color) => _session.SetZoneColor(zone, color);
+        _toolbar.SprayColorPicked      += color => _session.SetSprayColor(color);
         _toolbar.PostureChanged        += degrees => _session.SetPosture(degrees);
         _toolbar.HoverChanged          += hover => _session.SetHover(hover);
+        _toolbar.FlatnessChanged       += flatness => _session.SetFlatness(flatness);
         _toolbar.PatternColorPicked    += PickPatternColor;
 
         _tabs = new CreatureCategoryTabs();

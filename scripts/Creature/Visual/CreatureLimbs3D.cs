@@ -14,9 +14,11 @@
 //   Chapters:
 //     BUILD LIMBS      The tube per flank, its root on the body or a parent and the end on the tip.
 //     REMEMBER LIMBS   Posed joint points for branches and the limb frames of the editor.
+//     MOVE LIMBS       The walk on land, the paddle in the water, the sway of soft limbs.
 //
 
 using System.Collections.Generic;
+using System.Linq;
 using Godot;
 
 namespace CellOut;
@@ -99,17 +101,18 @@ public sealed class CreatureLimbs3D
             // Hard segments: every one a straight spindle of its own, thick after the joint, thin before the next
             for (int i = 0; i < path.Count - 1; i++)
             {
-                float from = Mathf.Lerp(look.Root, tipRadius, (float)i / (path.Count - 1));
-                float to   = i == path.Count - 2 ? tipRadius : Mathf.Lerp(look.Root, tipRadius, (float)(i + 1) / (path.Count - 1)) * SEGMENT_WAIST;
+                float from = Mathf.Lerp(look.Root, tipRadius, (float)i / (path.Count - 1)) * part.WidthAt(i);
+                float to   = (i == path.Count - 2 ? tipRadius : Mathf.Lerp(look.Root, tipRadius, (float)(i + 1) / (path.Count - 1)) * SEGMENT_WAIST) * part.WidthAt(i + 1);
                 tubes.Add(CreatureClay.LimbMesh(new[] { path[i], path[i + 1] }, to, from));
             }
         }
         else
         {
-            tubes.Add(CreatureClay.LimbMesh(path, tipRadius, look.Root));
+            tubes.Add(CreatureClay.LimbMesh(path, tipRadius, look.Root, part.Widths));
         }
         Material joints = look.IsSegmented ? CellVisual3D.Material(color.Darkened(0.4f), 0f, 0.5f) : _knuckleClay;
-        foreach (float side in new[] { -1f, 1f })
+        // A centered limb grows out of the middle of the back: one piece, no mirror half
+        foreach (float side in part.IsCentered ? new[] { 1f } : new[] { -1f, 1f })
         {
             var piece = new Node3D { Position = RootOn(design, part, (int)side) - pivot.Position, Scale = new Vector3(1f, 1f, side) };
             pivot.AddChild(piece);
@@ -117,7 +120,7 @@ public sealed class CreatureLimbs3D
             {
                 CellVisual3D.AddMesh(piece, tube, _limbClay, Vector3.Zero, Vector3.One);
             }
-            CreatureClay.AddFillet(piece, Vector3.Zero, look.Root * CreatureClay.LIMB_FILLET, _knuckleClay);
+            CreatureClay.AddFillet(piece, Vector3.Zero, look.Root * part.WidthAt(0) * CreatureClay.LIMB_FILLET, _knuckleClay);
             for (int i = 1; look.Knuckle > 0f && i < path.Count; i++)
             {
                 bool  isTip  = i == path.Count - 1;
@@ -125,7 +128,7 @@ public sealed class CreatureLimbs3D
                 {
                     continue;                        // the foot or hand takes the place of the tip knob, a hard leg ends in a point
                 }
-                float radius = Mathf.Lerp(look.Root, tipRadius, (float)i / (path.Count - 1)) * (isTip ? 1.35f : 1.12f) * look.Knuckle;
+                float radius = Mathf.Lerp(look.Root, tipRadius, (float)i / (path.Count - 1)) * (isTip ? 1.35f : 1.12f) * look.Knuckle * part.WidthAt(i);
                 CellVisual3D.AddMesh(piece, CellVisual3D.SphereMesh(), joints, path[i], Vector3.One * radius);
             }
             if (look.TipBead > 0f && !hasEnd)
@@ -165,8 +168,10 @@ public sealed class CreatureLimbs3D
                 return mirrored[joint] * new Vector3(1f, 1f, -1f);
             }
         }
+        // The left shoulder mirrors the right one about the spine, which may lie beside the middle (sway)
         Vector3 root = design.LimbRoot(part);
-        return new Vector3(root.X, root.Y, side * root.Z);
+        float   sway = design.SwayAt(root.X);
+        return new Vector3(root.X, root.Y, sway + side * (root.Z - sway));
     }
 
     /*
@@ -201,6 +206,7 @@ public sealed class CreatureLimbs3D
     //
     //   TakeBuilt     The pieces built since the last call, for the owner to pose and measure.
     //   Remember      Stores the posed piece of a limb and its joint points.
+    //   IsOnLimb      Whether a node hangs on a limb, for the limb color zone.
     //   PiecesOf      The posed pieces of a limb, for the parts sitting on its joints.
     //   TryGetFrame   Where a sculpted limb sits, for the joint handles of the editor.
     //
@@ -225,6 +231,19 @@ public sealed class CreatureLimbs3D
     {
         _limbFrames.Add((index, flank, piece));
         _jointPoints[(index, flank)] = points;
+    }
+
+    /// <summary>Whether a node hangs on a limb (its tube, a knuckle, the foot or hand): the limb color zone covers it.</summary>
+    public bool IsOnLimb(Node node)
+    {
+        for (Node above = node; null != above; above = above.GetParent())
+        {
+            if (above is Node3D piece && _limbFrames.Any(frame => frame.Piece == piece))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     /// <summary>The posed pieces of a limb, one per flank it has: parts on its joints hang on them and follow pose and swim wave.</summary>
@@ -257,5 +276,65 @@ public sealed class CreatureLimbs3D
         }
         frame = Transform3D.Identity;
         return false;
+    }
+
+    // ===========================================================================
+    // =============================   MOVE LIMBS   ==============================
+    // ===========================================================================
+    //
+    //   Move   Swings every limb around its shoulder: a walk on land, a paddle in the water, a slow sway at rest.
+    //
+
+    private const float WALK_SWING = 0.42f;          // radians a walking leg swings to each side at full speed
+    private const float PADDLE_SWING = 0.2f;         // a limb paddling in the water
+    private const float IDLE_SWING = 0.05f;          // every limb breathes a little at rest
+    private const float SOFT_SWING = 0.12f;          // tentacles, feelers and necks sway on their own, also at rest
+    private const float SOFT_RATE = 0.35f;           // their sway runs slower than the stride
+
+    private readonly Dictionary<Node3D, Basis> _restPoses = new();
+
+    /*
+      The tube of a limb is one rigid piece, so a limb moves as a whole around its shoulder:
+      > On land:       a leg swings back and forth with the stride, neighbors and the two
+                       flanks half a step apart (a trot)
+      > In the water:  a smaller, slower paddle
+      > Soft limbs:    tentacles, feelers and necks sway sideways on their own as well
+      A limb that carries branches stands still: its branches hang on the joints of its rest pose.
+    */
+    /// <summary>Swings the limbs, once per frame.</summary>
+    /// <param name="design">(Required) The design the limbs belong to.</param>
+    /// <param name="phase">(Required) The stride phase of the body, it runs faster while moving.</param>
+    /// <param name="speedShare">(Required) Speed of the body, 0 standing .. 1 full speed.</param>
+    /// <param name="isOnLand">(Required) True on land (walk), false in the water (paddle).</param>
+    public void Move(CreatureDesign design, float phase, float speedShare, bool isOnLand)
+    {
+        for (int i = 0; i < _limbFrames.Count; i++)
+        {
+            (int index, int flank, Node3D piece) = _limbFrames[i];
+            if (!GodotObject.IsInstanceValid(piece) || index >= design.Parts.Count)
+            {
+                continue;
+            }
+            CreaturePart part = design.Parts[index];
+            if (design.Parts.Any(other => other.ParentId == part.Id && null != other.Joints))
+            {
+                continue;
+            }
+            if (!_restPoses.TryGetValue(piece, out Basis rest))
+            {
+                _restPoses[piece] = rest = piece.Basis;
+            }
+            bool  isSoft = CreaturePartKind.Tentacle == part.LimbStyle || CreaturePartKind.Feeler == part.LimbStyle || CreaturePartKind.Neck == part.LimbStyle;
+            bool  isLeg  = design.IsWalkingLimb(part);
+            float swing  = isOnLand && isLeg ? WALK_SWING * speedShare
+                : isSoft ? 0f
+                : PADDLE_SWING * speedShare;
+            // Neighbors and the two flanks half a step apart
+            float step   = phase + index * Mathf.Pi + (flank < 0 ? Mathf.Pi : 0f);
+            float stride = Mathf.Sin(step) * (swing + IDLE_SWING);
+            float sway   = isSoft ? Mathf.Sin(phase * SOFT_RATE + index * 1.7f) * SOFT_SWING : 0f;
+            // Around the local Z of the limb (out of the flank) it swings along the body, around its X it sways sideways
+            piece.Basis = rest * new Basis(Vector3.Back, stride) * new Basis(Vector3.Right, sway);
+        }
     }
 }

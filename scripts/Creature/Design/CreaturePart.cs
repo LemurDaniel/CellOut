@@ -28,6 +28,8 @@ namespace CellOut;
 /// <param name="Size">Visual size, 1 = normal, MIN_PART_SIZE..MAX_PART_SIZE. Looks only, the stats ignore it.</param>
 /// <param name="Stretch">Extra factor per axis on top of Size (x along the body, y up, z out of the flank, before the turn),
 /// null = unstretched. Read it through Proportion. MIN_PART_STRETCH..MAX_PART_STRETCH per axis. Looks only.</param>
+/// <param name="Widths">Sculpted limbs only: thickness factor per point of the path (shoulder, then every joint), null = the plain taper of the limb kind. Never changed in place.</param>
+/// <param name="IsCentered">A limb that grows from the middle of the body instead of a flank (a neck, a trunk, a tail), or a part on a limb joint that sits on the axis of the limb instead of beside it: one piece, no mirror half.</param>
 /// <param name="Radial">Point symmetry: the part stands this many times around the spine, evenly spread (2 to CreatureDesign.MAX_RADIAL), 0 for none. A paired kind is a single half then (Side 1).</param>
 /// <param name="LimbKind">A foot or hand on a sculpted limb: the limb kind it was stuck on (its tube keeps that look), else null.</param>
 /// <param name="Side">0 for a pair or a midline part, 1 right (+Z) or -1 left for a single half of a paired part.</param>
@@ -52,8 +54,16 @@ public readonly record struct CreaturePart(
     int ParentJoint = 0,
     Vector3? Stretch = null,
     CreaturePartKind? LimbKind = null,
-    int Radial = 0)
+    int Radial = 0,
+    IReadOnlyList<float> Widths = null,
+    bool IsCentered = false)
 {
+    /// <summary>Thickness factor of a limb at one point of its path: 0 the shoulder, 1 the first joint .. Joints.Count the tip. 1 without Widths.</summary>
+    public float WidthAt(int point)
+    {
+        return null != Widths && point >= 0 && point < Widths.Count ? Widths[point] : 1f;
+    }
+
     /// <summary>The look of the limb tube: the limb kind a foot or hand was stuck on, else the kind itself.</summary>
     public CreaturePartKind LimbStyle => LimbKind ?? Kind;
 

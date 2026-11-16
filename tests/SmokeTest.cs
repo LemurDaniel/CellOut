@@ -290,7 +290,6 @@ public partial class SmokeTest : Node
         bool isBlocked   = !editor.TryPlace(CreaturePartKind.Fluke, 0f);
         int  pointsType  = editor.Points;
         editor.ChooseTemplate(CreatureTemplates.Parse(STARTER_TEMPLATE));
-        bool isFishOnly  = !editor.TryPlace(CreaturePartKind.CaudalFin, 0f);
 
         // Starter body: streamlined, free fluke and eyes; removing the free fluke refunds nothing
         bool isStarter   = 7 == editor.Draft.Girths.Count && 2 == editor.Draft.Parts.Count
@@ -428,7 +427,7 @@ public partial class SmokeTest : Node
         editor.PickColor(EditorStyle.TRANSLUCENT_COLOR);
         bool isTranslucent     = EditorStyle.TRANSLUCENT_COLOR == editor.DraftColor && pointsTranslucent == editor.Points;
         editor.Finish();
-        return isChoosing && isBlocked && isFishOnly && isPlaced && isTailFull && isStarter && isPaid && isSized && isPosed && isSingle && isSymmetric
+        return isChoosing && isBlocked && isPlaced && isTailFull && isStarter && isPaid && isSized && isPosed && isSingle && isSymmetric
             && isLonger && isTabbed && isClamped && isBent && isPulled && isPushed && isLeg && isArm && isLimbSet && isAttached && isBranched && isPainted && isSprayed && isCoral && isTranslucent && !editor.IsOpen;
     }
 

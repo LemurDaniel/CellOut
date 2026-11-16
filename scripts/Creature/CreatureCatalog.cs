@@ -49,20 +49,20 @@ public enum CreaturePartKind
     CaudalFin, Fluke, DorsalFin, PectoralFin,
     // More tails (one per tail tip), back fins and flippers of the template animals
     SharkTail, NewtTail, MantleFins, FanTail, CurlTail, SharkFin, TallFin, Flipper, Paddle,
-    SickleFin, RoundFlipper, HindPaddle, FinRibbon, OralArms, CrocTail,
+    SickleFin, RoundFlipper, HindPaddle, FinRibbon, OralArms, CrocTail, Mane, TuftTail, BigEars, PenguinFlipper, CrestFeathers, TailFeathers, StarArm, MantaWing, WhipTail, TailFan, Rattle, ThickTail,
     // Mouths: one per head, the mouth sets the diet
     Jaw, FilterMouth, Beak, NeedleMaw, PufferMouth, TubeSnout,
-    SharkMaw, OrcaMaw, GapeMaw, SquidBeak, CrabMouth, Smile, CrocMaw,
+    SharkMaw, OrcaMaw, GapeMaw, SquidBeak, CrabMouth, Smile, CrocMaw, ParrotBeak, Fangs, ForkTongue, RexMaw,
     // Defense
-    Spines, Shell, PoisonGland, Carapace, SpiralShell, NautilusShell, BackPlates, JellyBell,
+    Spines, Shell, PoisonGland, Carapace, SpiralShell, NautilusShell, BackPlates, JellyBell, Ossicones, Tusks, UrchinSpines, Stinger, Casque, Horns, NeckFrill, SpineCrest,
     // Eyes
     PitEye, Eye, StalkEye, Lure,
     // Eye models: one look per animal, all see like the plain eye (the bead and the ghost eye like the pit eye)
-    BeadEye, GhostEye, BulgeEye, PatchEye, SquidEye, PegEye, LidEye, TurretEye, FrogEye, CrocEye,
+    BeadEye, GhostEye, BulgeEye, PatchEye, SquidEye, PegEye, LidEye, TurretEye, FrogEye, CrocEye, SpiderEyes,
     // Limbs: sculpted, 1 to 4 joints
     StubLimb, BentLimb, Limb, Tentacle, Feeler, JointedLeg, Neck,
     // Feet
-    Legs, StubbyLegs, ClawLegs, CrabLegs, WebbedFeet, CrocFeet,
+    Legs, StubbyLegs, ClawLegs, CrabLegs, WebbedFeet, CrocFeet, ElephantFeet, Hooves, BirdFeet,
     // Hands
     Hands, Claws, Pincers, Suckers,
     // Brain
@@ -170,6 +170,18 @@ public static class CreatureCatalog
         Part(CreaturePartKind.FinRibbon,     CreatureCategory.Fins,    CreatureMount.Top,   null),
         Part(CreaturePartKind.OralArms,      CreatureCategory.Fins,    CreatureMount.Top,   null),
         Part(CreaturePartKind.CrocTail,      CreatureCategory.Fins,    CreatureMount.Tail,  null),
+        Part(CreaturePartKind.Mane,          CreatureCategory.Fins,    CreatureMount.Top,   null),
+        Part(CreaturePartKind.TuftTail,      CreatureCategory.Fins,    CreatureMount.Tail,  null),
+        Part(CreaturePartKind.BigEars,       CreatureCategory.Fins,    CreatureMount.Flank, null),
+        Part(CreaturePartKind.PenguinFlipper,CreatureCategory.Fins,    CreatureMount.Flank, null),
+        Part(CreaturePartKind.CrestFeathers, CreatureCategory.Fins,    CreatureMount.Top,   null),
+        Part(CreaturePartKind.TailFeathers,  CreatureCategory.Fins,    CreatureMount.Tail,  null),
+        Part(CreaturePartKind.StarArm,       CreatureCategory.Fins,    CreatureMount.Flank, null),
+        Part(CreaturePartKind.MantaWing,     CreatureCategory.Fins,    CreatureMount.Flank, null),
+        Part(CreaturePartKind.WhipTail,      CreatureCategory.Fins,    CreatureMount.Tail,  null),
+        Part(CreaturePartKind.TailFan,       CreatureCategory.Fins,    CreatureMount.Tail,  null),
+        Part(CreaturePartKind.Rattle,        CreatureCategory.Fins,    CreatureMount.Tail,  null),
+        Part(CreaturePartKind.ThickTail,     CreatureCategory.Fins,    CreatureMount.Tail,  null),
         // Mouths: the head holds one, so the mouth is the choice between meat, plankton and plants
         Part(CreaturePartKind.Jaw,           CreatureCategory.Mouths,  CreatureMount.Head,  null),
         Part(CreaturePartKind.FilterMouth,   CreatureCategory.Mouths,  CreatureMount.Head,  null),
@@ -184,6 +196,10 @@ public static class CreatureCatalog
         Part(CreaturePartKind.CrabMouth,     CreatureCategory.Mouths,  CreatureMount.Head,  null),
         Part(CreaturePartKind.Smile,         CreatureCategory.Mouths,  CreatureMount.Head,  null),
         Part(CreaturePartKind.CrocMaw,       CreatureCategory.Mouths,  CreatureMount.Head,  null),
+        Part(CreaturePartKind.ParrotBeak,    CreatureCategory.Mouths,  CreatureMount.Head,  null),
+        Part(CreaturePartKind.Fangs,         CreatureCategory.Mouths,  CreatureMount.Head,  null),
+        Part(CreaturePartKind.ForkTongue,    CreatureCategory.Mouths,  CreatureMount.Head,  null),
+        Part(CreaturePartKind.RexMaw,        CreatureCategory.Mouths,  CreatureMount.Head,  null),
         // Defense: spines hurt, the shell takes hits, the gland poisons whatever the spines or the jaw hit
         Part(CreaturePartKind.Spines,        CreatureCategory.Defense, CreatureMount.Top,   null),
         Part(CreaturePartKind.Shell,         CreatureCategory.Defense, CreatureMount.Top,   null),
@@ -193,6 +209,14 @@ public static class CreatureCatalog
         Part(CreaturePartKind.NautilusShell, CreatureCategory.Defense, CreatureMount.Top,   null),
         Part(CreaturePartKind.BackPlates,    CreatureCategory.Defense, CreatureMount.Top,   null),
         Part(CreaturePartKind.JellyBell,     CreatureCategory.Defense, CreatureMount.Top,   null),
+        Part(CreaturePartKind.Ossicones,     CreatureCategory.Defense, CreatureMount.Top,   null),
+        Part(CreaturePartKind.Tusks,         CreatureCategory.Defense, CreatureMount.Flank, null),
+        Part(CreaturePartKind.UrchinSpines,  CreatureCategory.Defense, CreatureMount.Top,   null),
+        Part(CreaturePartKind.Stinger,       CreatureCategory.Defense, CreatureMount.Tail,  null),
+        Part(CreaturePartKind.Casque,        CreatureCategory.Defense, CreatureMount.Top,   null),
+        Part(CreaturePartKind.Horns,         CreatureCategory.Defense, CreatureMount.Top,   null),
+        Part(CreaturePartKind.NeckFrill,     CreatureCategory.Defense, CreatureMount.Top,   null),
+        Part(CreaturePartKind.SpineCrest,    CreatureCategory.Defense, CreatureMount.Top,   null),
         // Eyes
         Part(CreaturePartKind.PitEye,        CreatureCategory.Eyes,    CreatureMount.Flank, null),
         Part(CreaturePartKind.Eye,           CreatureCategory.Eyes,    CreatureMount.Flank, null),
@@ -208,6 +232,7 @@ public static class CreatureCatalog
         Part(CreaturePartKind.TurretEye,     CreatureCategory.Eyes,    CreatureMount.Flank, null),
         Part(CreaturePartKind.FrogEye,       CreatureCategory.Eyes,    CreatureMount.Flank, null),
         Part(CreaturePartKind.CrocEye,       CreatureCategory.Eyes,    CreatureMount.Flank, null),
+        Part(CreaturePartKind.SpiderEyes,    CreatureCategory.Eyes,    CreatureMount.Flank, null),
         // Limbs: sculpted by their joints (1 to 4), a limb reaching the ground carries (CreatureStats)
         Part(CreaturePartKind.StubLimb,      CreatureCategory.Limbs,   CreatureMount.Limb,  null),
         Part(CreaturePartKind.BentLimb,      CreatureCategory.Limbs,   CreatureMount.Limb,  null),
@@ -223,6 +248,9 @@ public static class CreatureCatalog
         Part(CreaturePartKind.CrabLegs,      CreatureCategory.Feet,    CreatureMount.Limb,  null),
         Part(CreaturePartKind.WebbedFeet,    CreatureCategory.Feet,    CreatureMount.Limb,  null),
         Part(CreaturePartKind.CrocFeet,      CreatureCategory.Feet,    CreatureMount.Limb,  null),
+        Part(CreaturePartKind.ElephantFeet,  CreatureCategory.Feet,    CreatureMount.Limb,  null),
+        Part(CreaturePartKind.Hooves,        CreatureCategory.Feet,    CreatureMount.Limb,  null),
+        Part(CreaturePartKind.BirdFeet,      CreatureCategory.Feet,    CreatureMount.Limb,  null),
         // Hands
         Part(CreaturePartKind.Hands,         CreatureCategory.Hands,   CreatureMount.Limb,  null),
         Part(CreaturePartKind.Claws,         CreatureCategory.Hands,   CreatureMount.Limb,  null),

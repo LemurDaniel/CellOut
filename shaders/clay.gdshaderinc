@@ -5,6 +5,7 @@
 //   back and flanks, the belly stays light (CreatureDesign.Pattern). On top the spray paint:
 //   up to 160 dots (CreatureDesign.MAX_SPLATS) with a speckled rim like a spray can.
 //   Under the open sky of the land the skin is matt and glows less (sky_open).
+//   Parts and limbs sharing this clay hand in to_body: their paint continues the pattern of the body.
 //   The skin surface (CreatureDesign.Skin): smooth clay, scales or warts, under the paint. Scales and
 //   warts are domes in relief: their slope tilts the normal like a bump map, the light models them.
 //   The mouth opening is cut into the body mesh (Visual/CreatureClay.cs), the line and its dark cavity
@@ -20,10 +21,19 @@ uniform float swim_phase = 0.0;      // runs faster while swimming
 uniform float swim_amp = 0.0;        // wave amplitude at the tail in model units
 uniform float swim_vertical = 0.0;   // 0 fish (side to side), 1 marine mammal (up and down)
 uniform float half_length = 0.7;     // half the vertebra span, the wave grows towards the tail
-uniform int pattern = 0;             // 0 none, 1 stripes, 2 spots, 3 patches, 4 saddle (CreaturePattern)
+uniform int pattern = 0;             // 0 none, 1 stripes, 2 spots, 3 patches, 4 saddle, 5 net (CreaturePattern)
 uniform vec4 pattern_color : source_color = vec4(0.3, 0.2, 0.2, 1.0);
 uniform float pattern_scale = 1.0;
-uniform int skin = 0;                // 0 smooth, 1 scales of a reptile, 2 warts of a toad (CreatureSkin)
+uniform float pattern_wrap = 0.0;     // 1: the pattern runs all around, belly and legs too (CreatureDesign.PatternWraps)
+uniform vec4 belly_color : source_color = vec4(0.0);   // third color on the underside, alpha 0 = none (CreatureDesign.BellyColor)
+uniform vec4 head_color : source_color = vec4(0.0);    // color zone of the head, alpha 0 = none
+uniform vec4 tail_color : source_color = vec4(0.0);    // color zone of the tail end
+uniform float head_from = 9.0;       // X in body space where the head zone begins
+uniform float tail_to = -9.0;        // X where the tail zone ends
+uniform mat4 to_body = mat4(1.0);    // from this mesh into the space of the body: parts and limbs continue the paint of the body
+uniform float body_lift = 0.0;       // height of the spine where a part sits (the body mesh carries it per vertex instead)
+uniform bool is_body = true;         // false on parts and limbs: the plates only step the body itself
+uniform int skin = 0;                // 0 smooth, 1 scales of a reptile, 2 warts of a toad, 3 hard plates across the body, 4 feathers, 5 fur (CreatureSkin)
 uniform int splat_count = 0;
 uniform vec4 splat_pos[160];         // xyz center in model space, w radius
 uniform vec4 splat_color[160];
@@ -31,6 +41,7 @@ uniform float mouth_gape = -1.0;     // half the opening at the nose in heights 
 uniform float mouth_min_gape = 0.045; // MouthShape.MIN_GAPE
 
 varying vec3 local_pos;
+varying vec3 paint_pos;              // the same point in the space of the body, for pattern, belly and countershading
 varying float spine_lift;            // height of the spine at this ring, back and belly are measured from it (Visual/CreatureClay.cs, vertex color)
 varying vec2 mouth_mark;             // x = 0 at the mouth corners .. 1 at the nose tip, y = below the mouth line in heights of the head
 
@@ -60,6 +71,29 @@ float cells(vec3 p) {
 	return sqrt(best);
 }
 
+// Distance to the border between the two nearest cells (second nearest minus nearest point):
+// 0 on the border, growing into the cell. For patterns of fields with lines between them
+float cell_border(vec3 p) {
+	vec3 i = floor(p);
+	vec3 f = fract(p);
+	float first = 8.0;
+	float second = 8.0;
+	for (int x = -1; x <= 1; x++)
+	for (int y = -1; y <= 1; y++)
+	for (int z = -1; z <= 1; z++) {
+		vec3 o = vec3(float(x), float(y), float(z));
+		vec3 d = o + hash3(i + o) - f;
+		float distance_to = length(d);
+		if (distance_to < first) {
+			second = first;
+			first = distance_to;
+		} else if (distance_to < second) {
+			second = distance_to;
+		}
+	}
+	return second - first;
+}
+
 // Like cells, but with the way to that nearest point: xyz from p to the point, w the distance.
 // The distance grows straight away from the point, so a bump over the cell needs no second sample
 vec4 cell_offset(vec3 p) {
@@ -81,6 +115,16 @@ vec4 cell_offset(vec3 p) {
 	return vec4(nearest, sqrt(best));
 }
 
+const float PLATE_COUNT = 4.5;       // plates per unit of body length
+const float PLATE_STEP = 0.035;      // how far a plate stands out over the groove behind it
+
+// Height 0..1 of the plate skin along the body: every plate rises fast at its front edge,
+// stays up and drops into a narrow groove before the next one (roof tiles seen from the side)
+float plate_height(float x) {
+	float along = fract(x * PLATE_COUNT);
+	return smoothstep(0.0, 0.12, along) * (1.0 - smoothstep(0.78, 1.0, along));
+}
+
 // Smooth 3D value noise for lumps and the grain of the clay
 float noise(vec3 p) {
 	vec3 i = floor(p);
@@ -94,6 +138,7 @@ float noise(vec3 p) {
 
 void vertex() {
 	local_pos = VERTEX;
+	paint_pos = (to_body * vec4(VERTEX, 1.0)).xyz;
 	spine_lift = (COLOR.g - COLOR.r) * LIFT_RANGE;     // meshes without colors (limbs, fillets) are white: 0
 	mouth_mark = UV2;                   // meshes without UV2 (limbs, fillets, knuckles) carry 0: plain skin
 
@@ -101,6 +146,11 @@ void vertex() {
 	float lumps = noise(VERTEX * 3.2 + vec3(seed)) - 0.5;
 	float jelly = sin(TIME * 5.0 + VERTEX.y * 4.0 + seed) * sin(TIME * 3.7 + VERTEX.x * 3.0 + seed * 0.5);
 	VERTEX += NORMAL * (lumps * 0.07 * knead + jelly * wobble * 0.08);
+
+	// Plates: a real step in the silhouette, the body mesh is fine enough along its length
+	if (skin == 3 && is_body) {
+		VERTEX += NORMAL * (plate_height(local_pos.x) - 0.6) * PLATE_STEP;
+	}
 
 	// Swim wave: grows quadratically towards the tail, see CreatureVisual3D.Bend
 	float t = clamp((half_length - local_pos.x) / (2.0 * half_length), 0.0, 1.0);
@@ -115,11 +165,18 @@ void vertex() {
   - Spots:    round dots (Worley cells)
   - Patches:  big round blobs like a cow (large Worley cells, the edge wobbled by the grain)
   - Saddle:   the whole back dark, fading down the flanks
-  Stripes, spots and patches fade out towards the belly.
+  - Net:      big dark fields, thin light lines between them
+  Stripes, spots, patches and the net fade out towards the belly, unless the pattern wraps all around (pattern_wrap).
 */
-float paint(vec3 p, float grain) {
+float paint(vec3 p, float height, float grain) {
+	// The marks are laid out in real space (a steep neck must not smear them), only back and belly count from the spine
 	vec3 q = p * pattern_scale;
-	float back = smoothstep(-0.3, 0.12, p.y);
+	float back = mix(smoothstep(-0.3, 0.12, height), 1.0, pattern_wrap);
+	if (pattern == 5) {
+		// Net: big dark fields with thin light lines between them (a giraffe), the lines a little ragged
+		float line = cell_border(q * 2.2 + vec3(seed * 1.3)) + (grain - 0.5) * 0.05;
+		return smoothstep(0.05, 0.11, line) * back;
+	}
 	if (pattern == 1) {
 		float band = sin(q.x * 13.0 + grain * 2.5 + q.y * 3.0);
 		return smoothstep(0.15, 0.35, band) * back;
@@ -132,7 +189,7 @@ float paint(vec3 p, float grain) {
 		return (1.0 - smoothstep(0.36, 0.42, blob)) * back;
 	}
 	if (pattern == 4) {
-		return smoothstep(-0.02, 0.22, p.y + (grain - 0.5) * 0.12);
+		return smoothstep(-0.02, 0.22, height + (grain - 0.5) * 0.12);
 	}
 	return 0.0;
 }
@@ -144,10 +201,19 @@ void fragment() {
 	float prints = sin((local_pos.x * 1.3 + local_pos.y + local_pos.z * 0.6) * 55.0 + grain * 7.0) * 0.5 + 0.5;
 
 	// Back and belly count from the spine: a lifted neck or a lowered body keeps its paint
-	vec3 body_pos = vec3(local_pos.x, local_pos.y - spine_lift, local_pos.z);
+	vec3 body_pos = vec3(paint_pos.x, paint_pos.y - spine_lift - body_lift, paint_pos.z);
 
 	vec3 col = clay_color.rgb * (0.9 + 0.18 * grain);
-	col = mix(col, pattern_color.rgb * (0.9 + 0.18 * grain), paint(body_pos, grain));
+	col = mix(col, pattern_color.rgb * (0.9 + 0.18 * grain), paint(paint_pos, body_pos.y, grain));
+
+	// A belly of its own color, fading up the flanks
+	float under = (1.0 - smoothstep(-0.3, -0.04, body_pos.y + (grain - 0.5) * 0.06)) * belly_color.a;
+	col = mix(col, belly_color.rgb * (0.9 + 0.18 * grain), under);
+
+	// Head and tail end in a color of their own, the border a little ragged
+	float zone_edge = (grain - 0.5) * 0.08;
+	col = mix(col, head_color.rgb * (0.9 + 0.18 * grain), smoothstep(head_from - 0.05, head_from + 0.05, paint_pos.x + zone_edge) * head_color.a);
+	col = mix(col, tail_color.rgb * (0.9 + 0.18 * grain), (1.0 - smoothstep(tail_to - 0.05, tail_to + 0.05, paint_pos.x + zone_edge)) * tail_color.a);
 
 	// Skin surface, under the spray paint: the paint lies on the scales
 	// Every scale and wart is a dome: the light sees its slope (bump), the color only follows
@@ -171,6 +237,31 @@ void fragment() {
 		col = mix(col, col * 1.18 + vec3(0.03), wart) * (1.0 - 0.2 * ring);
 		sheen = wart * 0.4;
 		bump = cell.xyz / max(cell.w, 0.001) * (6.0 * t * (1.0 - t)) * 0.75;
+	}
+	if (skin == 4) {
+		// Feathers: long soft domes lying back along the body, each with a darker tip and a faint shaft
+		vec3 stretch = vec3(7.0, 15.0, 15.0);
+		vec4 cell = cell_offset(local_pos * stretch + vec3(seed));
+		float t = clamp((cell.w - 0.1) / 0.5, 0.0, 1.0);
+		float shaft = 1.0 - smoothstep(0.0, 0.05, abs(cell.y + cell.z) * 0.5);
+		col *= mix(1.1, 0.78, t * t) * (1.0 - 0.08 * shaft * (1.0 - t));
+		sheen = (1.0 - t) * 0.25;
+		bump = cell.xyz / max(cell.w, 0.001) * stretch * (6.0 * t * (1.0 - t)) * 0.03;
+	} else if (skin == 5) {
+		// Fur: fine streaks running back along the body, a soft uneven shade, no shine
+		float streak = noise(local_pos * vec3(9.0, 70.0, 70.0) + vec3(seed));
+		float tuft = noise(local_pos * 14.0 - vec3(seed));
+		col *= 0.8 + 0.3 * streak + 0.1 * tuft;
+		sheen = -0.6;
+		bump = vec3(0.0, streak - 0.5, tuft - 0.5) * 0.35;
+	}
+	if (skin == 3 && is_body) {
+		// Plates: dark in the groove, lit on the rising edge, the slope runs along the body
+		float h = plate_height(local_pos.x);
+		float ahead = plate_height(local_pos.x + 0.01);
+		col *= mix(0.6, 1.06, h);
+		sheen = h * 0.45;
+		bump = vec3((ahead - h) / 0.01 * PLATE_STEP * 0.6, 0.0, 0.0);
 	}
 	if (skin != 0) {
 		// Tilt the normal against the slope, along the surface only (NORMAL is in view space)

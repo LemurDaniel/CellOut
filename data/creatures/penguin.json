@@ -1,0 +1,23 @@
+{
+  "key": "PENGUIN",
+  "mouthLine": false,
+  "order": 310,
+  "type": "MarineMammal",
+  "girths": [0.4, 0.74, 0.92, 0.96, 0.86, 0.66, 0.52, 0.44],
+  "gaps": [0.26, 0.3, 0.3, 0.3, 0.26, 0.2, 0.18],
+  "lifts": [0, 0, 0, 0, 0, -0.03, -0.16, -0.4],
+  "pitch": 72,
+  "skin": "Smooth",
+  "color": "#2f3742",
+  "bellyColor": "#f6f4ec",
+  "headColor": "#14161b",
+  "limbColor": "#2a2b30",
+  "parts": [
+    { "kind": "TailFeathers", "t": 0, "free": true, "size": 0.5, "stretch": [0.35, 1, 1.5], "rotation": [0, 0, -0.9] },
+    { "kind": "Eye", "t": 0.92, "free": true, "size": 0.5 },
+    { "kind": "Beak", "t": 1, "stretch": [1.8, 0.55, 0.55], "offset": [0, -0.05, 0], "rotation": [0, 0, -0.6] },
+    { "kind": "PenguinFlipper", "t": 0.68, "size": 1.5, "stretch": [1, 1.2, 1], "rotation": [0, 0.15, 0] },
+    { "kind": "CrocFeet", "t": 0.1, "size": 0.75, "offset": [0, -0.1, -0.12], "rotation": [0, 0, -1.26], "widths": [1.4, 1.2, 1.0, 1.0],
+      "joints": [[0.0, -0.05, 0.1], [0.0, -0.1, 0.12], [0.02, -0.15, 0.12]] }
+  ]
+}

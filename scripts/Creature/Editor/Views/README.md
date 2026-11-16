@@ -12,3 +12,4 @@ The panels of the creature editor around and over the turntable. Views: each bui
 | `SymmetryIcon.cs` | A square button that draws axis symmetry (mirrored halves) or point symmetry (a ring of dots with its count). |
 
 | `CreatureFooter.cs` | Info card of the part in focus, size slider of the picked part, points badge and the done button. |
+| `ZoneIcon.cs` | A small button that shows one color zone (body, belly, head, limbs, tail end) on a little animal in the color the zone wears. |

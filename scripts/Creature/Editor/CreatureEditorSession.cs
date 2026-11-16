@@ -52,7 +52,7 @@ public sealed class CreatureEditorSession
     //   GizmoFlank      Flank of the picked pair the gizmo sits on, see GizmoFlankFor.
     //   PickedVertebra  The vertebra carrying the gizmo, -1 for none.
     //   DraftColor      Color of the draft, the coral default when none is picked.
-    //   SprayColor      Paint color of the spray can.
+    //   SprayColor      Paint color of the spray can, its own choice (SetSprayColor), apart from the pattern color.
     //   Begin           Starts a sitting on a copy of a design.
     //
 
@@ -68,6 +68,19 @@ public sealed class CreatureEditorSession
     public bool IsChoosingType { get; private set; }
     public bool IsSymmetric { get; private set; } = true;
 
+    /// <summary>Changes the cross-section of the picked vertebra: positive flatter and wider, negative taller and narrower.</summary>
+    /// <param name="delta">(Required) Added to its flatness, the result is clamped to -1..1.</param>
+    /// <returns>False when no vertebra is picked.</returns>
+    public bool FlattenPickedVertebra(float delta)
+    {
+        if (PickedVertebra < 0)
+        {
+            return false;
+        }
+        Draft.SetFlat(PickedVertebra, Draft.Flats[PickedVertebra] + delta);
+        return true;
+    }
+
     /// <summary>Point symmetry of new parts: they stand this many times around the spine (2..CreatureDesign.MAX_RADIAL), 0 while the axis symmetry or none is on.</summary>
     public int RadialCount { get; private set; }
     public bool IsSpraying { get; private set; }
@@ -80,7 +93,19 @@ public sealed class CreatureEditorSession
     public Color DraftColor => Draft.Color ?? Player.ORGANISM_COLOR;
 
     /// <summary>Paint color of the spray can: the second color, else a dark shade of the body.</summary>
-    public Color SprayColor => Draft.PatternColor ?? DraftColor.Darkened(0.45f);
+    public Color SprayColor => _sprayColor ?? DraftColor.Darkened(0.45f);
+
+    /// <summary>The color picked for the spray can, null while it sprays a dark shade of the body. Its own choice, apart from the pattern color.</summary>
+    public Color? PickedSprayColor => _sprayColor;
+
+    private Color? _sprayColor;
+
+    /// <summary>Picks the color of the spray can, null for a dark shade of the body. Raises Changed.</summary>
+    public void SetSprayColor(Color? color)
+    {
+        _sprayColor = color;
+        Changed?.Invoke();
+    }
 
     /// <summary>
     /// Starts a sitting: nothing spent, nothing selected, the first tab, the spray can off.
@@ -116,6 +141,8 @@ public sealed class CreatureEditorSession
     //   SetColor         Recolors the draft (null = coral default).
     //   SetPosture       Posture of the whole body in degrees.
     //   SetHover         Hover height above the ground on land.
+    //   SetFlatness      Cross-section of the body, from tall over round to flat.
+    //   SetZoneColor     Color of a zone: belly, head, limbs or tail end (null = none).
     //   SetSkin          Surface of the skin: smooth, scales or warts.
     //   SetPattern       Paints a pattern in the second color.
     //   SetPatternColor  Second color of the paint (null = a dark shade of the body).
@@ -214,6 +241,20 @@ public sealed class CreatureEditorSession
     public void SetHover(float hover)
     {
         Draft.SetHover(hover);
+        Changed?.Invoke();
+    }
+
+    /// <summary>Sets the flatness of the cross-section of the draft (-1 tall .. 1 flat). Raises Changed.</summary>
+    public void SetFlatness(float flatness)
+    {
+        Draft.SetFlatness(flatness);
+        Changed?.Invoke();
+    }
+
+    /// <summary>Picks the color of a zone of the draft (belly, head, limbs, tail end), null takes it away. Raises Changed.</summary>
+    public void SetZoneColor(CreatureZone zone, Color? color)
+    {
+        Draft.SetZoneColor(zone, color);
         Changed?.Invoke();
     }
 
@@ -533,6 +574,7 @@ public sealed class CreatureEditorSession
     //   ForgetPull           A new drag starts, the gathered end overshoot is dropped.
     //   MovePickedVertebra   Pushes the picked vertebra along the body (X) and lifts it (Y), ends grow or shrink.
     //   ScalePickedVertebra  Scales the girth of the picked vertebra.
+    //   FlattenPickedVertebra  Changes the cross-section of the picked vertebra (flat and wide .. tall and narrow).
     //   PullEnd              One vertebra more or less at the nose or tail end, free of charge.
     //   AddVertebra          One more vertebra in the middle, free of charge.
     //   RemoveVertebra       One vertebra less, free of charge.
@@ -580,6 +622,10 @@ public sealed class CreatureEditorSession
         if (!Mathf.IsZeroApprox(delta.Y))
         {
             Draft.SetLift(index, Draft.Lifts[index] + delta.Y);
+        }
+        if (!Mathf.IsZeroApprox(delta.Z))
+        {
+            Draft.SetSway(index, Draft.Sways[index] + delta.Z);
         }
         if (Mathf.IsZeroApprox(delta.X))
         {

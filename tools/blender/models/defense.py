@@ -215,3 +215,34 @@ def build_shell(scene):
         for i in range(count):
             left, right = -MARGIN_START + i * 2 * MARGIN_START / count, -MARGIN_START + (i + 1) * 2 * MARGIN_START / count
             scute(f'{name}{i}', [(low, left), (high, left), (high, right), (low, right)], lift=0.04, gap=0.9)
+
+
+def build_spinecrest(scene):
+    """
+    One element of the back crest (model space Row): a pointed plate standing on the back,
+    its foot at the origin, +X forward, the tip up and leaning back a little. The game
+    repeats it along the spine, one copy on each spot, so the row follows every bend.
+    A flat blade (Shell) on a low oval pad in the skin (Skin).
+    """
+    import bmesh
+    import bpy
+
+    from models.helpers import G as _g, ellipsoid as _ellipsoid, link_mesh as _link_mesh
+
+    _ellipsoid(scene, 'CrestPad', _g(0, 0.0, 0), (0.34, 0.1, 0.16), 'Skin', subdivisions=2)
+    # The blade: a thin kite, thick at the foot, sharp at the tip
+    length, height, thick, lean = 0.5, 0.62, 0.08, 0.16
+    bm = bmesh.new()
+    foot = [bm.verts.new(_g(x * length * 0.5, 0.02, z * thick * 0.5)) for x, z in ((1, 1), (1, -1), (-1, -1), (-1, 1))]
+    belly = [bm.verts.new(_g(x * length * 0.42 - lean * 0.4, height * 0.45, z * thick * 0.3)) for x, z in ((1, 1), (1, -1), (-1, -1), (-1, 1))]
+    tip = bm.verts.new(_g(-lean, height, 0))
+    bm.faces.new(foot)
+    for a, b, c, d in zip(foot, foot[1:] + foot[:1], belly[1:] + belly[:1], belly):
+        bm.faces.new((a, b, c, d))
+    for a, b in zip(belly, belly[1:] + belly[:1]):
+        bm.faces.new((a, b, tip))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    mesh = bpy.data.meshes.new('CrestBlade')
+    bm.to_mesh(mesh)
+    bm.free()
+    _link_mesh(scene, 'CrestBlade', mesh, 'Shell')

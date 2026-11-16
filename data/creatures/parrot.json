@@ -1,0 +1,23 @@
+{
+  "key": "PARROT",
+  "order": 300,
+  "type": "MarineMammal",
+  "girths": [0.3, 0.54, 0.74, 0.82, 0.76, 0.62, 0.78, 0.64],
+  "gaps": [0.3, 0.3, 0.3, 0.28, 0.22, 0.2, 0.2],
+  "lifts": [0, 0, 0, 0, 0, -0.05, -0.23, -0.48],
+  "pitch": 55,
+  "skin": "Feathers",
+  "color": "#d8281e",
+  "pattern": "Saddle",
+  "patternColor": "#2a55c8",
+  "headColor": "#d8281e",
+  "limbColor": "#55575e",
+  "parts": [
+    { "kind": "TailFeathers", "t": 0, "free": true },
+    { "kind": "Eye", "t": 0.92, "free": true, "size": 0.5, "offset": [0.06, -0.07, 0.045] },
+    { "kind": "ParrotBeak", "t": 1 },
+    { "kind": "PenguinFlipper", "t": 0.66, "size": 2.2, "stretch": [1, 1.5, 1], "rotation": [0, -0.15, 0] },
+    { "kind": "BirdFeet", "t": 0.38, "size": 0.75, "offset": [0, -0.14, -0.1], "rotation": [0, 0, -0.96], "widths": [0.9, 0.6, 0.5, 0.5],
+      "joints": [[0.0, -0.16, 0.1], [0.02, -0.34, 0.13], [0.0, -0.52, 0.13]] }
+  ]
+}

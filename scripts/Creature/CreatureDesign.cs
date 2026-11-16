@@ -65,6 +65,12 @@ public sealed class CreatureDesign
     /// <summary>Height of every vertebra above the straight line, tail first, -MAX_LIFT..MAX_LIFT.</summary>
     public IReadOnlyList<float> Lifts => _spine.Lifts;
 
+    /// <summary>Sideways offset of every vertebra from the straight line, tail first (+Z is the right flank).</summary>
+    public IReadOnlyList<float> Sways => _spine.Sways;
+
+    /// <summary>Cross-section of every vertebra, tail first: 0 as the body gives it, 1 flat and wide, -1 tall and narrow.</summary>
+    public IReadOnlyList<float> Flats => _spine.Flats;
+
     /// <summary>Position of every vertebra along the body (X), tail first.</summary>
     public IReadOnlyList<float> Positions => _spine.Positions;
 
@@ -89,6 +95,25 @@ public sealed class CreatureDesign
     public void SetLift(int index, float lift)
     {
         _spine.SetLift(index, lift);
+        Version++;
+    }
+
+    /// <summary>Pushes one vertebra sideways, the neighbors follow smoothly (CreatureSpine.SetSway): the body curls.</summary>
+    /// <param name="index">(Required) Vertebra, 0 is the tail end.</param>
+    /// <param name="sway">(Required) Offset towards the right flank (+Z), clamped to -MAX_LIFT..MAX_LIFT.</param>
+    /// <example><code>design.SetSway(0, 0.5f);   // the tail swings to the right</code></example>
+    public void SetSway(int index, float sway)
+    {
+        _spine.SetSway(index, sway);
+        Version++;
+    }
+
+    /// <summary>Sets the cross-section of one vertebra (CreatureSpine.SetFlat): a flat head on a round trunk.</summary>
+    /// <param name="index">(Required) Vertebra, 0 is the tail end.</param>
+    /// <param name="flat">(Required) 0 as the body gives it, 1 flat and wide, -1 tall and narrow.</param>
+    public void SetFlat(int index, float flat)
+    {
+        _spine.SetFlat(index, flat);
         Version++;
     }
 
@@ -329,6 +354,54 @@ public sealed class CreatureDesign
         return true;
     }
 
+    public const float MIN_LIMB_WIDTH = 0.35f;       // thickness factor of a limb at one point of its path
+    public const float MAX_LIMB_WIDTH = 2.6f;
+
+    /// <summary>Sets how thick a sculpted limb is at one point of its path: a fat thigh over a slim shin.</summary>
+    /// <param name="index">(Required) Index in Parts, a limb with joints.</param>
+    /// <param name="point">(Required) 0 the shoulder, 1 the first joint .. Joints.Count the tip.</param>
+    /// <param name="width">(Required) Factor on the plain taper, clamped to MIN_LIMB_WIDTH..MAX_LIMB_WIDTH.</param>
+    /// <returns>False when the part has no joints or no such point.</returns>
+    /// <example><code>design.SetLimbWidth(leg, 1, 1.8f);   // a fat thigh</code></example>
+    public bool SetLimbWidth(int index, int point, float width)
+    {
+        if (index < 0 || index >= _parts.Count || null == _parts[index].Joints || point < 0 || point > _parts[index].Joints.Count)
+        {
+            return false;
+        }
+        CreaturePart part   = _parts[index];
+        var          widths = new float[part.Joints.Count + 1];
+        for (int i = 0; i < widths.Length; i++)
+        {
+            widths[i] = part.WidthAt(i);
+        }
+        widths[point] = Mathf.Clamp(width, MIN_LIMB_WIDTH, MAX_LIMB_WIDTH);
+        _parts[index] = part with { Widths = widths };
+        Version++;
+        return true;
+    }
+
+    /*
+      Centered: a limb grows from the middle of the back instead of the flanks (a neck, a
+      trunk, a second tail), a part on a limb joint sits on the axis of the limb (one eye
+      on a stalk instead of a pair). A centered part is one piece: its right half, no mirror.
+    */
+    /// <summary>Moves a limb to the middle of the body, or a part on a limb joint onto the axis of the limb.</summary>
+    /// <param name="index">(Required) Index in Parts, a limb or a part on a limb joint.</param>
+    /// <param name="isCentered">(Required) True for the middle.</param>
+    /// <returns>False for a part that is neither a limb nor sits on a limb joint.</returns>
+    public bool SetPartCentered(int index, bool isCentered)
+    {
+        if (index < 0 || index >= _parts.Count || (null == _parts[index].Joints && 0 == _parts[index].ParentId))
+        {
+            return false;
+        }
+        CreaturePart part = _parts[index];
+        _parts[index] = part with { IsCentered = isCentered, Side = isCentered && part.Info.IsPaired ? 1 : part.Side };
+        Version++;
+        return true;
+    }
+
     public const float MIN_LIMB_SEGMENT = LimbJoints.MIN_LIMB_SEGMENT;
     public const float MAX_LIMB_SEGMENT = LimbJoints.MAX_LIMB_SEGMENT;
 
@@ -365,7 +438,10 @@ public sealed class CreatureDesign
             return LimbRoot(parent) + parent.Offset + parent.Joints[Mathf.Clamp(part.ParentJoint, 0, parent.Joints.Count - 1)] * parent.Size;
         }
         float x = XAt(part.T);
-        return new Vector3(x, LiftAt(x) - TopAt(x) * 0.2f, FlankAt(x) * 0.85f);
+        // Centered: out of the middle of the back, else out of the lower right flank
+        return part.IsCentered
+            ? new Vector3(x, LiftAt(x) + TopAt(x) * 0.55f, SwayAt(x))
+            : new Vector3(x, LiftAt(x) - TopAt(x) * 0.2f, SwayAt(x) + FlankAt(x) * 0.85f);
     }
 
     /// <summary>
@@ -424,7 +500,29 @@ public sealed class CreatureDesign
         return removed;
     }
 
-    public const float MAX_PART_OFFSET = 0.8f;      // unit space, the gizmo cannot pull a part off the body
+    public const float MAX_PART_OFFSET = 4f;        // unit space: far enough to carry a part from its own spot to any point of the body
+
+    /*
+      Where a part is built by itself, before its shift (right half, unit space):
+      - Tail:   at the tail tip          - Head:   at the nose tip
+      - Top:    on the back              - Flank:  on the upper flank
+      - Limb:   its shoulder             - Skull, Inner: the middle of the body there
+      The editor shifts a dropped part from here to the point of the body it was dropped on.
+    */
+    /// <summary>The spot a part is built on by itself, without its shift.</summary>
+    public Vector3 NaturalAnchor(CreaturePart part)
+    {
+        float x = XAt(part.T);
+        return part.Info.Mount switch
+        {
+            CreatureMount.Tail  => CenterAt(TailTipX),
+            CreatureMount.Head  => CenterAt(NoseTipX),
+            CreatureMount.Top   => CenterAt(x) + Vector3.Up * TopAt(x),
+            CreatureMount.Flank => CenterAt(x) + new Vector3(0f, TopAt(x) * 0.3f, FlankAt(x) * 0.88f),
+            CreatureMount.Limb  => LimbRoot(part with { Offset = Vector3.Zero }),
+            _                   => CenterAt(x),
+        };
+    }
 
     /// <summary>Sets shift and turn of one placed part (gizmo of the editor), the shift clamped to MAX_PART_OFFSET.</summary>
     /// <param name="index">(Required) Index in Parts.</param>
@@ -523,11 +621,11 @@ public sealed class CreatureDesign
 
     /// <summary>
     /// Whether the body swims with a wave: it carries a tail fin (a part of the Fins tab on the tail mount) or the fin
-    /// seam of an eel. Without one it glides stiff: back fins, flippers and the arms of a jellyfish only play their own
+    /// seam of an eel (the thin whip of a ray drives nothing). Without one it glides stiff: back fins, flippers and the arms of a jellyfish only play their own
     /// animation (decision of the user 2026-11-15, the jellyfish bobbed up and down).
     /// </summary>
     public bool SwimsWithWave => _parts.Any(part => CreatureCategory.Fins == part.Info.Category
-        && (CreatureMount.Tail == part.Info.Mount || CreaturePartKind.FinRibbon == part.Kind));
+        && ((CreatureMount.Tail == part.Info.Mount && CreaturePartKind.WhipTail != part.Kind) || CreaturePartKind.FinRibbon == part.Kind));
 
     /// <summary>Every body needs a lung to breathe air, whatever its type (the type is cosmetic).</summary>
     public bool BreathesAir => Count(CreaturePartKind.Lung) > 0 || Count(CreaturePartKind.BigLung) > 0;
@@ -559,10 +657,22 @@ public sealed class CreatureDesign
     private const float VOLUME_WIDTH_SCALE = 0.72f;
 
     /// <summary>Height of a ring per profile radius: a fish is tall, a marine mammal a little flatter (look only).</summary>
-    public float HeightScale => CreatureType.Fish == Type ? VOLUME_HEIGHT_SCALE : 0.88f;
+    public float HeightScale => (CreatureType.Fish == Type ? VOLUME_HEIGHT_SCALE : 0.88f) * (1f - FLAT_HEIGHT * Flatness);
+
+    /// <summary>Height of a ring per profile radius at an X: the flatness of the whole body plus that of the vertebrae there.</summary>
+    public float HeightScaleAt(float x) => (CreatureType.Fish == Type ? VOLUME_HEIGHT_SCALE : 0.88f) * (1f - FLAT_HEIGHT * FlatnessAt(x));
+
+    /// <summary>Width of a ring per profile radius at an X.</summary>
+    public float WidthScaleAt(float x) => (CreatureType.Fish == Type ? VOLUME_WIDTH_SCALE : 0.95f) * (1f + FLAT_WIDTH * FlatnessAt(x));
+
+    /// <summary>Flatness of the cross-section at an X: the value of the whole body plus the vertebrae there, -1..1.</summary>
+    public float FlatnessAt(float x) => Mathf.Clamp(Flatness + _spine.FlatAt(x), -1f, 1f);
 
     /// <summary>Width of a ring per profile radius: a fish is slim, a marine mammal round (look only).</summary>
-    public float WidthScale => CreatureType.Fish == Type ? VOLUME_WIDTH_SCALE : 0.95f;
+    public float WidthScale => (CreatureType.Fish == Type ? VOLUME_WIDTH_SCALE : 0.95f) * (1f + FLAT_WIDTH * Flatness);
+
+    private const float FLAT_HEIGHT = 0.55f;         // share of the height a fully flat body loses (a tall one gains it)
+    private const float FLAT_WIDTH = 0.4f;           // share of the width it gains (a tall one loses it)
 
     /// <summary>X of a spine share, 0 = last vertebra at the tail, 1 = first at the nose (outside on the caps).</summary>
     public float XAt(float t)
@@ -596,6 +706,24 @@ public sealed class CreatureDesign
         return _spine.LiftAt(x);
     }
 
+    /// <summary>Sideways offset of the spine at an X (+Z is the right flank).</summary>
+    public float SwayAt(float x)
+    {
+        return _spine.SwayAt(x);
+    }
+
+    /// <summary>Sideways slope of the spine (dZ / dX) at an X: parts turn with the curve.</summary>
+    public float SideSlopeAt(float x)
+    {
+        return _spine.SideSlopeAt(x);
+    }
+
+    /// <summary>The middle of the body at an X in unit space: on the bent spine, up by its lift, sideways by its sway.</summary>
+    public Vector3 CenterAt(float x)
+    {
+        return new Vector3(x, LiftAt(x), SwayAt(x));
+    }
+
     /// <summary>Slope of the spine (dY / dX) at an X over a wide window, for the tilt of the rings (smooth, no kinks).</summary>
     public float SlopeAt(float x)
     {
@@ -605,13 +733,13 @@ public sealed class CreatureDesign
     /// <summary>Height of the back above the spine at an X.</summary>
     public float TopAt(float x)
     {
-        return RadiusAt(x) * HeightScale;
+        return RadiusAt(x) * HeightScaleAt(x);
     }
 
     /// <summary>Distance of the flank from the spine at an X.</summary>
     public float FlankAt(float x)
     {
-        return RadiusAt(x) * WidthScale;
+        return RadiusAt(x) * WidthScaleAt(x);
     }
 
     /// <summary>
@@ -628,7 +756,7 @@ public sealed class CreatureDesign
     /// <summary>Whether a point in unit space lies inside the body (the swim wave and the ring tilt ignored).</summary>
     public bool Contains(Vector3 point)
     {
-        return _spine.Contains(point, HeightScale, WidthScale);
+        return _spine.Contains(point, HeightScaleAt(point.X), WidthScaleAt(point.X));
     }
 
     // ---------------------------------------------------------------------------
@@ -650,6 +778,31 @@ public sealed class CreatureDesign
     public void SetColor(Color? color)
     {
         _look.SetColor(color);
+        Version++;
+    }
+
+    /// <summary>Color of the underside, null for none.</summary>
+    public Color? BellyColor => _look.BellyColor;
+
+    /// <summary>Picks the color of the underside (a pale belly, a red throat), null for none. Free of charge, looks only.</summary>
+    /// <example><code>design.SetBellyColor(new Color(0.95f, 0.92f, 0.8f));</code></example>
+    public void SetBellyColor(Color? color)
+    {
+        _look.SetBellyColor(color);
+        Version++;
+    }
+
+    public const float HEAD_SHARE = 0.84f;           // the head zone starts at this share of the spine
+    public const float TAIL_SHARE = 0.16f;           // the tail zone ends at this one
+
+    /// <summary>The color of a zone: the body color for Body, null for a zone without a color of its own.</summary>
+    public Color? ZoneColor(CreatureZone zone) => _look.ZoneColor(zone);
+
+    /// <summary>Picks the color of a zone (belly, head, limbs, tail end), null takes it away. Free of charge, looks only.</summary>
+    /// <example><code>design.SetZoneColor(CreatureZone.Limbs, new Color(0.2f, 0.2f, 0.25f));   // dark legs</code></example>
+    public void SetZoneColor(CreatureZone zone, Color? color)
+    {
+        _look.SetZoneColor(zone, color);
         Version++;
     }
 
@@ -691,6 +844,48 @@ public sealed class CreatureDesign
         Version++;
     }
 
+    /// <summary>Cross-section of the body: 0 as its type gives it, 1 pressed flat and wide, -1 tall and narrow. Looks only: volume and weight ignore it.</summary>
+    public float Flatness => _look.Flatness;
+
+    /// <summary>Sets the flatness of the cross-section, clamped to -1..1.</summary>
+    /// <example><code>design.SetFlatness(0.8f);   // a scorpion lies flat</code></example>
+    public void SetFlatness(float flatness)
+    {
+        _look.SetFlatness(flatness);
+        Version++;
+    }
+
+    /// <summary>How fine the paint pattern is: 1 as drawn, 2 twice as many stripes, spots or patches. Looks only.</summary>
+    public float PatternScale => _look.PatternScale;
+
+    /// <summary>Sets how fine the paint pattern is, clamped (CreatureLook.SetPatternScale).</summary>
+    /// <example><code>design.SetPatternScale(2.2f);   // the dense net of a giraffe</code></example>
+    public void SetPatternScale(float scale)
+    {
+        _look.SetPatternScale(scale);
+        Version++;
+    }
+
+    /// <summary>Whether the pattern runs all around the body, belly and legs too, instead of fading out towards the belly.</summary>
+    public bool PatternWraps => _look.PatternWraps;
+
+    /// <summary>Lets the pattern run all around the body (a giraffe) or fade out towards the belly.</summary>
+    public void SetPatternWraps(bool isWrapping)
+    {
+        _look.SetPatternWraps(isWrapping);
+        Version++;
+    }
+
+    /// <summary>Whether a body without a mouth part shows the plain closed mouth line.</summary>
+    public bool HasMouthLine => _look.HasMouthLine;
+
+    /// <summary>Switches the plain mouth line of a body without a mouth part (off under the trunk of an elephant).</summary>
+    public void SetMouthLine(bool hasMouthLine)
+    {
+        _look.SetMouthLine(hasMouthLine);
+        Version++;
+    }
+
     /// <summary>Surface of the skin: smooth, scales or warts. Looks only.</summary>
     public CreatureSkin Skin => _look.Skin;
 
@@ -724,7 +919,7 @@ public sealed class CreatureDesign
     public bool AddSplat(Vector3 point, float radius, Color color, int stroke)
     {
         float ring  = Mathf.Max(RadiusAt(point.X), 0.01f);
-        float angle = Mathf.Atan2((point.Y - LiftAt(point.X)) / (ring * HeightScale), point.Z / (ring * WidthScale));
+        float angle = Mathf.Atan2((point.Y - LiftAt(point.X)) / (ring * HeightScaleAt(point.X)), (point.Z - SwayAt(point.X)) / (ring * WidthScaleAt(point.X)));
         return _look.AddSplat(TAt(point.X), angle, radius, color, stroke);
     }
 
@@ -746,7 +941,7 @@ public sealed class CreatureDesign
     {
         float x    = XAt(splat.T);
         float ring = RadiusAt(x);
-        return new Vector3(x, LiftAt(x) + Mathf.Sin(splat.Angle) * ring * HeightScale, Mathf.Cos(splat.Angle) * ring * WidthScale);
+        return new Vector3(x, LiftAt(x) + Mathf.Sin(splat.Angle) * ring * HeightScaleAt(x), SwayAt(x) + Mathf.Cos(splat.Angle) * ring * WidthScaleAt(x));
     }
 
     // ---------------------------------------------------------------------------

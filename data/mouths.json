@@ -10,5 +10,8 @@
   "CrabMouth":   { "length": 0.3,  "level": -0.34, "smile": 0.0,  "gape": 0.22, "depth": 0.2,  "lip": 0.02, "jut": 0.0 },
   "SquidBeak":   { "length": 0.2,  "level": 0.0,   "smile": 0.0,  "gape": 0.0,  "depth": 0.0,  "lip": 0.0,  "jut": 0.0 },
   "CrocMaw":     { "length": 8.0,  "level": -0.4,  "smile": 0.25, "gape": 0.1, "depth": 0.2,  "lip": 0.02, "jut": 0.0, "teeth": 14, "toothLength": 0.24, "toothWidth": 0.07, "toothFlat": 1.0, "toothRagged": 0.5 },
+  "Fangs":       { "length": 0.8,  "level": -0.3,  "smile": 0.0,  "gape": 0.0,  "depth": 0.1,  "lip": 0.0,  "jut": 0.0 },
+  "ForkTongue":  { "length": 1.6,  "level": -0.2,  "smile": 0.08, "gape": 0.0,  "depth": 0.1,  "lip": 0.02, "jut": 0.0 },
+  "RexMaw":      { "length": 3.0,  "level": -0.25, "smile": 0.1,  "gape": 0.2,  "depth": 0.3,  "lip": 0.03, "jut": -0.04, "teeth": 10, "toothLength": 0.38, "toothWidth": 0.15, "toothFlat": 0.8, "toothRagged": 0.4 },
   "Smile":       { "length": 1.35, "level": -0.24, "smile": 0.26, "gape": 0.015, "depth": 0.12, "lip": 0.07, "jut": 0.0 }
 }

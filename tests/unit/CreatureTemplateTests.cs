@@ -87,8 +87,9 @@ public class CreatureTemplateTests
             {
                 // Free are only the part at the tail tip and the eyes, everything else was paid at its catalog price
                 bool isFreeKind = CreatureMount.Tail == part.Info.Mount || (CreatureCategory.Eyes == part.Info.Category && CreaturePartKind.Lure != part.Kind);
-                Assert.True(part.PaidCost == part.Info.CostFor(part.Side) || (0 == part.PaidCost && isFreeKind),
-                    $"{template.Key}: {part.Kind} must be paid {part.Info.CostFor(part.Side)} EP, got {part.PaidCost}.");
+                int price = part.Info.CostFor(part.Side) * part.Copies;      // a ring pays every copy
+                Assert.True(part.PaidCost == price || (0 == part.PaidCost && isFreeKind),
+                    $"{template.Key}: {part.Kind} must be paid {price} EP, got {part.PaidCost}.");
             }
             Assert.True(design.Parts.Count(part => 0 == part.PaidCost) <= 2, $"{template.Key} may bring two free parts.");
         }
@@ -182,13 +183,19 @@ public class CreatureTemplateTests
     }
 
     [Fact]
-    public void PartWithoutRoomFails()
+    public void TheSamePartTwiceOnOneSpotFails()
     {
-        string json = SAMPLE.Replace("{ \"kind\": \"Tentacle\", \"onPart\": 2, \"onJoint\": 1 }", "{ \"kind\": \"CaudalFin\", \"t\": 0 }");
+        // Parts may sit anywhere; only an unshifted copy on the very same spot is a mistake in the file
+        const string DOUBLED = """
+            {
+              "key": "DOUBLED", "type": "Fish", "girths": [0.3, 0.5, 0.7, 0.5],
+              "parts": [ { "kind": "DorsalFin", "t": 0.5 }, { "kind": "DorsalFin", "t": 0.5 } ]
+            }
+            """;
 
-        var error = Assert.Throws<InvalidOperationException>(() => CreatureTemplates.Parse(json).Build());
-        Assert.Contains("SAMPLE", error.Message);
-        Assert.Contains("CaudalFin", error.Message);
+        var error = Assert.Throws<InvalidOperationException>(() => CreatureTemplates.Parse(DOUBLED).Build());
+        Assert.Contains("DOUBLED", error.Message);
+        Assert.Contains("DorsalFin", error.Message);
     }
 
     [Fact]
@@ -314,5 +321,33 @@ public class CreatureTemplateTests
         Assert.False(design.SetPartRadial(design.Parts.Count - 1, 4));
         Assert.True(design.SetPartRadial(0, 0));
         Assert.Equal(1, design.Parts[0].Copies);
+    }
+
+    [Fact]
+    public void ColorZonesAreReadAndCleared()
+    {
+        CreatureDesign design = CreatureTemplates.Parse("""
+            {
+              "key": "ZONES", "type": "Fish", "girths": [0.3, 0.5, 0.7, 0.5], "color": "#408040",
+              "bellyColor": "#f0e8c0", "headColor": "#c04020", "limbColor": "#202028", "tailColor": "#e0a020",
+              "parts": []
+            }
+            """).Build();
+
+        Assert.NotNull(design.ZoneColor(CreatureZone.Belly));
+        Assert.Equal(design.BellyColor, design.ZoneColor(CreatureZone.Belly));
+        Assert.Equal(new Godot.Color("#c04020"), design.ZoneColor(CreatureZone.Head));
+        Assert.Equal(new Godot.Color("#202028"), design.ZoneColor(CreatureZone.Limbs));
+        Assert.Equal(new Godot.Color("#e0a020"), design.ZoneColor(CreatureZone.Tail));
+        Assert.Equal(design.Color, design.ZoneColor(CreatureZone.Body));          // the body zone is the body color
+
+        // Null takes a zone away again, a copy carries the zones along
+        design.SetZoneColor(CreatureZone.Head, null);
+        Assert.Null(design.ZoneColor(CreatureZone.Head));
+        var copy = new CreatureDesign();
+        copy.CopyFrom(design);
+        Assert.Equal(design.ZoneColor(CreatureZone.Tail), copy.ZoneColor(CreatureZone.Tail));
+        Assert.Null(copy.ZoneColor(CreatureZone.Head));
+        Assert.Null(CreatureTemplates.Plain(CreatureType.Fish).Build().ZoneColor(CreatureZone.Limbs));
     }
 }
