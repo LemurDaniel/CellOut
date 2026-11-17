@@ -232,14 +232,20 @@ public partial class CoastSurface : Node3D
         }
         _padsBuilt = pads.Count;
 
-        // The shader draws trampled earth on them: xy center, z radius
+        // The shader draws trampled earth on them: xy center, z radius, w look (0 yard, 1 village ways, 2 city streets)
         var packed = new Vector4[CoastTerrain.MAX_PADS];
         for (int p = 0; p < pads.Count; p++)
         {
-            packed[p] = new Vector4(pads[p].Center.X, pads[p].Center.Y, pads[p].Radius, 0f);
+            packed[p] = new Vector4(pads[p].Center.X, pads[p].Center.Y, pads[p].Radius, (float)pads[p].Style);
         }
         _groundMaterial.SetShaderParameter("pads", packed);
         _groundMaterial.SetShaderParameter("pad_count", pads.Count);
+
+        // The ways of every settlement follow the same ground plan (Tribe/Village/Settlement.cs)
+        float   unit  = _terrain.Unit;
+        float[] gates = Settlement.GateAngles();
+        _groundMaterial.SetShaderParameter("settlement_plan", new Vector3(Settlement.PlazaRadius(unit), Settlement.RingWay(unit), Settlement.WayHalfWidth(unit)));
+        _groundMaterial.SetShaderParameter("settlement_gates", new Vector4(gates[0], gates[1], gates[2], gates[3]));
     }
 
     /// <summary>Keeps ground and water around the player, called every frame.</summary>

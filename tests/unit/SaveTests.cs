@@ -98,11 +98,37 @@ public class SaveTests
     [Fact]
     public void BuildingsComeBack()
     {
+        // The roof carries a free pose (gizmo of the builder), the other blocks stand plain
         BuildingDesign design = BuildingTemplates.Default(BuildingKind.Dwelling);
-        BuildingDesign back   = SaveData.ToBuilding(SaveData.Building(design));
+        design.SetPose(1, new Godot.Vector3(0.25f, 0.5f, 0f), new Godot.Vector3(0f, 0.5f, 0f), new Godot.Vector3(1.5f, 1f, 2f));
+        SaveBuildingDesign saved = SaveData.Building(design);
+        BuildingDesign     back  = SaveData.ToBuilding(saved);
 
         Assert.Equal(design.Kind, back.Kind);
         Assert.Equal(design.Blocks, back.Blocks);
+        Assert.Null(saved.Blocks[0].Scale);
+        Assert.Equal(new[] { 1.5f, 1f, 2f }, saved.Blocks[1].Scale);
+    }
+
+    [Fact]
+    public void AntiqueSavesBecomeModern()
+    {
+        // Layout 1: antique techs and an antique block in a blueprint; layout 2 knows the modern names, the block is dropped
+        SaveGame old = GameWith(null) with
+        {
+            Version = 1,
+            Society = new SaveSociety { Civ = new SaveCiv { Techs = new System.Collections.Generic.List<string> { "Pottery", "Sailing" } } },
+        };
+        SaveGame back = SaveCodec.FromJson(System.Text.Json.JsonSerializer.Serialize(old, new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase }));
+        Assert.Equal(new[] { "Cooling", "Engine" }, back.Society.Civ.Techs);
+        Assert.Equal(SaveCodec.VERSION, back.Version);
+
+        var blueprint = new SaveBuildingDesign("Hall", new System.Collections.Generic.List<SaveBlock>
+        {
+            new("SquareRoom", 2, 2, 0, -1, 0), new("Column", 0, 0, 0, -1, 0), new("GableRoof", 2, 2, 0, -1, 0),
+        });
+        BuildingDesign hall = SaveData.ToBuilding(blueprint);
+        Assert.Equal(new[] { BlockKind.SquareRoom, BlockKind.GableRoof }, System.Linq.Enumerable.Select(hall.Blocks, block => block.Kind));
     }
 
     /// <summary>A minimal game around a creature design (null for none).</summary>

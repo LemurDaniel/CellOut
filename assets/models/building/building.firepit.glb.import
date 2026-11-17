@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://cc2t86ytivef1"
-path="res://.godot/imported/building.steps.glb-afff46a4f796b2c3f9dd9664c85df1de.scn"
+uid="uid://clxrvrh2t0rou"
+path="res://.godot/imported/building.firepit.glb-2b95974bb4752b0de20e9d78abb7c92f.scn"
 
 [deps]
 
-source_file="res://assets/models/building/building.steps.glb"
-dest_files=["res://.godot/imported/building.steps.glb-afff46a4f796b2c3f9dd9664c85df1de.scn"]
+source_file="res://assets/models/building/building.firepit.glb"
+dest_files=["res://.godot/imported/building.firepit.glb-2b95974bb4752b0de20e9d78abb7c92f.scn"]
 
 [params]
 

@@ -28,10 +28,17 @@ public static class SaveCodec
     //   VERSION    The layout written now; raise it with every change of the records, then extend Migrate.
     //   ToJson     The game as indented JSON, the version set.
     //   FromJson   The game from its JSON, migrated to VERSION.
-    //   Migrate    Lifts an older layout step by step (version 1 is the first, nothing to lift yet).
+    //   Migrate    Lifts an older layout step by step (1 to 2: the antique techs become the modern ones).
     //
 
-    public const int VERSION = 1;
+    public const int VERSION = 2;
+
+    /// <summary>The techs of the antique age (layout 1) and what each became in the modern age: the same place in the tree, the same effect.</summary>
+    private static readonly System.Collections.Generic.Dictionary<string, string> MODERN_TECHS = new()
+    {
+        ["Pottery"] = "Cooling", ["Bronze"] = "Steel", ["Farming"] = "Tractor", ["Masonry"] = "Concrete", ["Sailing"] = "Engine",
+        ["Writing"] = "Computer", ["Philosophy"] = "University", ["Navigation"] = "Radar", ["Currency"] = "Bank",
+    };
 
     private static readonly JsonSerializerOptions OPTIONS = new()
     {
@@ -80,8 +87,13 @@ public static class SaveCodec
 
     private static SaveGame Migrate(SaveGame game)
     {
-        // Version 1 is the first layout. A later change adds one step per version here:
-        // if (1 == game.Version) { game = game with { ..., Version = 2 }; }
+        // Layout 1 to 2: the civilization turned from the antique to the modern age, its techs got new names.
+        // (Antique building blocks of a saved blueprint are dropped when it is read, SaveData.ToBuilding.)
+        if (1 == game.Version && null != game.Society?.Civ)
+        {
+            var techs = game.Society.Civ.Techs.ConvertAll(tech => (MODERN_TECHS.TryGetValue(tech, out string modern) ? modern : tech));
+            game = game with { Society = game.Society with { Civ = game.Society.Civ with { Techs = techs } } };
+        }
         return game with { Version = VERSION };
     }
 }

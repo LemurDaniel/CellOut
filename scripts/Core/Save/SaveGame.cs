@@ -223,7 +223,7 @@ public sealed record SaveTribe
 
 public sealed record SaveBuildingDesign(string Kind, List<SaveBlock> Blocks);
 
-public sealed record SaveBlock(string Kind, int X, int Z, int Turns, int Paint, int Pattern);
+public sealed record SaveBlock(string Kind, int X, int Z, int Turns, int Paint, int Pattern, float[] Offset = null, float[] Rotation = null, float[] Scale = null);     // the pose is null for a plain block and in older saves
 
 public sealed record SaveHut(SaveBuildingDesign Design, float[] Position, float Turn);
 
@@ -315,7 +315,12 @@ public static class SaveData
     /// <summary>A building blueprint as its save record, blocks in the order they were placed.</summary>
     public static SaveBuildingDesign Building(BuildingDesign design)
     {
-        return new SaveBuildingDesign(design.Kind.ToString(), design.Blocks.Select(block => new SaveBlock(block.Kind.ToString(), block.X, block.Z, block.Turns, block.Paint, block.Pattern)).ToList());
+        return new SaveBuildingDesign(design.Kind.ToString(), design.Blocks.Select(block =>
+        {
+            bool isPosed = Vector3.Zero != block.Offset || Vector3.Zero != block.Rotation || Vector3.Zero != block.Grow;
+            return new SaveBlock(block.Kind.ToString(), block.X, block.Z, block.Turns, block.Paint, block.Pattern,
+                isPosed ? Of(block.Offset) : null, isPosed ? Of(block.Rotation) : null, isPosed ? Of(block.Scale) : null);
+        }).ToList());
     }
 
     /// <summary>A building blueprint back from its record: the blocks drop again in their order, so they stack as before.</summary>
@@ -324,7 +329,16 @@ public static class SaveData
         var design = new BuildingDesign(System.Enum.Parse<BuildingKind>(save.Kind));
         foreach (SaveBlock block in save.Blocks)
         {
-            design.TryPlace(System.Enum.Parse<BlockKind>(block.Kind), block.X, block.Z, block.Turns, block.Paint, block.Pattern);
+            // A block the game no longer has (the antique ones, dropped 2026-11-17) is left out, the rest stacks without it
+            if (!System.Enum.TryParse(block.Kind, out BlockKind kind))
+            {
+                continue;
+            }
+            bool isPlaced = design.TryPlace(kind, block.X, block.Z, block.Turns, block.Paint, block.Pattern);
+            if (isPlaced && null != block.Scale)
+            {
+                design.SetPose(design.Blocks.Count - 1, ToVector3(block.Offset), ToVector3(block.Rotation), ToVector3(block.Scale));
+            }
         }
         return design;
     }

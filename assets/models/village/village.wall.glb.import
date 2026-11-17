@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://onw6uk4ypo38"
-path="res://.godot/imported/building.pediment.glb-a865dae23f785d1c9e95a64ebb48a0ae.scn"
+uid="uid://d074kxvaug40l"
+path="res://.godot/imported/village.wall.glb-cb5c3d1f4465639eedb33e13333c8b3d.scn"
 
 [deps]
 
-source_file="res://assets/models/building/building.pediment.glb"
-dest_files=["res://.godot/imported/building.pediment.glb-a865dae23f785d1c9e95a64ebb48a0ae.scn"]
+source_file="res://assets/models/village/village.wall.glb"
+dest_files=["res://.godot/imported/village.wall.glb-cb5c3d1f4465639eedb33e13333c8b3d.scn"]
 
 [params]
 

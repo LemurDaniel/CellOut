@@ -21,11 +21,12 @@
 //   $env:CELLOUT_REEL_SAIL = '1'      # optional, with CELLOUT_REEL_CIV: instead of the tech tree the chieftain stands in the sea with its retinue: the ship (last frame)
 //   (CELLOUT_REEL_WIDE = '1' with CELLOUT_REEL_CIV: the chieftain looks at the headquarters from afar, zoomed out, no HUD)
 //   $env:CELLOUT_REEL_LANDING = '1'   # optional, with CELLOUT_REEL_CIV: raiders from over the sea land by ship, the chieftain watches from the shore
-//   $env:CELLOUT_REEL_HALL = '1'      # optional, with CELLOUT_REEL_CIV: instead of the tech tree the builder shows the headquarters with the antique blocks
+//   $env:CELLOUT_REEL_HALL = '1'      # optional, with CELLOUT_REEL_CIV: instead of the tech tree the builder shows the headquarters with the modern blocks
 //   $env:CELLOUT_REEL_VISIT = '1'     # optional, with CELLOUT_REEL_CIV: instead of the tech tree the chieftain visits a neighbor over the sea
 //   $env:CELLOUT_REEL_WIDE = '1'      # optional, while rushing: the camera zooms all the way out and the HUD hides, for looking at the scenery
 //   $env:CELLOUT_REEL_MAP = '1'       # optional: the tribe opens the world map (rushing: still 198)
 //   $env:CELLOUT_REEL_MENU = '1'      # optional: the tribe opens the build menu (rushing: still 198)
+//   $env:CELLOUT_REEL_PLACE = '1'     # optional: the tribe places a storehouse, the build view over the plots of the settlement (rushing: still 198); with CELLOUT_REEL_CIV the build view over the city (last frame)
 //   $env:CELLOUT_REEL_SAVE = '1'      # optional, with the tribe: saves the game (set CELLOUT_SAVE_DIR to a scratch folder!)
 //   $env:CELLOUT_REEL_CONTINUE = 'TERRA' # optional: continues the saved game of that planet like the planet view (still 118), with CELLOUT_SAVE_DIR
 //   $env:CELLOUT_REEL_FAN = '1'       # optional: the tribe gets a roar sac and a ram brow, key 3 opens the fan of hunt (rushing: still 198)
@@ -76,6 +77,7 @@ public partial class GraphicsReel : Node
     private static readonly bool IS_RUSHING = IS_RUSHING_TRIBE || "1" == OS.GetEnvironment("CELLOUT_REEL_LAND");
     private static readonly bool IS_SHOWING_MAP = "1" == OS.GetEnvironment("CELLOUT_REEL_MAP");
     private static readonly bool IS_SHOWING_MENU = "1" == OS.GetEnvironment("CELLOUT_REEL_MENU");
+    private static readonly bool IS_PLACING = "1" == OS.GetEnvironment("CELLOUT_REEL_PLACE");
     private static readonly bool IS_SHOWING_FAN = "1" == OS.GetEnvironment("CELLOUT_REEL_FAN");
     private static readonly bool IS_SAVING = "1" == OS.GetEnvironment("CELLOUT_REEL_SAVE");
     private static readonly string CONTINUE_PLANET = OS.GetEnvironment("CELLOUT_REEL_CONTINUE");
@@ -304,6 +306,12 @@ public partial class GraphicsReel : Node
             case MAP_FRAME + 10 when IS_SHOWING_FAN:
                 _main.Hud.PressWayKey(2);
                 break;
+            case MAP_FRAME when IS_PLACING:
+                // The build view: a storehouse hangs over the plots of the settlement
+                _main.CheatTo(CheatTarget.Resources);
+                _main.Placer.Begin(BuildingKind.Storehouse);
+                _main.Placer.Rotate(1);
+                break;
             case MAP_FRAME when IS_SHOWING_MENU:
                 _main.TribePanel.ToggleBuildMenu();
                 break;
@@ -319,6 +327,12 @@ public partial class GraphicsReel : Node
                 _main.BuildingEditor.Session.PickPattern(1);
                 _main.BuildingEditor.Session.Repaint(1);
                 _main.BuildingEditor.Session.Select(BlockKind.Totem);
+                // The gizmo on the roof: lifted, tilted and grown a little
+                _main.BuildingEditor.Session.Pick(1);
+                _main.BuildingEditor.Session.MovePicked(new Vector3(0f, 0.4f, 0f));
+                _main.BuildingEditor.Session.TurnPicked(Vector3.Back, 0.3f);
+                _main.BuildingEditor.Session.GrowPicked(1.25f);
+                _main.BuildingEditor.Session.CommitPose();
                 break;
             case QUIT_FRAME:
                 GetTree().Quit();
@@ -538,7 +552,7 @@ public partial class GraphicsReel : Node
                 break;
             case CITY_RESEARCH:
                 _main.Civ.CheatKnowledge(80f);
-                foreach (TechKind kind in new[] { TechKind.Pottery, TechKind.Bronze, TechKind.Farming, TechKind.Sailing })
+                foreach (TechKind kind in new[] { TechKind.Cooling, TechKind.Steel, TechKind.Tractor, TechKind.Engine })
                 {
                     _main.Civ.Research(kind);
                 }
@@ -555,10 +569,15 @@ public partial class GraphicsReel : Node
                 }
                 break;
             case CITY_TREE when IS_SHOWING_HALL:
-                // The builder on the headquarters, the antique blocks picked
+                // The builder on the headquarters, the modern blocks picked
                 _main.OpenBuildingEditor();
                 _main.BuildingEditor.Session.ShowKind(BuildingKind.Hall);
-                _main.BuildingEditor.Session.ShowGroup(BlockGroup.Antique);
+                _main.BuildingEditor.Session.ShowEra(BlockEra.Modern);
+                break;
+            case CITY_TREE when IS_PLACING:
+                // The build view over the city: its streets, sidewalks and paved ground
+                _main.CheatTo(CheatTarget.Resources);
+                _main.Placer.Begin(BuildingKind.Storehouse);
                 break;
             case CITY_TREE when !IS_SAILING:
                 _main.TechTree.Toggle();

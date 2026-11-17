@@ -50,7 +50,7 @@ public partial class Hut : Node2D
     /// <summary>Villager time from data/balance.json (tribe.village).</summary>
     private static VillageBalance Tune => Balance.Current.Tribe.Village;
 
-    public const float SCALE = 2.4f;
+    public const float SCALE = 3f;
     public const float RADIUS = 1f;
 
     [Signal] public delegate void DestroyedEventHandler();

@@ -5,20 +5,20 @@
 #   of its footprint on the ground. One grid cell is 0.5 units, a block stays inside its
 #   box (width along X x height x depth along Z) and ends flat where the next one stacks.
 #   No rig. The game recolors by material name: Paint (the surface the player repaints),
-#   PaintDark (its trim), Wood, Stone, Ember, Bone, Door, Flame, Rope, FruitRed, FruitGold,
-#   FruitGreen. Registered in build.models.py.
+#   PaintDark (its trim), Wood, Stone, Ember, Bone, Door, Flame, Rope, Bronze, FruitRed,
+#   FruitGold, FruitGreen. Registered in build.models.py.
 #
 #   ./tools/blender/Build-Models.ps1 -Only building/
 
 #
 #   Chapters:
 #     PRIMITIVES   Hand-hewn poles, beams, lathed rings, plates, cloth and rocks.
-#     WALLS        Round room, square room and round tower.
-#     ROOFS        Thatched cones and the gable roof.
+#     WALLS        Wattle roundhouse, log house and masonry tower, with their windows.
+#     ROOFS        Shaggy thatched cones and the shingled gable roof.
 #     FRAMES       Stilts, platform and ladder.
 #     DEFENSE      Palisade, torch and banner.
 #     TRADE        Stall, awning and crate.
-#     DECORATION   Door porch, totem segment and horned skull.
+#     DECORATION   Plank door in its porch, totem segment and horned skull.
 #
 
 import math
@@ -273,83 +273,211 @@ def trim_height(scene, height):
 # ================================   WALLS   ================================
 # ===========================================================================
 #
-#   build_round_room    Wattle and daub: a round wall, upright poles, woven withies, rims.
-#   build_square_room   Upright planks between four corner logs, sill, band and top plate.
-#   build_round_tower   A slim tower with courses of rough stones bulging out of the wall.
+#   panel               An upright board lying flat on a wall that looks any way.
+#   window              A dark opening in a wall: frame, sill, lintel, bars, shutters.
+#   arc_block           A hewn stone block bent around the upright axis: masonry of a tower.
+#   build_round_room    Wattle and daub roundhouse: field stones at the foot, upright posts,
+#                       woven withies, three small windows, a wooden wall plate on top.
+#   build_square_room   Log house: stone foundation, round logs crossing at the corners,
+#                       shuttered windows on both flanks, a small one at the back, joist
+#                       ends under the top plate.
+#   build_round_tower   Masonry: a strong foot, staggered courses of rough blocks with dark
+#                       joints, two arrow slits, a crown ring on corbels.
 #
-#   All three end flat at y = 1, the next block stands on them.
+#   All three end flat at y = 1, the next block stands on them. Their front (+X) stays
+#   free of windows: the door block stands there. The tower stacks onto itself.
 #
+
+WINDOW_FRAME = 0.045                                  # width of the jambs, lintel and sill of a window
+WINDOW_SINK = 0.06                                    # how deep a window starts inside its wall
+
+
+def panel(scene, name, center, across, out, width, height, depth, material_name):
+    """
+    An upright board: center is the middle of its back face (Blender vector), across
+    runs level along the wall, out is the way the wall looks. depth pushes it out.
+    """
+    half_across, half_up = across * (width / 2), UP * (height / 2)
+    outline = [center - half_across - half_up, center + half_across - half_up,
+               center + half_across + half_up, center - half_across + half_up]
+    return plate(scene, name, outline, out * depth, material_name)
+
+
+def window(scene, name, angle, reach, y, width, height, depth, has_cross=True, has_shutters=False, ledge=1.0):
+    """
+    A window on a wall that looks along angle (radians about Y, 0 = +X) and stands reach
+    away from the middle. width x height is the dark opening around height y, depth is
+    how far the frame stands off the wall. Shutters hang open on both sides. ledge is
+    how far lintel and sill stand over the jambs (0 = flush, the slit of a tower).
+    """
+    out, across = G(math.cos(angle), 0.0, math.sin(angle)), G(-math.sin(angle), 0.0, math.cos(angle))
+    back = out * (reach - WINDOW_SINK) + UP * y
+    # Dark opening, a little proud of the wall
+    panel(scene, f'{name}Dark', back, across, out, width, height, WINDOW_SINK + 0.02, 'Door')
+    # Frame: jambs, lintel and a sill that sticks out further
+    for side in (-1, 1):
+        jamb = back + across * (side * (width + WINDOW_FRAME) / 2)
+        panel(scene, f'{name}Jamb{side}', jamb, across, out, WINDOW_FRAME, height, WINDOW_SINK + depth, 'PaintDark')
+    rim = height / 2 + WINDOW_FRAME / 2
+    panel(scene, f'{name}Lintel', back + UP * rim, across, out, width + WINDOW_FRAME * (2.0 + 1.2 * ledge), WINDOW_FRAME * 1.15, WINDOW_SINK + depth + 0.01 * ledge, 'PaintDark')
+    panel(scene, f'{name}Sill', back - UP * rim, across, out, width + WINDOW_FRAME * (2.0 + 2.0 * ledge), WINDOW_FRAME, WINDOW_SINK + depth + 0.03 * ledge, 'PaintDark')
+    if has_cross:
+        # Bars of the opening, thinner than the frame and set back behind it
+        panel(scene, f'{name}Post', back, across, out, 0.03, height, WINDOW_SINK + depth * 0.55, 'PaintDark')
+        panel(scene, f'{name}Bar', back + UP * (height * 0.12), across, out, width, 0.03, WINDOW_SINK + depth * 0.5, 'PaintDark')
+    if not has_shutters:
+        return
+    # Shutters: a board on each side with two battens
+    leaf = width * 0.5
+    for side in (-1, 1):
+        middle = back + across * (side * (width / 2 + WINDOW_FRAME + leaf / 2 + 0.01))
+        panel(scene, f'{name}Shutter{side}', middle, across, out, leaf, height * 1.04, WINDOW_SINK + depth * 0.45, 'PaintDark')
+        for row in (-1, 1):
+            panel(scene, f'{name}Batten{side}{row}', middle + UP * (row * height * 0.3), across, out, leaf * 0.9, 0.04, WINDOW_SINK + depth * 0.75, 'Wood')
+
+
+def arc_block(scene, name, angle, span, inner, outer, low, high, material_name, rng, wobble=0.0):
+    """
+    A stone block bent around the Y axis: span radians wide around angle, from radius
+    inner to outer and height low to high. wobble moves every corner by up to that much.
+    """
+    steps = max(1, round(span / 0.42))                # one flat face per 24 degrees keeps the wall round
+    bm = bmesh.new()
+    rings = []
+    for step in range(steps + 1):
+        at = angle - span / 2 + span * step / steps
+        ring = []
+        for radius, y in ((inner, low), (outer, low), (outer, high), (inner, high)):
+            reach = radius + rng.uniform(-wobble, wobble)
+            ring.append(bm.verts.new(G(math.cos(at) * reach, y + rng.uniform(-wobble, wobble), math.sin(at) * reach)))
+        rings.append(ring)
+    for lower, upper in zip(rings, rings[1:]):
+        _bridge(bm, lower, upper, False)
+    bm.faces.new(rings[0])
+    bm.faces.new(rings[-1])
+    _outward(bm)
+    return _link(scene, bm, name, material_name)
+
 
 def build_round_room(scene):
     rng = random.Random(101)
-    pole_count = 12
-    segments = pole_count * 2            # every other segment sits on a pole
+    post_count = 12
+    segments = post_count * 2            # every other segment sits on a post
     # Daub wall, uneven below its flat top
-    lathe(scene, 'Wall', [(0.9, 0.0), (0.915, 0.5), (0.9, 1.0)], 'Paint', segments=segments,
-          bulge=lambda k, j: 0.0 if 2 == j else rng.uniform(-0.012, 0.012), has_top_cap=True)
-    # Upright poles, each a little bent
-    for i in range(pole_count):
-        angle = (i + 0.5) / pole_count * math.tau
-        bend = angle + rng.uniform(-0.025, 0.025)
+    lathe(scene, 'Wall', [(0.9, 0.0), (0.912, 0.5), (0.9, 1.0)], 'Paint', segments=segments,
+          bulge=lambda k, j: 0.0 if 2 == j else rng.uniform(-0.01, 0.01), has_top_cap=True)
+    # Field stones around the foot, each one different
+    stone_count = 13
+    for i in range(stone_count):
+        angle = (i + rng.uniform(-0.15, 0.15)) / stone_count * math.tau
+        size = (rng.uniform(0.06, 0.075), rng.uniform(0.075, 0.115), rng.uniform(0.17, 0.23))
+        rock(scene, f'Stone{i}', (math.cos(angle) * 0.915, 0.06, math.sin(angle) * 0.915), size, 'Stone', rng, turn=angle)
+    # Upright posts, each a little bent
+    for i in range(post_count):
+        angle = (i + 0.5) / post_count * math.tau
+        bend = angle + rng.uniform(-0.03, 0.03)
         points = [G(math.cos(angle) * 0.925, 0.0, math.sin(angle) * 0.925),
-                  G(math.cos(bend) * 0.925, 0.5, math.sin(bend) * 0.925),
+                  G(math.cos(bend) * 0.93, 0.5, math.sin(bend) * 0.93),
                   G(math.cos(angle) * 0.925, 1.0, math.sin(angle) * 0.925)]
-        pole(scene, f'Pole{i}', points, [0.045, 0.04, 0.043], 'PaintDark', sides=5, is_level=True)
-    # Withies woven around the poles: in front of one pole, behind the next
-    for row, y in enumerate((0.36, 0.66)):
+        pole(scene, f'Post{i}', points, [0.055, 0.047, 0.05], 'PaintDark', sides=5, is_level=True)
+    # Withies woven around the posts: in front of one post, behind the next, row against row
+    for row, y in enumerate((0.215, 0.28, 0.345, 0.41, 0.82)):
         def weave(k, j, row=row):
             if 0 == k % 2:
                 return 0.0
-            return 0.045 if 0 == (k // 2 + row) % 2 else -0.035
-        lathe(scene, f'Withy{row}', [(0.915, y - 0.03), (0.94, y), (0.915, y + 0.03)], 'PaintDark', segments=segments, bulge=weave)
-    # Rims at foot and top
-    lathe(scene, 'FootRim', [(0.985, 0.0), (0.995, 0.05), (0.97, 0.11), (0.9, 0.12)], 'PaintDark', segments=segments)
-    lathe(scene, 'TopRim', [(0.9, 0.88), (0.97, 0.89), (0.995, 0.95), (0.985, 1.0), (0.985, 1.0), (0.9, 1.0)], 'PaintDark', segments=segments)
+            return 0.05 if 0 == (k // 2 + row) % 2 else -0.04
+        lathe(scene, f'Withy{row}', [(0.905, y - 0.028), (0.942, y), (0.905, y + 0.028)], 'PaintDark', segments=segments, bulge=weave)
+    # Windows between two posts: both flanks and the back, the front belongs to the door
+    for i, angle in enumerate((math.pi / 2, math.pi, -math.pi / 2)):
+        window(scene, f'Window{i}', angle, 0.9, 0.63, 0.21, 0.23, 0.065)
+    # Wall plate: a wooden ring lying on the posts
+    lathe(scene, 'Plate', [(0.9, 0.885), (0.985, 0.89), (0.995, 0.945), (0.985, 1.0), (0.985, 1.0), (0.9, 1.0)], 'PaintDark', segments=segments)
     trim_height(scene, 1.0)
+
+
+LOG_RADIUS = 0.08                                     # logs of the square room
+LOG_DEPTH = 0.82                                      # their middle line, seen from the middle of the room
+LOG_COURSES_X = (0.21, 0.36, 0.51, 0.66, 0.81)        # heights of the logs on the +X and -X faces
+LOG_COURSES_Z = (0.15, 0.285, 0.435, 0.585, 0.735)    # half a log higher on +Z and -Z: they cross at the corners
 
 
 def build_square_room(scene):
     rng = random.Random(102)
-    # Core behind the planks, its top is the flat top of the room
-    beam(scene, 'Core', G(0, 0.0, 0), G(0, 1.0, 0), 1.74, 1.74, 'Paint')
-    # Six upright planks per side, uneven in width and depth
-    plank_count = 6
-    spacing = 1.72 / plank_count
+    # Core behind the logs, its top is the flat top of the room
+    beam(scene, 'Core', G(0, 0.0, 0), G(0, 1.0, 0), LOG_DEPTH * 2.0, LOG_DEPTH * 2.0, 'Paint')
+    # Foundation: hewn stone blocks along every side, a boulder under every corner
     for side_x, side_z in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-        for i in range(plank_count):
-            slide = -0.86 + spacing * (i + 0.5)
-            depth = 0.885 + rng.uniform(-0.012, 0.012)
-            width = spacing - rng.uniform(0.015, 0.035)
-            x = side_x * depth + abs(side_z) * slide
-            z = side_z * depth + abs(side_x) * slide
-            # Upright beam: width along Z, height along X
-            size = (width, 0.05) if 0 != side_x else (0.05, width)
-            beam(scene, f'Plank{side_x}{side_z}{i}', G(x, 0.0, z), G(x, 1.0, z), size[0], size[1], 'Paint')
-    # Corner logs
+        cuts = [-0.84, rng.uniform(-0.5, -0.3), rng.uniform(-0.1, 0.1), rng.uniform(0.3, 0.5), 0.84]
+        for i, (near, far) in enumerate(zip(cuts, cuts[1:])):
+            depth = 0.88 + rng.uniform(-0.015, 0.015)
+            start = G(side_x * depth + abs(side_z) * (near + 0.012), 0.065, side_z * depth + abs(side_x) * (near + 0.012))
+            end = G(side_x * depth + abs(side_z) * (far - 0.012), 0.065, side_z * depth + abs(side_x) * (far - 0.012))
+            beam(scene, f'Block{side_x}{side_z}{i}', start, end, 0.16, rng.uniform(0.13, 0.15), 'Stone', rng, 0.014)
     for i, (sx, sz) in enumerate(CORNERS):
-        points = [G(sx * 0.92, 0.0, sz * 0.92), G(sx * 0.92, 0.5, sz * 0.92), G(sx * 0.92, 1.0, sz * 0.92)]
-        pole(scene, f'Post{i}', points, [0.078, 0.07, 0.075], 'PaintDark', sides=6, is_level=True)
-    # Sill, band and top plate around the planks
-    for name, y, reach, thickness, tall in (('Sill', 0.05, 0.925, 0.06, 0.1), ('Band', 0.56, 0.925, 0.05, 0.08), ('Plate', 0.955, 0.93, 0.08, 0.09)):
-        for side in (-1, 1):
-            beam(scene, f'{name}X{side}', G(side * reach, y, -0.9), G(side * reach, y, 0.9), thickness, tall, 'PaintDark', rng, 0.006)
-            beam(scene, f'{name}Z{side}', G(-0.9, y, side * reach), G(0.9, y, side * reach), thickness, tall, 'PaintDark', rng, 0.006)
+        rock(scene, f'Boulder{i}', (sx * 0.89, 0.07, sz * 0.89), (0.1, 0.095, 0.1), 'Stone', rng, roughness=0.12)
+    # Logs: along Z on the X faces, along X on the Z faces, their ends stick out at the corners
+    for side in (-1, 1):
+        for i, y in enumerate(LOG_COURSES_X):
+            reach, bow = side * LOG_DEPTH, side * rng.uniform(0.0, 0.012)
+            points = [G(reach, y, -rng.uniform(0.95, 1.0)), G(reach + bow, y, 0.0), G(reach, y, rng.uniform(0.95, 1.0))]
+            pole(scene, f'LogX{side}{i}', points, [LOG_RADIUS, LOG_RADIUS * 0.96, LOG_RADIUS * rng.uniform(0.9, 1.0)], 'Paint', sides=7)
+        for i, y in enumerate(LOG_COURSES_Z):
+            reach, bow = side * LOG_DEPTH, side * rng.uniform(0.0, 0.012)
+            radius = LOG_RADIUS * (0.85 if 0 == i else 1.0)     # the lowest one lies half in the foundation
+            points = [G(-rng.uniform(0.95, 1.0), y, reach), G(0.0, y, reach + bow), G(rng.uniform(0.95, 1.0), y, reach)]
+            pole(scene, f'LogZ{side}{i}', points, [radius, radius * 0.96, radius * rng.uniform(0.9, 1.0)], 'Paint', sides=7)
+    # Windows: shuttered on both flanks, a small one at the back
+    for side in (-1, 1):
+        window(scene, f'Window{side}', side * math.pi / 2, LOG_DEPTH + LOG_RADIUS, 0.5, 0.32, 0.3, 0.07, has_shutters=True)
+    window(scene, 'WindowBack', math.pi, LOG_DEPTH + LOG_RADIUS, 0.53, 0.24, 0.24, 0.07)
+    # Joist ends sticking out of both flanks under the top plate
+    for side in (-1, 1):
+        for i in range(5):
+            x = -0.62 + 0.31 * i + rng.uniform(-0.02, 0.02)
+            beam(scene, f'Joist{side}{i}', G(x, 0.857, side * 0.7), G(x, 0.857, side * rng.uniform(0.96, 1.0)), 0.1, 0.085, 'PaintDark', rng, 0.006)
+    # Top plate: four beams crossing at the corners like the logs
+    for side in (-1, 1):
+        beam(scene, f'PlateX{side}', G(side * 0.895, 0.95, -1.0), G(side * 0.895, 0.95, 1.0), 0.12, 0.1, 'PaintDark', rng, 0.006)
+        beam(scene, f'PlateZ{side}', G(-1.0, 0.95, side * 0.895), G(1.0, 0.95, side * 0.895), 0.12, 0.1, 'PaintDark', rng, 0.006)
     trim_height(scene, 1.0)
+
+
+TOWER_CORE = 0.415                                    # radius of the dark joints behind the blocks
+TOWER_COURSES = 5                                     # courses of blocks between foot and crown
+TOWER_FOOT, TOWER_CROWN = 0.15, 0.85                  # heights where the foot ends and the crown starts
 
 
 def build_round_tower(scene):
     rng = random.Random(103)
-    lathe(scene, 'Wall', [(0.42, 0.0), (0.42, 1.0)], 'Paint', segments=12, has_top_cap=True)
-    # Four courses of three stones, every course turned against the one below
-    for course, y in enumerate((0.2, 0.39, 0.58, 0.77)):
-        for i in range(3):
-            angle = (i + 0.5 * course) / 3 * math.tau + rng.uniform(-0.25, 0.25)
-            center = (math.cos(angle) * 0.425, y + rng.uniform(-0.03, 0.03), math.sin(angle) * 0.425)
-            size = (rng.uniform(0.045, 0.055), rng.uniform(0.065, 0.085), rng.uniform(0.12, 0.17))
-            rock(scene, f'Stone{course}{i}', center, size, 'PaintDark', rng, turn=angle)
-    # Foot course and crown
-    lathe(scene, 'Foot', [(0.475, 0.0), (0.475, 0.07), (0.42, 0.11)], 'PaintDark', segments=12)
-    lathe(scene, 'Crown', [(0.42, 0.87), (0.475, 0.9), (0.475, 1.0), (0.475, 1.0), (0.42, 1.0)], 'PaintDark', segments=12)
+    # Core: the dark joints between the blocks, closed by a painted top
+    lathe(scene, 'Joints', [(TOWER_CORE, 0.0), (TOWER_CORE, 1.0)], 'PaintDark', segments=16)
+    lathe(scene, 'Top', [(TOWER_CORE, 1.0), (0.0, 1.0)], 'Paint', segments=16)
+    # Foot: one course of big blocks standing further out
+    foot_count = 6
+    for i in range(foot_count):
+        span = math.tau / foot_count
+        arc_block(scene, f'Foot{i}', (i + 0.3) * span, span - 0.07, 0.36, rng.uniform(0.475, 0.49), 0.0, TOWER_FOOT - 0.012, 'Paint', rng, 0.008)
+    # Staggered courses: every course split into blocks of its own lengths, turned against the one below
+    course_height = (TOWER_CROWN - TOWER_FOOT) / TOWER_COURSES
+    for course in range(TOWER_COURSES):
+        low = TOWER_FOOT + course * course_height
+        shares = [rng.uniform(0.7, 1.3) for _ in range(7)]
+        at = course * 0.47 + rng.uniform(0.0, 0.2)
+        for i, share in enumerate(shares):
+            span = share / sum(shares) * math.tau
+            arc_block(scene, f'Block{course}{i}', at + span / 2, span - 0.06, 0.36, rng.uniform(0.445, 0.468),
+                      low + 0.012, low + course_height - 0.012, 'Paint', rng, 0.007)
+            at += span
+    # Arrow slits on both flanks, framed by trim stones
+    for side in (-1, 1):
+        window(scene, f'Slit{side}', side * math.pi / 2, 0.46, 0.52, 0.055, 0.3, 0.035, has_cross=False, ledge=0.0)
+    # Crown: corbels carrying a ring that stands out over the wall
+    corbel_count = 10
+    for i in range(corbel_count):
+        angle = (i + 0.5) / corbel_count * math.tau
+        arc_block(scene, f'Corbel{i}', angle, 0.26, 0.36, 0.478, TOWER_CROWN, 0.925, 'PaintDark', rng, 0.004)
+    lathe(scene, 'Crown', [(TOWER_CORE, 0.915), (0.49, 0.92), (0.495, 0.96), (0.49, 1.0), (0.49, 1.0), (TOWER_CORE, 1.0)], 'PaintDark',
+          segments=16, is_smooth=False)
     trim_height(scene, 1.0)
 
 
@@ -357,67 +485,110 @@ def build_round_tower(scene):
 # ================================   ROOFS   ================================
 # ===========================================================================
 #
-#   thatch_cone             Tiers of thatch with scalloped lips, a bound band per tier, a tuft.
+#   thatch_cone             Shaggy tiers of furrowed thatch with thick ragged lips, a bound
+#                           sway, straw bundles at the eaves, a bound knot with crossed poles.
 #   build_cone_roof         The wide cone over a room, three tiers.
 #   build_small_cone_roof   The small cone over a tower, two tiers.
-#   build_gable_roof        Courses of shingles on a prism, barge boards and a ridge log.
+#   build_gable_roof        Courses of shingles on a prism, planked gables with a vent, crossed
+#                           barge boards with horns, rafter ends at the eaves, a sagging ridge log.
 #
 #   The roofs overhang their footprint: the cones to radius 1.3 and 0.72, the gable
-#   by 0.2 on each side. All are 1 high.
+#   by 0.2 on each side. All are 1 high and flat below.
 #
 
-THATCH_OVERLAP = 0.08                                 # how far a tier hangs over the one below (height)
-THATCH_FLARE = 0.07                                   # how far its lip stands off the tier below
-THATCH_TUFT = [(0.06, 0.9), (0.09, 0.965), (0.05, 1.0), (0.0, 1.0)]
+THATCH_TOP = 0.83                                     # height where the thatch is bound to the knot
+THATCH_OVERLAP = 0.06                                 # how far a tier hangs over the one below (height)
+THATCH_FLARE = 0.13                                   # how far its lip stands off the tier below
+THATCH_LIP = 0.1                                      # thickness of the cut edge of a tier
+THATCH_STEEPNESS = 1.3                                # above 1 the cone gets steeper towards the top
+THATCH_FLUTE = 0.04                                   # depth of the furrows between two bundles of straw
 
 
-def thatch_cone(scene, rng, radius, tiers, segments):
+def thatch_cone(scene, rng, radius, tiers, segments, poles=4):
     """
-    A cone from radius at y = 0 to a bound tuft at y = 1, closed below. Every tier is
-    its own skirt: lip below (scalloped, bundles of straw), tucked under the next above.
+    A cone from radius at y = 0 to a bound knot below y = 1, closed below. Every tier is
+    its own skirt: a thick ragged lip below (bundles of straw), tucked under the next
+    above. poles cross in the knot and stick out of the top like on a roundhouse.
     """
-    scallop = [0.03 * (1 if 0 == k % 2 else -1) + rng.uniform(-0.01, 0.01) for k in range(segments)]
+    neck = 0.05 + radius * 0.04                       # radius of the thatch where it is bound
+
+    def body(y):
+        """Radius of the cone at height y: steeper towards the top."""
+        return neck + (radius - neck) * (1.0 - y / THATCH_TOP) ** THATCH_STEEPNESS
+
+    tier_height = THATCH_TOP / tiers
     for tier in range(tiers):
         is_first, is_last = 0 == tier, tiers - 1 == tier
-        low = tier / tiers - (0.0 if is_first else THATCH_OVERLAP)
-        edge = radius * (1.0 - low) + (0.0 if is_first else THATCH_FLARE)
-        lip = (edge, low + 0.03)
-        rest = THATCH_TUFT if is_last else [(radius * (1.0 - (tier + 1) / tiers) - 0.02, (tier + 1) / tiers)]
-        lathe(scene, f'Thatch{tier}', [(edge - 0.1, low), lip, lip] + rest, 'Paint', segments=segments,
-              bulge=lambda k, j: scallop[k] if j <= 2 else 0.0, has_bottom_cap=is_first)
-        # Bound band a third up the tier, lying on its slope
-        start, end = Vector(lip), Vector(rest[0])
-        along = (end - start).normalized()
-        outward = Vector((along.y, -along.x))
-        middle = start.lerp(end, 0.35)
-        band = [middle - along * 0.035 - outward * 0.005, middle + outward * 0.03, middle + along * 0.035 - outward * 0.005]
-        lathe(scene, f'Band{tier}', [tuple(point) for point in band], 'PaintDark', segments=segments)
-    lathe(scene, 'Knot', [(0.055, 0.87), (0.088, 0.9), (0.055, 0.93)], 'PaintDark', segments=8)
+        low = tier * tier_height - (0.0 if is_first else THATCH_OVERLAP)
+        edge = body(tier * tier_height) + (0.0 if is_first else THATCH_FLARE)
+        # Every bundle of straw runs down the whole tier: a ridge, a furrow, each its own length
+        ragged = [THATCH_FLUTE * (1 if 0 == k % 2 else -1) + rng.uniform(-0.02, 0.02) for k in range(segments)]
+        # Lip: under side, lower edge, upper edge
+        under, lower, upper = (edge - 0.16, low), (edge, low + 0.012), (edge - 0.03, low + THATCH_LIP)
+        end = (neck, THATCH_TOP) if is_last else (body((tier + 1) * tier_height) - 0.03, (tier + 1) * tier_height + 0.01)
+        fade = 0.25 if is_last else 0.6               # the furrows run out where the tier is tucked in or bound
+        lathe(scene, f'Thatch{tier}', [under, lower, lower, upper, upper, end], 'Paint', segments=segments, is_smooth=False,
+              bulge=lambda k, j, ragged=ragged, fade=fade: ragged[k] * (1.0 if j <= 4 else fade), has_bottom_cap=is_first)
+    # Bound sway on the lowest tier, lying on its slope
+    start, stop = Vector((radius - 0.03, THATCH_LIP)), Vector((body(tier_height), tier_height))
+    along = (stop - start).normalized()
+    outward = Vector((along.y, -along.x))
+    middle = start.lerp(stop, 0.42)
+    sway = [middle - along * 0.035 - outward * 0.03, middle + outward * 0.05, middle + along * 0.035 - outward * 0.03]
+    lathe(scene, 'Sway', [tuple(point) for point in sway], 'PaintDark', segments=segments)
+    # Straw bundles sticking out of the eaves, one under every ridge
+    for k in range(0, segments, 2):
+        angle = (k + rng.uniform(-0.15, 0.15)) / segments * math.tau
+        reach = radius + rng.uniform(0.025, 0.065)
+        cos, sin = math.cos(angle), math.sin(angle)
+        pole(scene, f'Bundle{k}', [G(cos * (reach - 0.3), 0.19, sin * (reach - 0.3)), G(cos * reach, 0.04, sin * reach)],
+             [0.045, 0.062], 'Paint', sides=5, is_smooth=False)
+    # Knot: a rope around the neck, the thatch flaring out above it, poles crossing through
+    lathe(scene, 'Rope', [(neck, THATCH_TOP - 0.05), (neck + 0.03, THATCH_TOP - 0.025), (neck + 0.03, THATCH_TOP + 0.025), (neck - 0.01, THATCH_TOP + 0.045)],
+          'Rope', segments=8)
+    lathe(scene, 'Tuft', [(neck - 0.01, THATCH_TOP), (neck + 0.075, THATCH_TOP + 0.06), (neck + 0.02, THATCH_TOP + 0.11), (0.0, 1.0)],
+          'Paint', segments=8, is_smooth=False)
+    for i in range(poles):
+        angle = (i + rng.uniform(-0.2, 0.2)) / poles * math.pi
+        cos, sin = math.cos(angle), math.sin(angle)
+        foot, tip = neck * 1.6, neck * 3.4            # the pole leans from one side of the neck out over the other
+        pole(scene, f'Pole{i}', [G(-cos * foot, THATCH_TOP - 0.16, -sin * foot), G(cos * tip, 0.995, sin * tip)], [0.032, 0.022], 'Wood', sides=5)
     trim_height(scene, 1.0)
 
 
 def build_cone_roof(scene):
-    thatch_cone(scene, random.Random(104), radius=1.255, tiers=3, segments=24)
+    thatch_cone(scene, random.Random(104), radius=1.2, tiers=3, segments=28)
 
 
 def build_small_cone_roof(scene):
-    thatch_cone(scene, random.Random(106), radius=0.675, tiers=2, segments=14)
+    thatch_cone(scene, random.Random(106), radius=0.63, tiers=2, segments=16, poles=3)
+
+
+GABLE_EAVE = Vector((1.115, 0.115))                    # (x, y) of the slope of the gable roof: lower edge
+GABLE_RIDGE = Vector((0.02, 0.84))                    # and upper edge, the horns of the barge boards need the rest
+GABLE_WALL = 1.0                                      # half width of the gable wall below the shingles
+
+
+def gable_top(x):
+    """Height of the gable wall at x: just below the shingles."""
+    return 0.14 + (1.0 - abs(x) / GABLE_WALL) * 0.65
 
 
 def build_gable_roof(scene):
     rng = random.Random(105)
-    # Body below the shingles, its ends are the gables
-    plate(scene, 'Body', [G(-1.1, 0.0, -1.0), G(1.1, 0.0, -1.0), G(0.0, 0.9, -1.0)], G(0.0, 0.0, 2.0), 'PaintDark')
+    # Body below the shingles, as wide as the wall it stands on
+    body = [G(-GABLE_WALL, 0.0, -1.0), G(GABLE_WALL, 0.0, -1.0), G(GABLE_WALL, gable_top(GABLE_WALL), -1.0),
+            G(0.0, gable_top(0.0), -1.0), G(-GABLE_WALL, gable_top(GABLE_WALL), -1.0)]
+    plate(scene, 'Body', body, G(0.0, 0.0, 2.0), 'PaintDark')
     # The slope in (x, y): from the eave up to the ridge
-    eave, ridge = Vector((1.14, 0.04)), Vector((0.02, 0.93))
-    along = (ridge - eave).normalized()
+    along = (GABLE_RIDGE - GABLE_EAVE).normalized()
     outward = Vector((along.y, -along.x))
     course_count, shingle_count, half_depth = 4, 6, 1.1
     step = 2.0 * half_depth / shingle_count
     for course in range(course_count):
         # Every course lies with its lower end on the upper end of the one below
-        low = eave.lerp(ridge, course / course_count) + outward * 0.03
-        high = eave.lerp(ridge, min(1.0, (course + 1) / course_count + 0.05))
+        low = GABLE_EAVE.lerp(GABLE_RIDGE, course / course_count) + outward * 0.035
+        high = GABLE_EAVE.lerp(GABLE_RIDGE, min(1.0, (course + 1) / course_count + 0.05))
         # Every other course is shifted by half a shingle
         if 0 == course % 2:
             cuts = [-half_depth + step * i for i in range(shingle_count + 1)]
@@ -425,15 +596,40 @@ def build_gable_roof(scene):
             cuts = [-half_depth] + [-half_depth + step * (i + 0.5) for i in range(shingle_count)] + [half_depth]
         for side in (1, -1):
             for i, (near, far) in enumerate(zip(cuts, cuts[1:])):
-                start = low - along * rng.uniform(0.0, 0.03)
+                start = low - along * rng.uniform(0.0, 0.045)
                 z = (near + far) / 2
                 beam(scene, f'Shingle{course}{side}{i}', G(side * start.x, start.y, z), G(side * high.x, high.y, z),
-                     far - near - 0.015, rng.uniform(0.035, 0.045), 'Paint')
-    # Barge boards over the shingle ends, ridge log on top
+                     far - near - 0.018, rng.uniform(0.04, 0.055), 'Paint', rng, 0.004)
+    # Rafter ends looking out from under the eaves
     for side in (1, -1):
-        for z in (-1.125, 1.125):
-            beam(scene, f'Barge{side}{z}', G(side * 1.15, 0.055, z), G(0.0, 0.94, z), 0.05, 0.08, 'PaintDark')
-    pole(scene, 'Ridge', [G(0.0, 0.953, -1.18), G(0.0, 0.953, 1.18)], [0.054, 0.05], 'PaintDark', sides=6)
+        for i in range(5):
+            z = -0.86 + 0.43 * i
+            inner = GABLE_EAVE + along * 0.34 - outward * 0.052
+            outer = GABLE_EAVE - along * rng.uniform(0.035, 0.06) - outward * 0.052
+            beam(scene, f'Rafter{side}{i}', G(side * inner.x, inner.y, z), G(side * outer.x, outer.y, z), 0.075, 0.055, 'PaintDark')
+    for end in (-1, 1):
+        # Gable: upright planks, every other one standing further out, on a tie beam
+        plank_count = 8
+        width = 2.0 * GABLE_WALL / plank_count
+        for i in range(plank_count):
+            near, far = -GABLE_WALL + width * i + 0.008, -GABLE_WALL + width * (i + 1) - 0.008
+            outline = [G(near, 0.0, end), G(far, 0.0, end), G(far, gable_top(far) - 0.02, end), G(near, gable_top(near) - 0.02, end)]
+            plate(scene, f'Plank{end}{i}', outline, G(0.0, 0.0, end * (0.045 if 0 == i % 2 else 0.025)), 'PaintDark')
+        beam(scene, f'Tie{end}', G(-GABLE_WALL - 0.06, 0.06, end * 1.04), G(GABLE_WALL + 0.06, 0.06, end * 1.04), 0.08, 0.1, 'PaintDark', rng, 0.005)
+        # Vent: a small dark triangle in a frame
+        face = end * 1.05
+        vent = [G(-0.15, 0.36, face), G(0.15, 0.36, face), G(0.0, 0.57, face)]
+        plate(scene, f'Vent{end}', vent, G(0.0, 0.0, end * 0.012), 'Door')
+        for i, (start, stop) in enumerate(zip(vent, vent[1:] + vent[:1])):
+            beam(scene, f'VentFrame{end}{i}', start.lerp(stop, -0.12), stop.lerp(start, -0.12), 0.05, 0.04, 'PaintDark')
+        # Barge boards over the shingle ends: they cross at the ridge and stick out as horns
+        for side in (1, -1):
+            z = end * (1.14 + side * 0.022)           # one board lies in front of the other where they cross
+            foot = GABLE_EAVE - along * 0.05 + outward * 0.03
+            horn = GABLE_RIDGE + along * 0.215 + outward * 0.03
+            beam(scene, f'Barge{end}{side}', G(side * foot.x, foot.y, z), G(side * horn.x, horn.y, z), 0.044, 0.09, 'PaintDark')
+    # Ridge log, sagging in the middle
+    pole(scene, 'Ridge', [G(0.0, 0.878, -1.09), G(0.0, 0.852, 0.0), G(0.0, 0.878, 1.09)], [0.056, 0.05, 0.056], 'PaintDark', sides=6)
     trim_height(scene, 1.0)
 
 
@@ -687,7 +883,8 @@ def build_crate(scene):
 # =============================   DECORATION   ==============================
 # ===========================================================================
 #
-#   build_door    A porch leaning on the wall behind: door, posts, lintel, roof, stone step.
+#   build_door    A porch leaning on the wall behind: a plank door with battens, a brace and a
+#                 bronze ring, posts, lintel, roof, stone step.
 #   build_totem   A carved pole segment: face to the front, wings to the sides, rings.
 #   build_horns   A horned animal skull as crest of a roof or a totem.
 #
@@ -696,8 +893,22 @@ def build_crate(scene):
 
 def build_door(scene):
     rng = random.Random(116)
-    # Dark door on the -X face (upright beam: width along Z, height along X)
-    beam(scene, 'Door', G(-0.22, 0.0, 0), G(-0.22, 0.82, 0), 0.52, 0.06, 'Door')
+    # Dark opening on the -X face (upright beam: width along Z, height along X)
+    beam(scene, 'Door', G(-0.22, 0.0, 0), G(-0.22, 0.84, 0), 0.54, 0.06, 'Door')
+    # Door leaf: four uneven planks, the dark opening shows around and between them
+    plank_count = 4
+    spacing = 0.46 / plank_count
+    for i in range(plank_count):
+        z = -0.23 + spacing * (i + 0.5)
+        beam(scene, f'Plank{i}', G(-0.175, 0.025, z), G(-0.175, 0.79 - rng.uniform(0.0, 0.03), z), spacing - 0.014, 0.035, 'Paint', rng, 0.004)
+    # Two battens across the planks and a brace between them
+    for name, y in (('BattenLow', 0.2), ('BattenHigh', 0.62)):
+        beam(scene, name, G(-0.148, y, -0.225), G(-0.148, y, 0.225), 0.03, 0.075, 'PaintDark', rng, 0.004)
+    beam(scene, 'DoorBrace', G(-0.15, 0.245, -0.19), G(-0.15, 0.575, 0.19), 0.024, 0.065, 'PaintDark')
+    # Ring handle hanging from a boss
+    pole(scene, 'Boss', [G(-0.16, 0.43, 0.15), G(-0.125, 0.43, 0.15)], [0.03, 0.022], 'Bronze', sides=6)
+    ring = [G(-0.122, 0.385 + math.cos(k / 8 * math.tau) * 0.046, 0.15 + math.sin(k / 8 * math.tau) * 0.046) for k in range(9)]
+    pole(scene, 'Ring', ring, [0.013] * len(ring), 'Bronze', sides=5)
     for side in (-1, 1):
         z = side * 0.31
         pole(scene, f'Post{side}', [G(-0.16, 0.0, z), G(-0.155, 0.45, z * 1.02), G(-0.16, 0.87, z)], [0.052, 0.045, 0.048], 'Paint', sides=6, is_level=True)

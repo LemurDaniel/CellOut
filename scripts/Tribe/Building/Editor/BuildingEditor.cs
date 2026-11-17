@@ -4,7 +4,7 @@
 //   island with the village, Main hides the HUD meanwhile). Icon tabs on top pick the building
 //   function (dwelling, storehouse, market, totem, watchtower, warrior hut), each shows
 //   its own draft as a live icon.
-//   Left: the block palette, six group icons with three blocks each. Middle: the draft on a patch of ground, a picked block
+//   Left: the block palette, the group icons and the blocks of the group shown. Middle: the draft on a patch of ground, a picked block
 //   follows the pointer as a ghost and a click drops it: it lands on the ground or on
 //   the block pointed at. Right click removes a block (the ones above fall), left drag
 //   turns the view, the wheel zooms, R turns the picked block. Right: what the function
@@ -104,8 +104,10 @@ public partial class BuildingEditor : CanvasLayer
     // =============================   ROUTE INPUT   =============================
     // ===========================================================================
     //
-    //   OnStageInput      Wheel zooms, right click removes, a left click drops, a left drag turns, hover moves the ghost.
-    //   _UnhandledInput   R turns the picked block, Escape cancels.
+    //   OnStageInput      Wheel zooms, right click removes, a left click drops or picks a placed block, a left drag turns the
+    //                     view or pulls a handle of the gizmo, hover moves the ghost.
+    //   DragGizmo         What a drag of a handle does to the picked block.
+    //   _UnhandledInput   R turns the next block by a quarter, Delete removes the picked block, Backspace resets its pose, Escape cancels.
     //
 
     private void OnStageInput(InputEvent @event)
@@ -119,31 +121,56 @@ public partial class BuildingEditor : CanvasLayer
 
             // Right click: remove the block under the cursor
             case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Right } right:
-                if (_stage.CellAt(right.Position) is BuildingStage.Hit { Block: >= 0 } removed)
+                if (_stage.BlockAt(right.Position) is int removed && removed >= 0)
                 {
-                    Session.Remove(removed.Block);
+                    Session.Remove(removed);
                     _stage.Hover(right.Position);
                 }
                 break;
 
+            // Left press: a handle of the gizmo starts its drag, anything else may become a turn of the view
             case InputEventMouseButton { ButtonIndex: MouseButton.Left } left when left.Pressed:
-                _stage.Press(left.Position);
+                _dragged = _stage.Gizmo.HandleAt(left.Position);
+                _stage.Gizmo.Active = _dragged;
+                _dragFrom = left.Position;
+                if (GizmoHandle.None == _dragged)
+                {
+                    _stage.Press(left.Position);
+                }
                 break;
 
-            // Left release: a click without rotation drops the picked block, without one it repaints the block clicked
+            /*
+              Left release:
+              > A gizmo drag ends: the icons follow.
+              > A click without rotation, a block picked from the palette: it drops there and carries the gizmo.
+              > A click without rotation otherwise: the placed block under the cursor gets the gizmo, a click beside every block takes it away.
+            */
             case InputEventMouseButton { ButtonIndex: MouseButton.Left } left:
-                if (_stage.Release() && _stage.CellAt(left.Position) is BuildingStage.Hit hit)
+                if (GizmoHandle.None != _dragged)
                 {
-                    if (null != Session.Selected)
-                    {
-                        Session.PlaceAt(hit.X, hit.Z);
-                    }
-                    else
-                    {
-                        Session.Repaint(hit.Block);
-                    }
-                    _stage.Hover(left.Position);
+                    _dragged            = GizmoHandle.None;
+                    _stage.Gizmo.Active = GizmoHandle.None;
+                    Session.CommitPose();
+                    break;
                 }
+                if (!_stage.Release())
+                {
+                    break;
+                }
+                if (null != Session.Selected && _stage.CellAt(left.Position) is BuildingStage.Hit hit)
+                {
+                    Session.PlaceAt(hit.X, hit.Z);
+                }
+                else if (null == Session.Selected)
+                {
+                    int block = _stage.BlockAt(left.Position);
+                    Session.Pick(block >= 0 ? block : null);
+                }
+                _stage.Hover(left.Position);
+                break;
+
+            case InputEventMouseMotion motion when GizmoHandle.None != _dragged:
+                DragGizmo(motion);
                 break;
 
             case InputEventMouseMotion motion when _stage.IsPressed:
@@ -151,9 +178,36 @@ public partial class BuildingEditor : CanvasLayer
                 break;
 
             case InputEventMouseMotion hover:
+                _stage.Gizmo.Hovered = _stage.Gizmo.HandleAt(hover.Position);
                 _stage.Hover(hover.Position);
                 break;
         }
+    }
+
+    private GizmoHandle _dragged = GizmoHandle.None;
+    private Vector2 _dragFrom;
+
+    /// <summary>A mouse motion on the dragged handle: arrows shift, rings turn, cubes stretch along their axis, the golden ring scales the whole block.</summary>
+    private void DragGizmo(InputEventMouseMotion motion)
+    {
+        PartGizmo gizmo = _stage.Gizmo;
+        if (PartGizmo.IsTurn(_dragged))
+        {
+            Session.TurnPicked(PartGizmo.AxisOf(_dragged), gizmo.TurnDelta(_dragged, _dragFrom, motion.Position));
+        }
+        else if (PartGizmo.IsStretch(_dragged))
+        {
+            Session.GrowPicked(gizmo.StretchFactor(_dragged, motion.Relative), PartGizmo.AxisOf(_dragged));
+        }
+        else if (GizmoHandle.Scale == _dragged)
+        {
+            Session.GrowPicked(gizmo.ScaleFactor(_dragFrom, motion.Position));
+        }
+        else
+        {
+            Session.MovePicked(gizmo.MoveDelta(_dragged, motion.Relative));
+        }
+        _dragFrom = motion.Position;
     }
 
     public override void _UnhandledInput(InputEvent @event)
@@ -165,6 +219,16 @@ public partial class BuildingEditor : CanvasLayer
         if (Key.R == key.Keycode)
         {
             Session.Rotate();
+            GetViewport().SetInputAsHandled();
+        }
+        else if (Key.Delete == key.Keycode && Session.Picked is int picked)
+        {
+            Session.Remove(picked);
+            GetViewport().SetInputAsHandled();
+        }
+        else if (Key.Backspace == key.Keycode && null != Session.Picked)
+        {
+            Session.ResetPicked();
             GetViewport().SetInputAsHandled();
         }
         else if (Key.Escape == key.Keycode)
@@ -294,6 +358,7 @@ public partial class BuildingEditor : CanvasLayer
 
         _palette = new BuildingPalette();
         _palette.Setup(Session);
+        _palette.EraPicked    += Session.ShowEra;
         _palette.GroupPicked  += Session.ShowGroup;
         _palette.BlockPicked  += kind => Session.Select(kind);
         _palette.HoverChanged += RefreshInfo;

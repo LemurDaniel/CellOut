@@ -55,6 +55,7 @@ public partial class Society : Node
     public PackManners Manners { get; private set; }
     public Wildlife Wildlife { get; private set; }
     public BuildingPlacer Placer { get; private set; }
+    public SettlementPlots Plots { get; private set; }
     public BuildingEditor BuildingEditor { get; private set; }
     public TribePanel Panel { get; private set; }
     public TribeHub Hub { get; private set; }
@@ -146,6 +147,11 @@ public partial class Society : Node
         Placer = new BuildingPlacer();
         Placer.Setup(_session, Tribe);
         AddChild(Placer);
+
+        // The free plots of the settlement, staked out around the fire
+        Plots = new SettlementPlots();
+        Plots.Setup(_session, Tribe);
+        AddChild(Plots);
 
         // The city grows from the tribe: founded at the fire, then knowledge and techs
         Civ = new CivKeeper();
@@ -251,6 +257,9 @@ public partial class Society : Node
         Ships.Update(dt);
         Scenery.Update();
         Placer.Update();
+        Plots.Update();
+        // The build view: while a building is placed the camera shows the whole settlement from above
+        _camera.Overview = Placer.IsPlacing ? (Tribe.Fire, Settlement.Radius(_session.Coast.Unit)) : null;
         Panel.Placing = Placer.Pending;
         Rivals.Update(dt);
         Loners.Update(dt);

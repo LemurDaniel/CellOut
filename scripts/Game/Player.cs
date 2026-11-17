@@ -129,7 +129,7 @@ public partial class Player : CellBody
     /// <summary>Turn of the key directions in radians, 0 in the top view (W = screen up).</summary>
     public float InputTurn { get; set; }
 
-    /// <summary>(Optional) A plane direction that steers instead of keys and mouse, for the autopilots of the tests (tests/PackPlay.cs). Defaults to none.</summary>
+    /// <summary>(Optional) A plane direction that steers instead of keys and mouse: the autopilots of the tests (tests/PackPlay.cs), zero holds the chieftain still in the build view (Tribe/Village/BuildingPlacer.cs). Defaults to none.</summary>
     public Vector2? Autopilot { get; set; }
 
     public override void _Ready()

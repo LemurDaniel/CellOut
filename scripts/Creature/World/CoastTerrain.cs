@@ -122,13 +122,17 @@ public sealed class CoastTerrain
     //   Revision   Counts up with every new foundation: ground, props and trees rebuild.
     //   AddPad     Levels the ground around a building at the height of its middle (or of a foundation it touches).
     //   HasPadAt   Whether a foundation lies at a point already.
+    //   StylePad   Changes what the ground shows on a foundation.
     //   IsOnPad    Whether a point lies on a foundation: no props, no trees there.
     //
 
     public const int MAX_PADS = 48;                  // the size of the pads array in coast_ground.gdshader
     public const float PAD_BLEND = 4f;               // the slope from a foundation back to the land, in Unit
 
-    public readonly record struct Pad(Vector2 Center, float Radius, float Height);
+    /// <summary>What the ground shader draws on a foundation: trampled earth, the trodden ways of a village or the streets of a city.</summary>
+    public enum PadStyle { Yard, Village, City }
+
+    public readonly record struct Pad(Vector2 Center, float Radius, float Height, PadStyle Style = PadStyle.Yard);
 
     private readonly List<Pad> _pads = new();
 
@@ -166,6 +170,22 @@ public sealed class CoastTerrain
             }
         }
         _pads.Add(new Pad(center, radius, height));
+        Revision++;
+        return true;
+    }
+
+    /// <summary>Changes what the ground shows on the foundation at a point (the ways of a settlement, the streets of a city).</summary>
+    /// <param name="center">(Required) Plane point of the middle of the foundation.</param>
+    /// <param name="style">(Required) Its new look.</param>
+    /// <returns>True when a foundation lies there and its look changed.</returns>
+    public bool StylePad(Vector2 center, PadStyle style)
+    {
+        int index = _pads.FindIndex(pad => pad.Center.DistanceSquaredTo(center) < 0.01f);
+        if (index < 0 || style == _pads[index].Style)
+        {
+            return false;
+        }
+        _pads[index] = _pads[index] with { Style = style };
         Revision++;
         return true;
     }

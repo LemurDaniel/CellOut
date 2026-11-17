@@ -207,7 +207,7 @@ public class TribeTests
 
         BuildingDesign hut = BuildingTemplates.Default(BuildingKind.Dwelling);
         Assert.Equal("TEMPLATE_ROUND_HUT", BuildingTemplates.NameKey(BuildingKind.Dwelling, 0));
-        Assert.Equal(new[] { BlockKind.RoundRoom, BlockKind.ConeRoof, BlockKind.Door }, System.Linq.Enumerable.Select(hut.Blocks, block => block.Kind));
+        Assert.Equal(new[] { BlockKind.RoundRoom, BlockKind.ConeRoof, BlockKind.Door, BlockKind.Pots, BlockKind.Firepit }, System.Linq.Enumerable.Select(hut.Blocks, block => block.Kind));
         Assert.Equal(4, hut.Height);
 
         // The wooden tower: three stilts, platform, lookout and roof
@@ -222,6 +222,10 @@ public class TribeTests
     //   SittingCopiesTheDesigns       Drafts are copies, the tribe's designs stay untouched until the result is taken.
     //   PickedBlockCentersOnTheCell   A four cell block centers on the pointed cell and stays inside the grid.
     //   TurnAndPaintGoWithTheBlock    R turns the next block, paint and pattern are stored and repaint a placed block, a wrong paint falls back.
+    //   SettlementHasPlotsOnTwoRings  16 plots on two rings around the fire, scaled by the Unit, every front to the fire.
+    //   WaysToTheGatesMissEveryPlot   Four gates, the straight way from the fire through each runs past every plot.
+    //   PaletteOpensErasWithBlocksOnly The palette switches to an era with blocks, an empty era stays closed, a picked block shows its era.
+    //   GizmoPosesThePickedBlock      The dropped block is picked; shift, stretch, scale and turn land in its pose within the limits, reset and removal undo it.
     //   EmptyDraftFallsBackToTemplate A cleared draft results in the first template of its function.
     //
 
@@ -298,6 +302,106 @@ public class TribeTests
             session.Rotate();
         }
         Assert.Equal(0, session.Turns);
+    }
+
+    [Fact]
+    public void SettlementHasPlotsOnTwoRings()
+    {
+        // The fixture: 6 plots at 16.25 Units, 10 at 31.25 Units; a Unit of 2 doubles every distance
+        var fire = new Godot.Vector2(100f, 50f);
+        System.Collections.Generic.IReadOnlyList<SettlementSlot> plots = Settlement.SlotsAround(fire, 2f);
+
+        Assert.Equal(16, plots.Count);
+        Assert.All(System.Linq.Enumerable.Take(plots, 6), plot => Assert.Equal(32.5f, plot.Spot.DistanceTo(fire), 2));
+        Assert.All(System.Linq.Enumerable.Skip(plots, 6), plot => Assert.Equal(62.5f, plot.Spot.DistanceTo(fire), 2));
+        Assert.Equal(16, System.Linq.Enumerable.Count(System.Linq.Enumerable.Distinct(System.Linq.Enumerable.Select(plots, plot => plot.Spot))));
+        Assert.True(Settlement.Radius(2f) > 62.5f);
+
+        // The front of a building (+X of its blocks, turned around the upright axis) looks at the fire
+        foreach (SettlementSlot plot in plots)
+        {
+            var front    = new Godot.Vector2(Godot.Mathf.Cos(-plot.Turn), Godot.Mathf.Sin(-plot.Turn));
+            var toFire   = (fire - plot.Spot).Normalized();
+            Assert.Equal(1f, front.Dot(toFire), 3);
+        }
+    }
+
+    [Fact]
+    public void WaysToTheGatesMissEveryPlot()
+    {
+        var fire = Godot.Vector2.Zero;
+        System.Collections.Generic.IReadOnlyList<SettlementSlot> plots = Settlement.SlotsAround(fire, 1f);
+        float halfPlot = 1.6f * Hut.SCALE;      // half the side of a staked out plot (PLOT_HALF in village.py)
+
+        Assert.Equal(4, Settlement.GateAngles().Length);
+        Assert.True(Settlement.WallRadius(1f) < Settlement.Radius(1f));
+        Assert.True(Settlement.PlazaRadius(1f) < Settlement.RingWay(1f));
+        foreach (float angle in Settlement.GateAngles())
+        {
+            var way = Godot.Vector2.FromAngle(angle);
+            foreach (SettlementSlot plot in plots)
+            {
+                // Distance of the middle of the plot from the straight way out of the gate
+                float along = plot.Spot.Dot(way);
+                float off   = Godot.Mathf.Abs(plot.Spot.Dot(way.Orthogonal()));
+                Assert.True(along < 0f || off > halfPlot + Settlement.WayHalfWidth(1f) * 0.5f, $"gate {angle:F2} runs over the plot at {plot.Spot}");
+            }
+        }
+    }
+
+    [Fact]
+    public void PaletteOpensErasWithBlocksOnly()
+    {
+        var session = new BuildingEditorSession();
+        session.Begin(BuildingTemplates.Default);
+
+        session.ShowEra(BlockEra.Modern);
+        Assert.Equal(BlockEra.Modern, session.Era);
+        Assert.Contains(BlockCatalog.In(BlockEra.Modern, session.Group), info => true);
+
+        // Space travel has no blocks yet: the era stays as it was
+        session.ShowEra(BlockEra.Space);
+        Assert.Equal(BlockEra.Modern, session.Era);
+
+        session.Select(BlockKind.ConeRoof);
+        Assert.Equal(BlockEra.Village, session.Era);
+        Assert.Equal(BlockGroup.Roof, session.Group);
+    }
+
+    [Fact]
+    public void GizmoPosesThePickedBlock()
+    {
+        var session = new BuildingEditorSession();
+        session.Clear();
+        session.Select(BlockKind.Palisade);
+        session.Rotate();                                   // a quarter turn: the long side of the palisade lies along Z
+        Assert.True(session.PlaceAt(5, 5));
+        Assert.Equal(0, session.Picked);                    // the dropped block carries the gizmo
+        Assert.Equal(Godot.Vector3.One, session.Draft.Blocks[0].Scale);
+
+        // A shift beyond the limit is clamped, the place on the grid stays
+        session.MovePicked(new Godot.Vector3(0.5f, 99f, 0f));
+        PlacedBlock moved = session.Draft.Blocks[0];
+        Assert.Equal(new Godot.Vector3(0.5f, BuildingDesign.MAX_OFFSET, 0f), moved.Offset);
+        Assert.Equal((5, 0, 4), (moved.X, moved.Y, moved.Z));
+
+        // A stretch along world Z grows the own X of the turned block, the ring grows all of it, never beyond the limit
+        session.GrowPicked(2f, Godot.Vector3.Back);
+        Assert.Equal(new Godot.Vector3(2f, 1f, 1f), session.Draft.Blocks[0].Scale);
+        session.GrowPicked(10f);
+        Assert.Equal(Godot.Vector3.One * BuildingDesign.MAX_SCALE, session.Draft.Blocks[0].Scale);
+
+        // A turn around the upright axis lands in the Euler angles, the reset takes everything back
+        session.TurnPicked(Godot.Vector3.Up, 0.5f);
+        Assert.Equal(0.5f, session.Draft.Blocks[0].Rotation.Y, 4);
+        session.ResetPicked();
+        Assert.Equal(new PlacedBlock(BlockKind.Palisade, 5, 0, 4, 1, BlockCatalog.DEFAULT_PAINT), session.Draft.Blocks[0]);
+
+        // Removing takes the gizmo away, a pick outside the blocks picks nothing
+        Assert.True(session.Remove(0));
+        Assert.Null(session.Picked);
+        session.Pick(3);
+        Assert.Null(session.Picked);
     }
 
     [Fact]

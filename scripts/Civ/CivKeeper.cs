@@ -13,7 +13,7 @@
 //   civ.TechResearched += kind => ShowBanner(kind);
 //   AddChild(civ);
 //   civ.Update(dt);
-//   civ.Research(TechKind.Sailing);
+//   civ.Research(TechKind.Engine);
 
 //
 //   Chapters:
@@ -219,7 +219,7 @@ public partial class CivKeeper : Node
     /// <summary>Researches a tech: its knowledge is spent, the bonuses of the city follow.</summary>
     /// <param name="kind">(Required) The tech.</param>
     /// <returns>True when it was researched (open, new and paid).</returns>
-    /// <example><code>if (civ.Research(TechKind.Sailing)) ...   // the chieftain sails from now on</code></example>
+    /// <example><code>if (civ.Research(TechKind.Engine)) ...   // the chieftain sails from now on</code></example>
     public bool Research(TechKind kind)
     {
         if (!IsCity || !TechTree.CanResearch(kind, _researched, Knowledge))

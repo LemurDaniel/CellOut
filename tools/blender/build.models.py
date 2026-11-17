@@ -5,7 +5,7 @@
 #   - assets/models/tree/      primeval trees of the islands (fern, cycad, horsetail, broadleaf, giant)
 #   - assets/models/plant/     undergrowth of the meadows (shrub, berry bush, ground fern, daisy, bell, lupine, boulder)
 #   - assets/models/village/   the nest of the pack and the fire pit of the tribe
-#   - assets/models/building/  the eighteen blocks of the building designer (walls, roofs, frames, ...)
+#   - assets/models/building/  the blocks of the building designer (walls, roofs, frames, ...)
 #   Everything is generated: skin modifier tubes, displaced spheres, an armature per
 #   moving part with one looping animation (Walk, Grab, Flap, Flutter, Sway, Whip, Beat, Chomp).
 #   Materials only carry names (Skin, Claw, Pad, Feather, Membrane, Fin, FinRay, Brain, EyeWhite,
@@ -71,12 +71,16 @@ import models.trees
 import models.plants
 import models.village
 import models.buildings
-import models.antique
+import models.modern
+import models.modern_street
+import models.new_blocks_home
+import models.new_blocks_work
+import models.new_blocks_guard
 import models.ships
 import models.city
 
 # Inside a running Blender the modules stay loaded between runs: reload, helpers first
-for module in (models.helpers, models.limbs, models.organs, models.fins, models.mouths, models.defense, models.cells, models.new_abilities, models.trees, models.plants, models.village, models.buildings, models.antique, models.ships, models.city):
+for module in (models.helpers, models.limbs, models.organs, models.fins, models.mouths, models.defense, models.cells, models.new_abilities, models.trees, models.plants, models.village, models.buildings, models.modern, models.modern_street, models.new_blocks_home, models.new_blocks_work, models.new_blocks_guard, models.ships, models.city):
     importlib.reload(module)
 
 from models.buildings import (
@@ -314,6 +318,9 @@ PARTS = {
     'plant/plant.boulder.glb':             build_plant_boulder,
     'village/village.nest.glb':            build_nest,
     'village/village.fire.glb':            build_fire,
+    'village/village.plot.glb':            models.village.build_plot,
+    'village/village.wall.glb':            models.village.build_wall,
+    'village/village.wallgate.glb':        models.village.build_wall_gate,
     'building/building.roundroom.glb':     build_round_room,
     'building/building.squareroom.glb':    build_square_room,
     'building/building.roundtower.glb':    build_round_tower,
@@ -332,9 +339,32 @@ PARTS = {
     'building/building.door.glb':          build_door,
     'building/building.totem.glb':         build_totem,
     'building/building.horns.glb':         build_horns,
-    'building/building.column.glb':       models.antique.build_column,
-    'building/building.steps.glb':        models.antique.build_steps,
-    'building/building.pediment.glb':     models.antique.build_pediment,
+    'building/building.brickroom.glb':    models.modern.build_brick_room,
+    'building/building.glassfloor.glb':   models.modern.build_glass_floor,
+    'building/building.roofdeck.glb':     models.modern.build_roof_deck,
+    'building/building.entrance.glb':     models.modern.build_entrance,
+    'building/building.antenna.glb':      models.modern_street.build_antenna,
+    'building/building.smokestack.glb':   models.modern_street.build_smokestack,
+    'building/building.streetlamp.glb':   models.modern_street.build_street_lamp,
+    'building/building.car.glb':          models.modern_street.build_car,
+    'building/building.stoneroom.glb':    models.new_blocks_home.build_stone_room,
+    'building/building.smallroom.glb':    models.new_blocks_home.build_small_room,
+    'building/building.domeroof.glb':     models.new_blocks_home.build_dome_roof,
+    'building/building.hiproof.glb':      models.new_blocks_home.build_hip_roof,
+    'building/building.flatroof.glb':     models.new_blocks_home.build_flat_roof,
+    'building/building.window.glb':       models.new_blocks_home.build_window,
+    'building/building.well.glb':         models.new_blocks_home.build_well,
+    'building/building.stairs.glb':       models.new_blocks_work.build_stairs,
+    'building/building.railing.glb':      models.new_blocks_work.build_railing,
+    'building/building.fence.glb':        models.new_blocks_work.build_fence,
+    'building/building.barrel.glb':       models.new_blocks_work.build_barrel,
+    'building/building.pots.glb':         models.new_blocks_work.build_pots,
+    'building/building.dryingrack.glb':   models.new_blocks_work.build_drying_rack,
+    'building/building.cart.glb':         models.new_blocks_work.build_cart,
+    'building/building.firepit.glb':      models.new_blocks_work.build_firepit,
+    'building/building.gate.glb':         models.new_blocks_guard.build_gate,
+    'building/building.stonewall.glb':    models.new_blocks_guard.build_stone_wall,
+    'building/building.spikes.glb':       models.new_blocks_guard.build_spikes,
     'civ/civ.ship.glb':                  models.ships.build_ship,
     'civ/civ.field.glb':                 models.city.build_field,
     'civ/civ.pier.glb':                  models.city.build_pier,

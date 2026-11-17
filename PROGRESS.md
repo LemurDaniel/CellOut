@@ -341,3 +341,62 @@ Auftrag des Users: „Spiel mal das Spiel ab Rudelphase und finde Wege, es spaß
 - [ ] Ein gezähmter Einzelgänger kommt nach dem Laden im Körper des Spielers zurück (wie alle adoptierten Tiere).
 - [ ] `npm test` in `tools/font` läuft unter Node 26 nicht (mocha/yargs), die Glyphen-Abdeckung der neuen Texte ist ungeprüft (nur vorhandene Zeichen benutzt).
 - [ ] Größen: `Main.cs` 818 (war schon vorher über 800), `RivalKeeper.cs` 753, `PackKeeper.cs` 715 (Formation und Futtersuche sind nach `PackFormation.cs` ausgelagert), `PackEncounter.cs` 522 Zeilen; vor dem nächsten Feature prüfen.
+
+## Häuser: bessere Modelle, 20 neue Bausteine (2026-11-17)
+Wunsch des Users: die Modelle der Häuser verbessern und etwa 20 Teile dazu. Vier Agenten parallel (je eigene Datei, Referenzbilder Pflicht), Koordination, Katalog, Palette und Vorlagen beim Koordinator.
+- **Überarbeitet** (`tools/blender/models/buildings.py`): Rundraum (Feldsteinfuß, Flechtband, drei Fenster), Eckraum als Blockhaus (Steinfundament, Rundstämme mit Köpfen, Fensterläden), Rundturm (versetzte Steinlagen, Schießscharten, Kragkranz), Kegeldächer (gestufte, gefurchte Strohlagen, Schopf mit gekreuzten Stangen), Satteldach (Giebelbretter als Hörner, verbretterte Giebel mit Luke, Sparrenköpfe), Tür (Bohlen, Riegel, Bronzering).
+- **20 neue Bausteine** (41 statt 21):
+  - Wände: Steinraum, Kammer. Dächer: Kuppeldach, Walmdach, Flachdach.
+  - Gerüste: Treppe, Geländer. Wehr: Tor, Steinmauer, Stachelsperre, Flechtzaun.
+  - Handel: Fass, Tontöpfe, Trockengestell, Handkarren. Schmuck: Fenster, Brunnen, Kochstelle. Antike: Obelisk, Springbrunnen.
+  - Module `new_blocks_home.py`, `new_blocks_work.py`, `new_blocks_guard.py`; neue feste Materialien `Water`, `Clay`, `Hide`, `Leaf`.
+- **Palette:** Kacheln der Gruppe in zwei Spalten, scrollt ab der vierten Reihe.
+- **Vorlagen:** die bestehenden nutzen die neuen Teile (Rundhütte mit Töpfen und Kochstelle, Langhaus mit Fenster und Fass, Pfahlhaus mit Treppe ...), fünf neue: Steinhaus, Jurte, Scheune, Handelsposten (Flachdach mit Geländer und Kammer), Fort (Steinmauern, Tor, vier Ecktürme). Der Tempel bekommt Obelisken und einen Springbrunnen. Nachbarstämme würfeln aus allen.
+- **Werkzeug:** `tools/Show-Buildings.ps1` (`tests/BuildingShot.tscn`) rendert alle Vorlagen oder Bausteine in ein Bild.
+- Geprüft: Unit-Tests, Smoke-Test (jeder Baustein hat sein Modell), Vorlagen und Bausteine im Render angesehen, Baumeister im Reel.
+- Referenzbilder: alle vier Agenten haben welche geladen und angesehen (Listen in ihren Berichten); Ausnahmen: die Tür hat nur eine gültige Referenz, Spieß und Braten der Kochstelle keine (Commons hat mit 429 gedrosselt).
+- [ ] Der gehörnte Schädel schwebt über dem Satteldach (er landet auf der Box des Dachs, der First liegt jetzt bei 0,84): aus der Kriegshütte genommen, im Editor weiter so.
+- [ ] Kochstelle, Steinmauer und Trockengestell haben wenig `Paint`-Fläche (Steine bzw. Fische in festen Farben), ein Umfärben ändert dort wenig.
+- [ ] Die Treppe reicht 2 Zellen hoch (bis zur Stelzen-Oberkante), das Deck der Plattform liegt eine Zelle höher; das Flachdach ist etwas schmaler als der Raum darunter (die Balkenköpfe brauchen den Platz).
+- [ ] Im Spiel nur über Render und Reel gesehen, nicht von Hand gebaut.
+
+## Baumeister: Gizmo je Baustein, frei drehen, kein Gitter (2026-11-17)
+Wunsch des Users nach dem ersten Blick in den Baumeister: „komplett frei drehen können, wie bei Zellen und Tieren ein Gizmo pro Teil zum Rotieren, Bewegen und Skalieren, das Gitternetz verwerfen wir“.
+- **Gitter weg:** Die Linien am Boden sind entfernt. Das Raster lebt unsichtbar weiter und bestimmt nur, wo ein Baustein aus der Palette landet und worauf er stapelt.
+- **Gizmo:** Klick auf einen gesetzten Baustein (oder ein frisch gesetzter) trägt den Gizmo der anderen Editoren: Pfeile schieben, Ringe drehen frei um jede Achse, Würfel strecken je Achse, der goldene Ring skaliert. Grenzen: ±3 Einheiten, 25 % bis 300 %. Entf löscht den gewählten Baustein, Rücktaste setzt seine Pose zurück, eine Farbe oder ein Muster färbt ihn um (vorher: Klick auf den Baustein).
+- **Kamera:** dreht frei rundherum, auch flach und von unten (vorher 5° bis 83°).
+- **Daten:** `PlacedBlock` trägt `Offset`, `Rotation`, `Grow`; die Pose ist reine Optik, steht im Spielstand (alte Stände laden unverändert) und gilt im Dorf wie im Editor.
+- Geprüft: Unit-Tests (Pose mit Grenzen, Strecken eines gedrehten Bausteins, Speichern), Reel des Baumeisters mit verschobenem, gekipptem und vergrößertem Dach.
+- [ ] Nicht von Hand bedient: Ziehen an den Griffen ist nur über die Session-Methoden und das Standbild geprüft.
+- [ ] Entscheidung ohne Rückfrage: Bausteine fallen weiter auf das unsichtbare Raster und stapeln dort; die freie Pose kommt obendrauf. Kollision, Fundament und Abstand eines Gebäudes rechnen weiter mit dem Raster-Platz, nicht mit verschobenen Bausteinen.
+- [ ] Kein Rückgängig im Baumeister. Vorlagen nutzen noch keine Posen.
+
+## Moderne statt Antike, feste Bauplätze, Bauansicht (2026-11-17)
+Drei Wünsche des Users nacheinander: „Verwerfen wir die Ziv-1-Stufe und gehen direkt in die Moderne“ (Rückfragen beantwortet: umthemen, heutiger Cartoon-Look, antike Bausteine ersetzen), „ein fest definiertes Settlement-Fundament ab Stufe Stamm mit Steckplätzen für Häuser“ und „beim Bauen in eine Bauansicht wechseln mit R zum Rotieren“.
+- **Moderne:** dieselbe Mechanik, neues Thema.
+  - Techs: Töpferei → Kühlung, Bronze → Stahl, Ackerbau → Traktoren, Steinbau → Beton, Segeln → Motoren, Schrift → Computer, Philosophie → Universität, Navigation → Radar, Münzen → Banken; neue Symbole im Tech-Baum. „Zivilisation II“ am Ende des Baums heißt jetzt „Raumfahrt“.
+  - Bausteine: Gruppe „Moderne“ statt „Antike“ mit Backstein-Etage, Glas-Etage, Dachterrasse, Eingang, Antenne, Schornstein, Laterne, Auto (44 Bausteine). Säule, Stufen, Tempeldach, Obelisk, Springbrunnen und `antique.py` sind gelöscht. Zwei neue Farben (Backstein, Beton).
+  - Rathaus (zwei Backstein-Etagen) und Hochhaus (Glas) statt Tempel und Palast; das Hauptquartier heißt „Rathaus“, die Stufe „Moderne“.
+  - Schiff: Hafenschlepper statt Galeere. Feld: Getreidereihen mit Traktor und Ballen. Pier: Beton mit Kran und Containern.
+  - Spielstände: Layout 2, `SaveCodec.Migrate` benennt die Techs um, unbekannte Bausteine fallen beim Laden weg.
+- **Siedlung mit Bauplätzen:** ein rundes Fundament ums Feuer, 6 Plätze innen (13 Einheiten), 10 außen (25), jeder schaut zum Feuer; freie Plätze sind abgesteckt. Gebäude legen kein eigenes Fundament mehr (spart Pads, Grenze 48). Nachbarstämme bauen auf jedem zweiten inneren Platz. Die Felder der Stadt liegen außen um das Fundament. Holz wird jenseits des Fundaments gehackt (auf ihm stehen keine Bäume mehr).
+- **Bauansicht:** Mit der Wahl im Baumenü steigt die Kamera über die Siedlung, der Häuptling steht still, die Vorschau springt auf den freien Platz unter der Maus; R dreht in Achteln, Linksklick/Leertaste baut, Escape bricht ab.
+- Modelle von drei Agenten (Referenzbilder geladen und angesehen, Listen in ihren Berichten; Wikimedia hat wieder gedrosselt, Dachterrasse und Pier haben dünne Referenzen).
+- Geprüft: Unit-Tests (Bauplan der Siedlung, Migration), Smoke-Test, Render der Bausteine und Rathäuser, Reel der Bauansicht (`$env:CELLOUT_REEL_PLACE = '1'`).
+- [ ] Bauansicht, Plätze und Moderne nicht von Hand gespielt.
+- [ ] Bestehende Stamm-Gebäude (Wohnhütte, Markt ...) bleiben Dorf-Stil, nur das Rathaus und die Bausteine sind modern: eine moderne Stadt um Strohhütten. Vorlagen je Funktion in modernem Stil fehlen.
+- [ ] Der Eingang hat Glas direkt vor der Wand; Backstein-Etagen nebeneinander überlappen am Gesims um wenige Hundertstel.
+- [ ] Ein Dorf nah am Strand hat weniger Plätze (`slotDepth`), das große Fundament ebnet Hügel im Dorf ein und nimmt dort alle Bäume.
+- [ ] Alte Spielstände mit frei gesetzten Gebäuden laden an ihren alten Stellen; Plätze in ihrer Nähe gelten als belegt.
+
+## Wall, Wege, Abstand der Nachbarn, Epochen im Baumeister, +25 % (2026-11-17)
+Fünf Wünsche des Users nacheinander: Nachbarstämme liegen zu nah; ein kleiner Wall am Rand der Siedlung; im Baumeister Oberabschnitte je Epoche (Rückfrage: „Stamm“ mit den Dorf-Bausteinen + „Moderne“, „Raumfahrt“ gesperrt); angedeutete Wege im Boden der Siedlung, in der Moderne wie eine Stadt, danach kommt der Weltraum; Siedlung und alle Gebäude 25 % größer.
+- **Abstand:** Ein fremdes Rudel zieht beim Sesshaftwerden weg: sein Feuer liegt `tribe.rivals.settleDistance` (135 Einheiten) vom eigenen, zuerst in Richtung seines Baus, sonst reihum (`RivalKeeper.SettleSpotFor`). Die Baue des Rudels bleiben nah (Tempo der Rudelphase unverändert). Kein Platz auf der Insel: es bleibt am Bau.
+- **Wall:** `Tribe/Village/SettlementWall.cs`, Feldsteine mit Pfählen als Ring knapp innerhalb des Fundaments, vier Tore (`Settlement.GateAngles`), bei Spieler und Nachbarn. Rückfrage beantwortet: niedrig und begehbar, kein Hindernis.
+- **Wege:** Der Boden-Shader zeichnet je Siedlung einen Platz ums Feuer, einen Ringweg zwischen den Platz-Ringen und vier Wege durch die Tore (`CoastTerrain.PadStyle`, `Coast.StylePad`): im Dorf festgetretene Erde auf Wiese, mit dem Rathaus Asphalt mit Mittellinie, Gehweg und gepflastertem Platz.
+- **Epochen:** `BlockEra` (Village, Modern, Space) über den Gruppen; die Gruppe „Moderne“ ist aufgelöst, ihre Bausteine liegen in Wände, Dächer, Schmuck der Epoche Moderne.
+- **Größe:** `Hut.SCALE` 2,4 → 3, Platz-Ringe 16,25 und 31,25 Einheiten, Fundament 40.
+- Geprüft: 189 Unit-Tests (Wege treffen keinen Bauplatz, Epochen der Palette), Smoke-Test, Reels von Bauansicht, Stadt und Baumeister.
+- [ ] Nicht von Hand gespielt. Die Zeiten der Autopiloten (Rudel, Stamm) sind mit der größeren Siedlung und den weiteren Wegen zu den Nachbarn nicht neu gemessen.
+- [ ] Die Moderne hat erst 8 Bausteine (2 Wände, 3 Dächer, 3 Schmuck), keine in Gerüste, Wehr, Handel. Raumfahrt hat keine.
+- [ ] Der Wall bleibt in der Stadt ein Steinwall; alte Spielstände behalten die nahen Nachbarn.

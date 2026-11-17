@@ -192,12 +192,24 @@ public partial class RivalTribe : Node2D
     /// <summary>Animals that left this pack for the player's (Release), a pack lets only AdoptPerPack go.</summary>
     public int Released { get; private set; }
 
-    /// <summary>The foreign pack becomes a tribe: its den turns into a fire with huts, villagers up to Villagers. A loner stays what it is.</summary>
-    public void Settle()
+    /// <summary>The foreign pack becomes a tribe: it moves to its new home, lights a fire there and builds huts, villagers up to Villagers. A loner stays what it is.</summary>
+    /// <param name="home">(Optional) Plane point of the new fire, far enough from the player's settlement; its animals walk there. Defaults to its den.</param>
+    /// <param name="entry">(Optional) Where its traders and raiders enter the player's island from the new home. Defaults to the old entry.</param>
+    public void Settle(Vector2? home = null, Vector2? entry = null)
     {
         if (IsSettled || IsDefeated || IsLoner)
         {
             return;
+        }
+        if (home is Vector2 spot)
+        {
+            Fire          = spot;
+            Entry         = entry ?? spot;
+            Nest.Position = spot;
+            foreach (Kin animal in _kin)
+            {
+                animal.JoinTribe(spot);
+            }
         }
         IsSettled = true;
         BuildVillage();
@@ -206,7 +218,12 @@ public partial class RivalTribe : Node2D
     /// <summary>The civilization reached the islands: the tribe raises its own headquarters on its fire.</summary>
     public void BuildHall()
     {
-        if (!IsSettled || IsDefeated || _huts.Exists(hut => IsInstanceValid(hut) && BuildingKind.Hall == hut.Design.Kind))
+        if (!IsSettled || IsDefeated)
+        {
+            return;
+        }
+        _coast.StylePad(Fire, CoastTerrain.PadStyle.City);       // its trodden ways become streets
+        if (_huts.Exists(hut => IsInstanceValid(hut) && BuildingKind.Hall == hut.Design.Kind))
         {
             return;
         }
@@ -216,35 +233,47 @@ public partial class RivalTribe : Node2D
     }
 
     /// <summary>A building of a function from a random template at a spot: leveled ground, it blocks the way; squeezed it shrinks to fit between the others.</summary>
-    private void PutUp(BuildingKind kind, Vector2 spot, bool isSqueezed = false)
+    private void PutUp(BuildingKind kind, Vector2 spot, bool isSqueezed = false, float? turn = null)
     {
         BuildingDesign design = BuildingTemplates.Build(kind, Rand.Index(BuildingTemplates.Count(kind)));
         float          share  = isSqueezed ? Hut.FitShare(design, _coast.Unit * Hut.SCALE, spot, _huts, _coast.Unit) : 1f;
-        var hut = new Hut { Position = spot, Size = _coast.Unit * Hut.SCALE * share, GroundHeight = _coast.GroundHeight(spot) * _size };
+        var hut = new Hut { Position = spot, Size = _coast.Unit * Hut.SCALE * share, GroundHeight = _coast.GroundHeight(spot) * _size, Turn = turn };
         hut.Setup(design, Faction);
-        _coast.AddPad(spot, hut.FoundationRadius);
         hut.Destroyed += () => _huts.Remove(hut);
         hut.BlockOn(_coast);
         _huts.Add(hut);
         AddChild(hut);
     }
 
-    /// <summary>Fire, huts on a ring and villagers around the fire, the animals of the pack count as villagers.</summary>
+    private SettlementWall _wall;
+
+    /// <summary>Fire, the foundation with its ways and wall, huts on a ring and villagers around the fire, the animals of the pack count as villagers.</summary>
     private void BuildVillage()
     {
         Nest.LightFire();
+        // The same ground plan as the player's settlement (Tribe/Village/Settlement.cs): one foundation, the buildings
+        // on every other plot of the inner ring, their fronts to the fire
         float unit = _coast.Unit;
-        for (int i = 0; i < Tune.Huts; i++)
+        if (!_coast.HasPadAt(Fire))
         {
-            float   angle = Mathf.Tau * i / Tune.Huts + 0.4f;
-            Vector2 spot  = Fire + Vector2.FromAngle(angle) * Balance.Current.Tribe.Village.HutDistance * unit;
-            if (!_coast.IsOnLand(spot))
+            _coast.AddPad(Fire, Settlement.Radius(unit));
+        }
+        _coast.StylePad(Fire, CoastTerrain.PadStyle.Village);
+        _wall = new SettlementWall();
+        _wall.Setup(_coast, Fire);
+        AddChild(_wall);
+        IReadOnlyList<SettlementSlot> slots = Settlement.SlotsAround(Fire, unit);
+        int built = 0;
+        for (int i = 0; i < slots.Count && built < Tune.Huts; i += 2)
+        {
+            if (_coast.LandDepth(slots[i].Spot) < Balance.Current.Tribe.Village.SlotDepth * unit)
             {
                 continue;
             }
             // Dwellings first, the last building is what the tribe is known for
-            BuildingKind kind = i < Tune.Huts - 1 ? BuildingKind.Dwelling : SIGNATURE_KINDS[Faction % SIGNATURE_KINDS.Length];
-            PutUp(kind, _coast.PushOutOfTrees(spot, unit * Hut.SCALE));
+            BuildingKind kind = built < Tune.Huts - 1 ? BuildingKind.Dwelling : SIGNATURE_KINDS[Faction % SIGNATURE_KINDS.Length];
+            PutUp(kind, slots[i].Spot, turn: slots[i].Turn);
+            built++;
         }
         for (int i = _kin.Count; i < Tune.Villagers; i++)
         {
@@ -354,6 +383,7 @@ public partial class RivalTribe : Node2D
         }
         Nest.Size         = playerSize;
         Nest.GroundHeight = _coast.GroundHeight(Fire) * playerSize;
+        _wall?.Update(playerSize);
         foreach (Hut hut in _huts)
         {
             hut.GroundHeight = _coast.GroundHeight(hut.Position) * playerSize;

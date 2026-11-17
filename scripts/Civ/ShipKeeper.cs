@@ -1,7 +1,7 @@
 // NOTE:
 //   The ship of the city: once the city knows Sailing (Civ/TechTree.cs), the chieftain who
 //   walks into the sea sails instead of swimming. The ship (Civ/ShipModel.cs, sail and
-//   shields in the color of the chieftain) floats on the waterline under it, turns
+//   hull band, funnel band and flag in the color of the chieftain) floats on the waterline under it, turns
 //   with it and rocks on the waves; the speed comes from the techs (Player.SailFactor). The
 //   retinue goes on board when the ship casts off (hidden, carried along) and steps ashore
 //   around the chieftain when it lands, so the islands of the rivals are in reach of the

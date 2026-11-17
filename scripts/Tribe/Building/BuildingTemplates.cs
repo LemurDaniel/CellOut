@@ -46,6 +46,7 @@ public static class BuildingTemplates
     private const int BLUE = 8;
     private const int BONE = 9;
     private const int OCHRE = 10;
+    private const int CONCRETE = 12;
 
     private static readonly IReadOnlyDictionary<BuildingKind, Template[]> TEMPLATES = new Dictionary<BuildingKind, Template[]>
     {
@@ -56,13 +57,17 @@ public static class BuildingTemplates
                 new Drop(BlockKind.RoundRoom, 2, 2),
                 new Drop(BlockKind.ConeRoof, 2, 2),
                 new Drop(BlockKind.Door, 6, 3),
+                new Drop(BlockKind.Pots, 6, 1),
+                new Drop(BlockKind.Firepit, 6, 6),
             }),
+            // Windows lean on the wall like the door: turned three quarters they look along +Z, once along -Z
             new Template("TEMPLATE_LONGHOUSE", new[]
             {
                 new Drop(BlockKind.SquareRoom, 2, 2),
                 new Drop(BlockKind.GableRoof, 2, 2),
                 new Drop(BlockKind.Door, 6, 3),
-                new Drop(BlockKind.Crate, 6, 1),
+                new Drop(BlockKind.Window, 3, 6, Turns: 3),
+                new Drop(BlockKind.Barrel, 6, 1),
                 new Drop(BlockKind.Torch, 6, 6),
             }),
             new Template("TEMPLATE_STILT_HOUSE", new[]
@@ -74,7 +79,25 @@ public static class BuildingTemplates
                 new Drop(BlockKind.Platform, 2, 2),
                 new Drop(BlockKind.RoundRoom, 2, 2),
                 new Drop(BlockKind.ConeRoof, 2, 2),
-                new Drop(BlockKind.Ladder, 6, 3),
+                new Drop(BlockKind.Stairs, 6, 3),
+            }),
+            new Template("TEMPLATE_STONE_HOUSE", new[]
+            {
+                new Drop(BlockKind.StoneRoom, 2, 2),
+                new Drop(BlockKind.HipRoof, 2, 2),
+                new Drop(BlockKind.Door, 6, 3),
+                new Drop(BlockKind.Window, 3, 6, Turns: 3),
+                new Drop(BlockKind.Window, 3, 1, Turns: 1),
+                new Drop(BlockKind.Well, 6, 6),
+                new Drop(BlockKind.Fence, 2, 0),
+            }),
+            new Template("TEMPLATE_YURT", new[]
+            {
+                new Drop(BlockKind.RoundRoom, 2, 2),
+                new Drop(BlockKind.DomeRoof, 2, 2),
+                new Drop(BlockKind.Door, 6, 3),
+                new Drop(BlockKind.DryingRack, 6, 0),
+                new Drop(BlockKind.Firepit, 6, 6),
             }),
         },
         [BuildingKind.Storehouse] = new[]
@@ -88,9 +111,10 @@ public static class BuildingTemplates
                 new Drop(BlockKind.Platform, 2, 2),
                 new Drop(BlockKind.SquareRoom, 2, 2),
                 new Drop(BlockKind.GableRoof, 2, 2),
-                new Drop(BlockKind.Ladder, 6, 3),
-                new Drop(BlockKind.Crate, 1, 6),
+                new Drop(BlockKind.Stairs, 6, 3),
+                new Drop(BlockKind.Barrel, 1, 6),
                 new Drop(BlockKind.Crate, 0, 6),
+                new Drop(BlockKind.Pots, 0, 5),
             }),
             new Template("TEMPLATE_SILO", new[]
             {
@@ -101,6 +125,17 @@ public static class BuildingTemplates
                 new Drop(BlockKind.Crate, 6, 1),
                 new Drop(BlockKind.Crate, 6, 6),
                 new Drop(BlockKind.Crate, 7, 6),
+                new Drop(BlockKind.Cart, 0, 6),
+            }),
+            new Template("TEMPLATE_BARN", new[]
+            {
+                new Drop(BlockKind.StoneRoom, 2, 2),
+                new Drop(BlockKind.GableRoof, 2, 2),
+                new Drop(BlockKind.Door, 6, 3),
+                new Drop(BlockKind.Cart, 6, 0),
+                new Drop(BlockKind.Barrel, 6, 6),
+                new Drop(BlockKind.Barrel, 7, 6),
+                new Drop(BlockKind.DryingRack, 3, 0),
             }),
         },
         [BuildingKind.Market] = new[]
@@ -114,7 +149,9 @@ public static class BuildingTemplates
                 new Drop(BlockKind.Stall, 3, 5),
                 new Drop(BlockKind.Awning, 3, 5, Paint: OCHRE),
                 new Drop(BlockKind.Crate, 0, 5),
-                new Drop(BlockKind.Crate, 6, 5),
+                new Drop(BlockKind.Barrel, 6, 5),
+                new Drop(BlockKind.Pots, 7, 5),
+                new Drop(BlockKind.Cart, 0, 6),
                 new Drop(BlockKind.Banner, 3, 3),
             }),
             new Template("TEMPLATE_HALL", new[]
@@ -127,6 +164,21 @@ public static class BuildingTemplates
                 new Drop(BlockKind.Stall, 3, 6),
                 new Drop(BlockKind.Awning, 3, 6, Paint: BLUE),
                 new Drop(BlockKind.Banner, 7, 1),
+            }),
+            // A flat roof to stand on: railings along two edges, a small room with its own roof between them
+            new Template("TEMPLATE_TRADING_POST", new[]
+            {
+                new Drop(BlockKind.SquareRoom, 2, 2),
+                new Drop(BlockKind.FlatRoof, 2, 2),
+                new Drop(BlockKind.Railing, 2, 2),
+                new Drop(BlockKind.Railing, 2, 5),
+                new Drop(BlockKind.SmallRoom, 3, 3),
+                new Drop(BlockKind.SmallConeRoof, 3, 3),
+                new Drop(BlockKind.Door, 6, 3),
+                new Drop(BlockKind.Stall, 0, 3),
+                new Drop(BlockKind.Awning, 0, 3, Paint: OCHRE),
+                new Drop(BlockKind.Barrel, 6, 6),
+                new Drop(BlockKind.Pots, 7, 6),
             }),
         },
         [BuildingKind.Totem] = new[]
@@ -159,12 +211,12 @@ public static class BuildingTemplates
             {
                 new Drop(BlockKind.SquareRoom, 2, 2, Paint: SHINGLE),
                 new Drop(BlockKind.GableRoof, 2, 2, Paint: RED),
-                new Drop(BlockKind.Horns, 3, 3),
                 new Drop(BlockKind.Door, 6, 3),
                 new Drop(BlockKind.Palisade, 2, 0),
                 new Drop(BlockKind.Palisade, 2, 7),
                 new Drop(BlockKind.Banner, 7, 1, Paint: RED),
                 new Drop(BlockKind.Torch, 7, 6),
+                new Drop(BlockKind.Spikes, 0, 3, Turns: 1),
             }),
             new Template("TEMPLATE_WAR_CAMP", new[]
             {
@@ -177,30 +229,50 @@ public static class BuildingTemplates
                 new Drop(BlockKind.Palisade, 2, 7),
                 new Drop(BlockKind.Banner, 7, 0, Paint: RED),
                 new Drop(BlockKind.Banner, 7, 7, Paint: RED),
+                new Drop(BlockKind.Gate, 7, 2, Turns: 1),
+            }),
+            // A fort: stone walls on three sides, the gate in front, a tower on every corner
+            new Template("TEMPLATE_FORT", new[]
+            {
+                new Drop(BlockKind.SquareRoom, 2, 2, Paint: SHINGLE),
+                new Drop(BlockKind.HipRoof, 2, 2, Paint: RED),
+                new Drop(BlockKind.Door, 6, 3),
+                new Drop(BlockKind.StoneWall, 2, 0),
+                new Drop(BlockKind.StoneWall, 2, 7),
+                new Drop(BlockKind.StoneWall, 0, 2, Turns: 1),
+                new Drop(BlockKind.Gate, 7, 2, Turns: 1),
+                new Drop(BlockKind.RoundTower, 0, 0), new Drop(BlockKind.RoundTower, 6, 0),
+                new Drop(BlockKind.RoundTower, 0, 6), new Drop(BlockKind.RoundTower, 6, 6),
+                new Drop(BlockKind.SmallConeRoof, 0, 0), new Drop(BlockKind.SmallConeRoof, 6, 0),
+                new Drop(BlockKind.SmallConeRoof, 0, 6), new Drop(BlockKind.SmallConeRoof, 6, 6),
             }),
         },
         [BuildingKind.Hall] = new[]
         {
-            // A temple: steps, a room inside, a row of columns front and back, the roof lands on the columns
-            new Template("TEMPLATE_TEMPLE", new[]
+            // A town hall: two storeys of brick under a flat roof with its antenna, the entrance in front, lamps and a parked car
+            new Template("TEMPLATE_TOWN_HALL", new[]
             {
-                new Drop(BlockKind.Steps, 2, 0),
-                new Drop(BlockKind.Steps, 2, 4),
-                new Drop(BlockKind.SquareRoom, 2, 2, Paint: BONE),
-                new Drop(BlockKind.Column, 2, 0), new Drop(BlockKind.Column, 3, 0), new Drop(BlockKind.Column, 4, 0), new Drop(BlockKind.Column, 5, 0),
-                new Drop(BlockKind.Column, 2, 7), new Drop(BlockKind.Column, 3, 7), new Drop(BlockKind.Column, 4, 7), new Drop(BlockKind.Column, 5, 7),
-                new Drop(BlockKind.Pediment, 2, 0),
+                new Drop(BlockKind.BrickRoom, 2, 2),
+                new Drop(BlockKind.BrickRoom, 2, 2),
+                new Drop(BlockKind.RoofDeck, 2, 2),
+                new Drop(BlockKind.Entrance, 6, 3),
+                new Drop(BlockKind.StreetLamp, 7, 1),
+                new Drop(BlockKind.StreetLamp, 7, 6),
+                new Drop(BlockKind.Car, 0, 2),
+                new Drop(BlockKind.Antenna, 2, 7),
             }),
-            // A palace: four rooms on a wide base, towers at the corners, a temple roof over the middle
-            new Template("TEMPLATE_PALACE", new[]
+            // A high-rise: a brick ground floor, three storeys of glass, the roof, a smokestack of the works beside it
+            new Template("TEMPLATE_HIGH_RISE", new[]
             {
-                new Drop(BlockKind.Steps, 0, 0), new Drop(BlockKind.Steps, 4, 0), new Drop(BlockKind.Steps, 0, 4), new Drop(BlockKind.Steps, 4, 4),
-                new Drop(BlockKind.SquareRoom, 0, 0, Paint: BONE), new Drop(BlockKind.SquareRoom, 4, 0, Paint: BONE),
-                new Drop(BlockKind.SquareRoom, 0, 4, Paint: BONE), new Drop(BlockKind.SquareRoom, 4, 4, Paint: BONE),
-                new Drop(BlockKind.RoundTower, 0, 0, Paint: STONE), new Drop(BlockKind.RoundTower, 6, 0, Paint: STONE),
-                new Drop(BlockKind.RoundTower, 0, 6, Paint: STONE), new Drop(BlockKind.RoundTower, 6, 6, Paint: STONE),
-                new Drop(BlockKind.Pediment, 2, 0, Paint: OCHRE),
-                new Drop(BlockKind.Banner, 0, 0, Paint: RED), new Drop(BlockKind.Banner, 7, 7, Paint: RED),
+                new Drop(BlockKind.BrickRoom, 2, 2, Paint: CONCRETE),
+                new Drop(BlockKind.GlassFloor, 2, 2),
+                new Drop(BlockKind.GlassFloor, 2, 2),
+                new Drop(BlockKind.GlassFloor, 2, 2),
+                new Drop(BlockKind.RoofDeck, 2, 2),
+                new Drop(BlockKind.Entrance, 6, 3),
+                new Drop(BlockKind.StreetLamp, 7, 6),
+                new Drop(BlockKind.Car, 0, 2, Paint: BLUE),
+                new Drop(BlockKind.Smokestack, 6, 0),
             }),
         },
         [BuildingKind.Watchtower] = new[]

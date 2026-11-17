@@ -275,30 +275,33 @@ public partial class TechTreeView : CanvasLayer
         canvas.DrawCircle(c + new Vector2(0f, 3f), SYMBOL_SIZE * 0.42f, new Color(0f, 0f, 0f, 0.25f));
         switch (kind)
         {
-            case TechKind.Pottery:          // an amphora with two handles
-                canvas.DrawCircle(c + new Vector2(0f, 6f), 14f, color);
-                canvas.DrawRect(new Rect2(c + new Vector2(-5f, -16f), new Vector2(10f, 12f)), color);
-                canvas.DrawRect(new Rect2(c + new Vector2(-8f, -19f), new Vector2(16f, 4f)), dim);
-                canvas.DrawArc(c + new Vector2(-9f, -6f), 6f, Mathf.Pi * 0.5f, Mathf.Pi * 1.5f, 10, color, 3f, true);
-                canvas.DrawArc(c + new Vector2(9f, -6f), 6f, -Mathf.Pi * 0.5f, Mathf.Pi * 0.5f, 10, color, 3f, true);
-                canvas.DrawLine(c + new Vector2(-12f, 6f), c + new Vector2(12f, 6f), dim, 2f, true);
-                break;
-            case TechKind.Bronze:           // a short sword
-                canvas.DrawColoredPolygon(new[] { c + new Vector2(0f, -22f), c + new Vector2(5f, -14f), c + new Vector2(4f, 8f), c + new Vector2(-4f, 8f), c + new Vector2(-5f, -14f) }, color);
-                canvas.DrawRect(new Rect2(c + new Vector2(-12f, 8f), new Vector2(24f, 5f)), dim);
-                canvas.DrawRect(new Rect2(c + new Vector2(-3f, 13f), new Vector2(6f, 9f)), dim);
-                canvas.DrawCircle(c + new Vector2(0f, 23f), 3.5f, dim);
-                break;
-            case TechKind.Farming:          // an ear of grain
-                canvas.DrawLine(c + new Vector2(0f, 24f), c + new Vector2(0f, -20f), dim, 3f, true);
-                for (int i = 0; i < 5; i++)
+            case TechKind.Cooling:          // a snowflake
+                for (int i = 0; i < 3; i++)
                 {
-                    float y = -16f + i * 7f;
-                    canvas.DrawCircle(c + new Vector2(-5f, y), 4f, color);
-                    canvas.DrawCircle(c + new Vector2(5f, y + 3f), 4f, color);
+                    Vector2 arm = Vector2.FromAngle(Mathf.Pi / 3f * i + Mathf.Pi / 6f);
+                    canvas.DrawLine(c - arm * 22f, c + arm * 22f, color, 3.5f, true);
+                    foreach (float end in new[] { -1f, 1f })
+                    {
+                        Vector2 tip = c + arm * 14f * end;
+                        canvas.DrawLine(tip, tip + arm.Rotated(0.9f) * 7f * end, dim, 2.5f, true);
+                        canvas.DrawLine(tip, tip + arm.Rotated(-0.9f) * 7f * end, dim, 2.5f, true);
+                    }
                 }
                 break;
-            case TechKind.Masonry:          // a wall of offset stones
+            case TechKind.Steel:            // a steel girder seen from its end
+                canvas.DrawRect(new Rect2(c + new Vector2(-18f, -20f), new Vector2(36f, 8f)), color);
+                canvas.DrawRect(new Rect2(c + new Vector2(-18f, 12f), new Vector2(36f, 8f)), color);
+                canvas.DrawRect(new Rect2(c + new Vector2(-5f, -12f), new Vector2(10f, 24f)), dim);
+                break;
+            case TechKind.Tractor:          // a tractor: cab, bonnet, a big and a small wheel
+                canvas.DrawRect(new Rect2(c + new Vector2(-14f, -18f), new Vector2(16f, 20f)), color);
+                canvas.DrawRect(new Rect2(c + new Vector2(2f, -6f), new Vector2(20f, 10f)), color);
+                canvas.DrawRect(new Rect2(c + new Vector2(-10f, -14f), new Vector2(8f, 8f)), dim);
+                canvas.DrawCircle(c + new Vector2(-8f, 10f), 12f, dim);
+                canvas.DrawCircle(c + new Vector2(-8f, 10f), 5f, color);
+                canvas.DrawCircle(c + new Vector2(15f, 14f), 7f, dim);
+                break;
+            case TechKind.Concrete:         // a wall of offset blocks
                 for (int row = 0; row < 3; row++)
                 {
                     float shift = 0 == row % 2 ? 0f : 9f;
@@ -308,35 +311,42 @@ public partial class TechTreeView : CanvasLayer
                     }
                 }
                 break;
-            case TechKind.Sailing:          // a ship under sail
-                canvas.DrawColoredPolygon(new[] { c + new Vector2(-22f, 8f), c + new Vector2(22f, 8f), c + new Vector2(15f, 18f), c + new Vector2(-15f, 18f) }, dim);
-                canvas.DrawLine(c + new Vector2(0f, 8f), c + new Vector2(0f, -22f), dim, 3f, true);
-                canvas.DrawColoredPolygon(new[] { c + new Vector2(2f, -20f), c + new Vector2(20f, 4f), c + new Vector2(2f, 4f) }, color);
-                canvas.DrawColoredPolygon(new[] { c + new Vector2(-2f, -14f), c + new Vector2(-2f, 4f), c + new Vector2(-15f, 4f) }, color);
+            case TechKind.Engine:           // a motor ship: hull, wheelhouse, funnel
+                canvas.DrawColoredPolygon(new[] { c + new Vector2(-22f, 6f), c + new Vector2(24f, 6f), c + new Vector2(16f, 18f), c + new Vector2(-17f, 18f) }, dim);
+                canvas.DrawRect(new Rect2(c + new Vector2(-12f, -6f), new Vector2(20f, 12f)), color);
+                canvas.DrawRect(new Rect2(c + new Vector2(-4f, -20f), new Vector2(8f, 14f)), color);
+                canvas.DrawRect(new Rect2(c + new Vector2(-4f, -16f), new Vector2(8f, 4f)), dim);
+                canvas.DrawRect(new Rect2(c + new Vector2(-8f, -2f), new Vector2(5f, 5f)), dim);
+                canvas.DrawRect(new Rect2(c + new Vector2(1f, -2f), new Vector2(5f, 5f)), dim);
                 break;
-            case TechKind.Writing:          // a scroll with lines
-                canvas.DrawRect(new Rect2(c + new Vector2(-16f, -14f), new Vector2(32f, 28f)), color);
-                canvas.DrawCircle(c + new Vector2(-16f, 0f), 6f, dim);
-                canvas.DrawCircle(c + new Vector2(16f, 0f), 6f, dim);
+            case TechKind.Computer:         // a screen with lines on its stand
+                canvas.DrawRect(new Rect2(c + new Vector2(-20f, -18f), new Vector2(40f, 28f)), color);
+                canvas.DrawRect(new Rect2(c + new Vector2(-16f, -14f), new Vector2(32f, 20f)), dim);
                 for (int i = 0; i < 3; i++)
                 {
-                    canvas.DrawLine(c + new Vector2(-9f, -7f + i * 7f), c + new Vector2(9f, -7f + i * 7f), dim, 2f, true);
+                    canvas.DrawLine(c + new Vector2(-11f, -9f + i * 6f), c + new Vector2(4f + i * 3f, -9f + i * 6f), color, 2f, true);
                 }
+                canvas.DrawRect(new Rect2(c + new Vector2(-3f, 10f), new Vector2(6f, 6f)), color);
+                canvas.DrawRect(new Rect2(c + new Vector2(-12f, 16f), new Vector2(24f, 4f)), color);
                 break;
-            case TechKind.Philosophy:       // a small temple
-                canvas.DrawColoredPolygon(new[] { c + new Vector2(-22f, -8f), c + new Vector2(0f, -22f), c + new Vector2(22f, -8f) }, color);
-                for (int i = 0; i < 4; i++)
+            case TechKind.University:       // a mortarboard with its tassel
+                canvas.DrawColoredPolygon(new[] { c + new Vector2(-24f, -6f), c + new Vector2(0f, -18f), c + new Vector2(24f, -6f), c + new Vector2(0f, 6f) }, color);
+                canvas.DrawColoredPolygon(new[] { c + new Vector2(-13f, 2f), c + new Vector2(0f, 9f), c + new Vector2(13f, 2f), c + new Vector2(13f, 14f), c + new Vector2(0f, 20f), c + new Vector2(-13f, 14f) }, dim);
+                canvas.DrawLine(c + new Vector2(0f, -6f), c + new Vector2(20f, -3f), dim, 2f, true);
+                canvas.DrawLine(c + new Vector2(20f, -3f), c + new Vector2(20f, 12f), dim, 2f, true);
+                canvas.DrawCircle(c + new Vector2(20f, 14f), 3.5f, color);
+                break;
+            case TechKind.Radar:            // a dish that sends rings
+                canvas.DrawArc(c + new Vector2(-6f, 6f), 14f, -Mathf.Pi * 0.75f, Mathf.Pi * 0.25f, 16, color, 5f, true);
+                canvas.DrawLine(c + new Vector2(-6f, 6f), c + new Vector2(-12f, 22f), dim, 3f, true);
+                canvas.DrawRect(new Rect2(c + new Vector2(-20f, 20f), new Vector2(16f, 4f)), dim);
+                canvas.DrawCircle(c + new Vector2(2f, -2f), 3.5f, dim);
+                for (int i = 0; i < 2; i++)
                 {
-                    canvas.DrawRect(new Rect2(c + new Vector2(-17f + i * 11f, -6f), new Vector2(6f, 20f)), color);
+                    canvas.DrawArc(c + new Vector2(2f, -2f), 12f + i * 8f, -Mathf.Pi * 0.5f, 0f, 10, dim, 2.5f, true);
                 }
-                canvas.DrawRect(new Rect2(c + new Vector2(-22f, 15f), new Vector2(44f, 5f)), dim);
                 break;
-            case TechKind.Navigation:       // a compass star
-                canvas.DrawArc(c, 19f, 0f, Mathf.Tau, 32, dim, 2.5f, true);
-                canvas.DrawColoredPolygon(new[] { c + new Vector2(0f, -24f), c + new Vector2(5f, -5f), c + new Vector2(24f, 0f), c + new Vector2(5f, 5f), c + new Vector2(0f, 24f), c + new Vector2(-5f, 5f), c + new Vector2(-24f, 0f), c + new Vector2(-5f, -5f) }, color);
-                canvas.DrawCircle(c, 3f, dim);
-                break;
-            case TechKind.Currency:         // two stacked coins
+            case TechKind.Bank:             // two stacked coins
                 canvas.DrawCircle(c + new Vector2(-6f, 4f), 13f, dim);
                 canvas.DrawCircle(c + new Vector2(6f, -4f), 13f, color);
                 canvas.DrawArc(c + new Vector2(6f, -4f), 9f, 0f, Mathf.Tau, 24, dim, 2f, true);

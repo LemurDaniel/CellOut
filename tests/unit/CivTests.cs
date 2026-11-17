@@ -45,31 +45,31 @@ public class CivTests
     {
         var none = new HashSet<TechKind>();
 
-        Assert.Equal(10, TechTree.CostOf(TechKind.Pottery));
-        Assert.True(TechTree.CanResearch(TechKind.Pottery, none, 10f));
-        Assert.False(TechTree.CanResearch(TechKind.Pottery, none, 9.9f));
+        Assert.Equal(10, TechTree.CostOf(TechKind.Cooling));
+        Assert.True(TechTree.CanResearch(TechKind.Cooling, none, 10f));
+        Assert.False(TechTree.CanResearch(TechKind.Cooling, none, 9.9f));
     }
 
     [Fact]
     public void LaterTiersNeedTheirRow()
     {
-        var pottery = new HashSet<TechKind> { TechKind.Pottery };
-        var masonry = new HashSet<TechKind> { TechKind.Pottery, TechKind.Masonry };
+        var pottery = new HashSet<TechKind> { TechKind.Cooling };
+        var masonry = new HashSet<TechKind> { TechKind.Cooling, TechKind.Concrete };
 
-        Assert.False(TechTree.CanResearch(TechKind.Masonry, new HashSet<TechKind>(), 100f));
-        Assert.True(TechTree.CanResearch(TechKind.Masonry, pottery, 25f));
-        Assert.False(TechTree.CanResearch(TechKind.Philosophy, masonry, 100f));
-        masonry.Add(TechKind.Farming);
-        masonry.Add(TechKind.Writing);
-        Assert.True(TechTree.CanResearch(TechKind.Philosophy, masonry, 45f));
+        Assert.False(TechTree.CanResearch(TechKind.Concrete, new HashSet<TechKind>(), 100f));
+        Assert.True(TechTree.CanResearch(TechKind.Concrete, pottery, 25f));
+        Assert.False(TechTree.CanResearch(TechKind.University, masonry, 100f));
+        masonry.Add(TechKind.Tractor);
+        masonry.Add(TechKind.Computer);
+        Assert.True(TechTree.CanResearch(TechKind.University, masonry, 45f));
     }
 
     [Fact]
     public void ResearchedOnceOnly()
     {
-        var pottery = new HashSet<TechKind> { TechKind.Pottery };
+        var pottery = new HashSet<TechKind> { TechKind.Cooling };
 
-        Assert.False(TechTree.CanResearch(TechKind.Pottery, pottery, 100f));
+        Assert.False(TechTree.CanResearch(TechKind.Cooling, pottery, 100f));
     }
 
     // ===========================================================================
@@ -129,8 +129,8 @@ public class CivTests
         for (int i = 0; i < BuildingTemplates.Count(BuildingKind.Hall); i++)
         {
             BuildingDesign design = BuildingTemplates.Build(BuildingKind.Hall, i);
-            Assert.Contains(design.Blocks, block => BlockKind.Pediment == block.Kind);
-            Assert.True(design.Blocks.Count >= 10, $"template {i} kept only {design.Blocks.Count} blocks");
+            Assert.Contains(design.Blocks, block => BlockKind.RoofDeck == block.Kind);
+            Assert.True(design.Blocks.Count >= 8, $"template {i} kept only {design.Blocks.Count} blocks");
         }
     }
 }

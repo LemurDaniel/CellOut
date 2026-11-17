@@ -246,6 +246,16 @@ public partial class Coast : Node3D
         return _terrain.AddPad(center, radius);
     }
 
+    /// <summary>Changes what the ground shows on the foundation at a point: the trodden ways of a village or the streets of a city.</summary>
+    /// <param name="center">(Required) Plane point of the middle of the foundation.</param>
+    /// <param name="style">(Required) Its new look.</param>
+    /// <returns>True when a foundation lies there and its look changed.</returns>
+    /// <example><code>coast.StylePad(tribe.Fire, CoastTerrain.PadStyle.City);</code></example>
+    public bool StylePad(Vector2 center, CoastTerrain.PadStyle style)
+    {
+        return _terrain.StylePad(center, style);
+    }
+
     // ===========================================================================
     // ================================   TREES   ================================
     // ===========================================================================

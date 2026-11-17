@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://sdaxmbg3wbgg"
-path="res://.godot/imported/building.column.glb-852421797853879b655853964ebb9d94.scn"
+uid="uid://csvmeqwp05s7d"
+path="res://.godot/imported/building.dryingrack.glb-47cec33eebde5ddddc7872d5b0e84cd5.scn"
 
 [deps]
 
-source_file="res://assets/models/building/building.column.glb"
-dest_files=["res://.godot/imported/building.column.glb-852421797853879b655853964ebb9d94.scn"]
+source_file="res://assets/models/building/building.dryingrack.glb"
+dest_files=["res://.godot/imported/building.dryingrack.glb-47cec33eebde5ddddc7872d5b0e84cd5.scn"]
 
 [params]
 

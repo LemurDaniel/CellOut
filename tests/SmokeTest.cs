@@ -920,16 +920,16 @@ public partial class SmokeTest : Node
         bool    isSolid = outside.DistanceTo(hall.Position) >= hall.BlockRadius + body - 0.01f;
 
         // Research needs the knowledge, a tech whose row is not done yet stays closed even with plenty
-        bool isPoor = civ.Knowledge >= TechTree.CostOf(TechKind.Pottery) || !civ.Research(TechKind.Pottery);    // only checked while the city is poor
-        civ.CheatKnowledge(TechTree.CostOf(TechKind.Pottery));
-        bool isResearched = civ.Research(TechKind.Pottery) && civ.Researched.Contains(TechKind.Pottery) && _main.Tribe.Bonuses.FoodPerFruit > 0;
+        bool isPoor = civ.Knowledge >= TechTree.CostOf(TechKind.Cooling) || !civ.Research(TechKind.Cooling);    // only checked while the city is poor
+        civ.CheatKnowledge(TechTree.CostOf(TechKind.Cooling));
+        bool isResearched = civ.Research(TechKind.Cooling) && civ.Researched.Contains(TechKind.Cooling) && _main.Tribe.Bonuses.FoodPerFruit > 0;
         civ.CheatKnowledge(1000f);
-        bool isClosed = !civ.Research(TechKind.Navigation);
+        bool isClosed = !civ.Research(TechKind.Radar);
 
         // Techs change the world: fields with Farming, a pier with Sailing
-        civ.Research(TechKind.Farming);
-        civ.Research(TechKind.Bronze);
-        civ.Research(TechKind.Sailing);
+        civ.Research(TechKind.Tractor);
+        civ.Research(TechKind.Steel);
+        civ.Research(TechKind.Engine);
         _main.Scenery.Update();
         bool isScenery = _main.Scenery.Fields > 0 && _main.Scenery.HasPier;
 
@@ -975,25 +975,19 @@ public partial class SmokeTest : Node
         bool isBuilt = tribe.TryBuild(BuildingKind.Dwelling) && 1 == tribe.Huts.Count && 0 == tribe.Economy.Food && 0 == tribe.Economy.Wood && 1 == tribe.Economy.Huts
             && Mathf.IsEqualApprox(tribe.Huts[0].MaxHp, Balance.Current.Tribe.Buildings[BuildingKind.Dwelling].Health);
 
-        // Placing by hand: a tile hangs the building at the mouse, R turns it (two steps of a sixteenth turn here), a spot right at the fire or beyond the build radius
-        // is refused, a spot in between takes it
+        // Placing by hand: a tile shows the building on a free plot of the settlement; a spot at the fire or between the plots
+        // is refused, the plot takes it, turned to the fire, and is taken from then on
         BuildingPlacer placer = _main.Placer;
         float          unit   = _main.Coast.Unit;
         Vector2        fire   = pack.Nest.Position;
         tribe.Economy.AddFood(dwelling.FoodCost);
         tribe.Economy.AddWood(dwelling.WoodCost);
         placer.Begin(BuildingKind.Dwelling);
-        placer.Rotate(3);
-        placer.Rotate(-1);
-        float turned = placer.Turn;
-        bool isHanging = placer.IsPlacing && !placer.PlaceAt(fire) && !placer.PlaceAt(fire + Vector2.Right * village0.BuildRadius * unit * 1.5f) && placer.IsPlacing;
-        bool isPlaced  = false;
-        for (int i = 0; i < 16 && !isPlaced; i++)
-        {
-            Vector2 spot = fire + Vector2.FromAngle(Mathf.Tau * i / 16f + 0.3f) * village0.BuildRadius * unit * 0.8f;
-            isPlaced = tribe.CanBuildAt(spot) && placer.PlaceAt(spot) && tribe.Huts[^1].Position == spot
-                && Mathf.IsEqualApprox(turned, Mathf.Tau / 8f) && tribe.Huts[^1].Turn == turned;
-        }
+        SettlementSlot plot = tribe.Slots.First(tribe.IsFree);
+        bool isHanging = placer.IsPlacing && !placer.PlaceAt(fire) && !placer.PlaceAt(plot.Spot + Vector2.Right * unit * 3f) && placer.IsPlacing
+            && tribe.Slots.Count == village0.SlotInnerCount + village0.SlotOuterCount && _main.Coast.HasPadAt(fire);
+        bool isPlaced  = tribe.CanBuildAt(plot.Spot) && placer.PlaceAt(plot.Spot) && tribe.Huts[^1].Position == plot.Spot
+            && tribe.Huts[^1].Turn == plot.Turn && !tribe.IsFree(plot) && !tribe.CanBuildAt(plot.Spot);
         bool isHandPlaced = isHanging && isPlaced && !placer.IsPlacing && 2 == tribe.Huts.Count && 0 == tribe.Economy.Food;
 
         // The village builder pauses the game; a watchtower from its second template plus a dropped torch becomes the

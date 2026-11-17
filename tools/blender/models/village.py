@@ -1,12 +1,17 @@
 # NOTE:
-#   Props of pack and tribe (assets/models/village/): the woven nest of the pack and the
-#   fire pit of the tribe. Both stand on the origin, about 1 unit across, the game scales
-#   them (Tribe/Pack/Nest.cs). No rig, the flames of the fire are game primitives that
+#   Props of pack and tribe (assets/models/village/): the woven nest of the pack, the
+#   fire pit of the tribe, the marker of a free building plot and the low wall around the
+#   settlement. Nest
+#   and fire stand on the origin, about 1 unit across, the game scales them
+#   (Tribe/Pack/Nest.cs); the plot is 3.2 units across in the scale of the building blocks
+#   (Tribe/Village/SettlementPlots.cs). No rig, the flames of the fire are game primitives that
 #   flicker and glow. Registered in build.models.py.
 
 #
 #   Chapters:
 #     VILLAGE PARTS   Twigs, the nest and the fire pit.
+#     PLOT            The staked out building plot.
+#     WALL            The low wall around the settlement and its gate.
 #
 
 import math
@@ -14,6 +19,7 @@ import random
 
 from mathutils import Vector
 
+from models.buildings import lashing, pole, rock
 from models.helpers import G, ellipsoid, tube
 from models.trees import clouds_texture
 
@@ -90,3 +96,106 @@ def build_fire(scene):
         start = G(math.cos(angle) * 0.27, 0.05, math.sin(angle) * 0.27)
         end = G(-math.cos(angle) * 0.22, 0.11 + i * 0.03, -math.sin(angle) * 0.22)
         tube(scene, f'Log{i}', [start, end], [0.045, 0.038], [(0, 1)], 'Log', **LOW_POLY)
+
+
+# ===========================================================================
+# =================================   PLOT   ================================
+# ===========================================================================
+#
+#   build_plot   Four corner pegs with a sagging rope around them and a few stones at the
+#                corners: here a building may stand.
+#
+#   In the scale of the building blocks (one grid cell 0.5 units), the origin in the
+#   middle of the plot on the ground. Low: the preview of a building stands in it.
+#
+
+PLOT_HALF = 1.6                                       # half the side of the staked out square
+PLOT_PEG_HEIGHT = 0.5
+PLOT_ROPE_HEIGHT = 0.36                               # where the rope is tied to a peg
+PLOT_ROPE_SAG = 0.16                                  # how far it hangs down in the middle of a side
+
+
+def build_plot(scene):
+    rng = random.Random(401)
+    corners = [(1, 1), (1, -1), (-1, -1), (-1, 1)]
+    for i, (sx, sz) in enumerate(corners):
+        x, z = sx * PLOT_HALF, sz * PLOT_HALF
+        lean = (rng.uniform(-0.03, 0.03), rng.uniform(-0.03, 0.03))
+        # Peg with a hewn point, driven in a little crooked
+        pole(scene, f"Peg{i}", [G(x, 0.0, z), G(x + lean[0], PLOT_PEG_HEIGHT * 0.7, z + lean[1]), G(x + lean[0] * 1.4, PLOT_PEG_HEIGHT, z + lean[1] * 1.4)],
+             [0.1, 0.09, 0.0], "Wood", sides=6, is_level=True)
+        lashing(scene, f"Knot{i}", x + lean[0] * 0.6, PLOT_ROPE_HEIGHT, z + lean[1] * 0.6, 0.09)
+        rock(scene, f"Stone{i}", (x * 0.93 + rng.uniform(-0.05, 0.05), 0.04, z * 0.93 + rng.uniform(-0.05, 0.05)),
+             (rng.uniform(0.1, 0.14), 0.06, rng.uniform(0.08, 0.11)), "Stone", rng, turn=rng.uniform(0.0, 3.0))
+        # Rope to the next corner, sagging in the middle
+        nx, nz = corners[(i + 1) % 4][0] * PLOT_HALF, corners[(i + 1) % 4][1] * PLOT_HALF
+        points = []
+        for step in range(7):
+            share = step / 6
+            sag = PLOT_ROPE_SAG * math.sin(share * math.pi)
+            points.append(G(x + (nx - x) * share, PLOT_ROPE_HEIGHT - sag, z + (nz - z) * share))
+        pole(scene, f"Rope{i}", points, [0.032] * len(points), "Rope", sides=5)
+
+
+# ===========================================================================
+# =================================   WALL   ================================
+# ===========================================================================
+#
+#   build_wall        One straight piece of the low wall: two courses of field stones
+#                     with a few sharpened stakes leaning outward.
+#   build_wall_gate   An opening of the same length: two tall posts on stone feet under a
+#                     lashed crossbeam.
+#
+#   In the scale of the building blocks, the origin in the middle of the piece on the
+#   ground, the piece runs along Z, +X looks out of the settlement. The game sets the
+#   pieces as a ring around the foundation (Tribe/Village/SettlementWall.cs). Low enough
+#   to step over: it marks the edge, it blocks nobody.
+#
+
+WALL_LENGTH = 2.6                                     # along Z, SettlementWall.PIECE_LENGTH holds the same number
+WALL_STONES = 7                                       # stones of the lower course
+WALL_HEIGHT = 0.42                                    # top of the upper course
+WALL_STAKES = 4
+GATE_HEIGHT = 1.7                                     # top of the posts
+GATE_HALF = 0.95                                      # posts left and right of the opening
+
+
+def build_wall(scene):
+    rng = random.Random(402)
+    half = WALL_LENGTH / 2
+    step = WALL_LENGTH / WALL_STONES
+    # Lower course: big stones side by side, a little over the ends so two pieces close up
+    for i in range(WALL_STONES):
+        z = -half + step * (i + 0.5) + rng.uniform(-0.03, 0.03)
+        rock(scene, f"Base{i}", (rng.uniform(-0.04, 0.04), 0.13, z), (rng.uniform(0.2, 0.26), rng.uniform(0.15, 0.19), step * 0.6),
+             "Stone", rng, turn=rng.uniform(-0.25, 0.25))
+    # Upper course: smaller stones on the joints
+    for i in range(WALL_STONES - 1):
+        z = -half + step * (i + 1.0) + rng.uniform(-0.04, 0.04)
+        rock(scene, f"Cap{i}", (rng.uniform(-0.05, 0.05), WALL_HEIGHT - 0.12, z), (rng.uniform(0.14, 0.19), rng.uniform(0.1, 0.13), step * 0.5),
+             "Stone", rng, turn=rng.uniform(-0.4, 0.4))
+    # Sharpened stakes between the stones, leaning outward
+    for i in range(WALL_STAKES):
+        z = -half + WALL_LENGTH * (i + 0.5) / WALL_STAKES + rng.uniform(-0.08, 0.08)
+        lean = rng.uniform(0.22, 0.34)
+        top = rng.uniform(0.74, 0.92)
+        pole(scene, f"Stake{i}", [G(0.02, 0.0, z), G(0.02 + lean * 0.75, top * 0.78, z + rng.uniform(-0.03, 0.03)), G(0.02 + lean, top, z)],
+             [0.07, 0.06, 0.0], "Wood", sides=6)
+
+
+def build_wall_gate(scene):
+    rng = random.Random(403)
+    for i, side in enumerate((-1, 1)):
+        z = side * GATE_HALF
+        bend = rng.uniform(-0.04, 0.04)
+        # Post, slightly bent, with a flat top
+        pole(scene, f"Post{i}", [G(0.0, 0.0, z), G(bend, GATE_HEIGHT * 0.5, z), G(bend * 0.4, GATE_HEIGHT, z)],
+             [0.15, 0.13, 0.12], "Wood", sides=7, is_level=True)
+        lashing(scene, f"Knot{i}", bend * 0.5, GATE_HEIGHT - 0.2, z, 0.15)
+        # Stones heaped against its foot, towards the wall that ends here
+        for k in range(3):
+            rock(scene, f"Foot{i}{k}", (rng.uniform(-0.08, 0.08), 0.12 + 0.03 * (2 - k), z + side * (0.12 + 0.14 * k)),
+                 (rng.uniform(0.17, 0.23), rng.uniform(0.13, 0.2) * (1.25 - 0.2 * k), 0.15), "Stone", rng, turn=rng.uniform(-0.4, 0.4))
+    # Crossbeam through the lashings, a little crooked and longer than the opening
+    pole(scene, "Beam", [G(0.0, GATE_HEIGHT - 0.24, -GATE_HALF - 0.3), G(0.03, GATE_HEIGHT - 0.14, 0.0), G(0.0, GATE_HEIGHT - 0.2, GATE_HALF + 0.3)],
+         [0.09, 0.1, 0.085], "Wood", sides=6)

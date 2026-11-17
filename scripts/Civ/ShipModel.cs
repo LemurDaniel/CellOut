@@ -1,6 +1,6 @@
 // NOTE:
-//   The galley of the civilization as one node (assets/models/civ/civ.ship.glb from
-//   tools/blender/models/ships.py): sail, shields and pennant in a color, placed on the
+//   The motor ship of the modern age (a harbor tug) as one node (assets/models/civ/civ.ship.glb from
+//   tools/blender/models/ships.py): hull band, funnel band and flag in a color, placed on the
 //   waterline of a plane point, turned to a facing and rocking on the waves. Used by the
 //   chieftain's ship (Civ/ShipKeeper.cs) and the ships of the neighbors that land on the
 //   player's island (Tribe/Rivals/RivalTribe.cs).
@@ -24,7 +24,7 @@ public static class ShipModel
     // =================================   SHIP   ================================
     // ===========================================================================
     //
-    //   New     The model, top level in world space, sail and shields in a color.
+    //   New     The model, top level in world space, hull band, funnel band and flag in a color.
     //   Place   On the waterline under a plane point, turned to a facing, rocking with the time.
     //
 
@@ -36,7 +36,7 @@ public static class ShipModel
     private const float ROCK_PITCH = 0.035f;
 
     /// <summary>A new ship, top level in world space.</summary>
-    /// <param name="color">(Required) Color of sail, shields, pennant and canopy, the trim a little darker.</param>
+    /// <param name="color">(Required) Color of hull band, wheelhouse roof, funnel band and flag, the lower hull a little darker.</param>
     public static Node3D New(Color color)
     {
         var ship = new Node3D { TopLevel = true };

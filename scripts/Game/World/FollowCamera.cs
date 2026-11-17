@@ -168,6 +168,17 @@ public partial class FollowCamera : Node
     private const float COMPANY_TILT = 0.22f;        // and rises by this many radians, so a pack and a tall stranger fit into the view
     private const float COMPANY_SPEED = 1.2f;        // how fast it eases there, per second
 
+    private const float OVERVIEW_SECONDS = 0.9f;     // the flight into the build view and back
+    private const float OVERVIEW_DISTANCE = 2.3f;    // camera distance in radii of what it shows
+    private const float OVERVIEW_TILT = 0.62f;       // tilt from vertical: steep, the plots lie open
+
+    private float _overview;
+    private Vector2 _overviewMiddle;
+    private float _overviewReach;
+
+    /// <summary>(Optional) The build view (wish of the user 2026-11-17): while set, the camera leaves the player and shows this circle of the plane from above, e.g. the settlement while a building is placed (Tribe/Society.cs). Right drag and wheel still turn and zoom. Defaults to none.</summary>
+    public (Vector2 Middle, float Reach)? Overview { get; set; }
+
     private float _company;
 
     /// <summary>(Optional) 0 alone .. 1 a stranger close by or a big pack around: the third person camera pulls back and rises (Tribe/Society.cs sets it every frame). Defaults to 0.</summary>
@@ -269,7 +280,7 @@ public partial class FollowCamera : Node
     /// <summary>Swings the third person camera behind the facing of the walking creature.</summary>
     private void FollowFacing(float dt)
     {
-        if (_view < 0.5f || _isOrbiting || dt <= 0f)
+        if (_view < 0.5f || _isOrbiting || dt <= 0f || null != Overview)
         {
             return;
         }
@@ -327,6 +338,22 @@ public partial class FollowCamera : Node
         _company       = Mathf.Lerp(_company, Mathf.Clamp(Company, 0f, 1f), Mathf.Clamp(dt * COMPANY_SPEED, 0f, 1f));
         tilt          -= COMPANY_TILT * _company * _view;
         float distance = playerSize * Mathf.Lerp(CAM_DISTANCE, TP_DISTANCE * (1f + COMPANY_DISTANCE * _company), _view) * ZoomFactor;
+
+        // The build view: the camera rises over the settlement and looks down on its plots
+        if (Overview is (Vector2 middle, float reach))
+        {
+            _overviewMiddle = middle;
+            _overviewReach  = reach;
+        }
+        _overview = dt <= 0f ? 0f : Mathf.MoveToward(_overview, null != Overview ? 1f : 0f, dt / OVERVIEW_SECONDS);
+        float over = Mathf.SmoothStep(0f, 1f, _overview);
+        if (over > 0f)
+        {
+            float ground = null == Coast ? 0f : Coast.GroundHeight(_overviewMiddle) * playerSize;
+            focus    = focus.Lerp(Plane3D.To3D(_overviewMiddle, ground), over);
+            distance = Mathf.Lerp(distance, _overviewReach * OVERVIEW_DISTANCE * ZoomFactor, over);
+            tilt     = Mathf.Lerp(tilt, OVERVIEW_TILT, over);
+        }
         _camDistance = Mathf.Lerp(_camDistance, distance, Mathf.Clamp(dt * 1.5f, 0f, 1f));
         _camFocus    = _camFocus.Lerp(focus, Mathf.Clamp(dt * 5f, 0f, 1f));
 

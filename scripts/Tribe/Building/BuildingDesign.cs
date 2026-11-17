@@ -4,7 +4,9 @@
 //   (data/balance.json, tribe.buildings), the blocks are its look and free of charge.
 //   Blocks drop from above: a block lands on the ground or on the highest block below
 //   its footprint, so everything stacks and nothing floats; removing a block lets the
-//   ones above fall. Pure logic without the engine: the BuildingEditor edits it, the
+//   ones above fall. On top of its place every block has a free pose (shift, turn, scale
+//   per axis, set with the gizmo of the builder): looks only, the stacking ignores it.
+//   Pure logic without the engine: the BuildingEditor edits it, the
 //   TribeCommander builds from it, BuildingVisual3D shows it, tests/unit checks it.
 //
 //   var design = new BuildingDesign(BuildingKind.Dwelling);
@@ -20,6 +22,7 @@
 //
 
 using System.Collections.Generic;
+using Godot;
 
 namespace CellOut;
 
@@ -30,12 +33,19 @@ namespace CellOut;
 //   BuildingKind   The function: dwelling (villagers), storehouse (food per fruit), market
 //                  (trade), totem (relation), watchtower (defense), barracks (the warrior hut: warriors),
 //                  hall (the headquarters on the fire of a city: knowledge, built once by founding the city).
-//   PlacedBlock    A block on the grid: the cell of its lowest corner, quarter turns, paint and pattern.
+//   PlacedBlock    A block on the grid: the cell of its lowest corner, quarter turns, paint and pattern,
+//                  and its free pose on top: Offset in model units, Rotation as Euler angles in
+//                  radians, Grow as its scale per axis minus one (so the default is the plain block).
 //
 
 public enum BuildingKind { Dwelling, Storehouse, Market, Totem, Watchtower, Barracks, Hall }
 
-public readonly record struct PlacedBlock(BlockKind Kind, int X, int Y, int Z, int Turns, int Paint, int Pattern = 0);
+public readonly record struct PlacedBlock(BlockKind Kind, int X, int Y, int Z, int Turns, int Paint, int Pattern = 0,
+    Vector3 Offset = default, Vector3 Rotation = default, Vector3 Grow = default)
+{
+    /// <summary>Scale per axis of the block in its own frame, one without a pose.</summary>
+    public Vector3 Scale => Vector3.One + Grow;
+}
 
 public sealed class BuildingDesign
 {
@@ -54,6 +64,7 @@ public sealed class BuildingDesign
     //   TryPlace      Drops a block onto the grid.
     //   BlockAt       The block that fills a cell, -1 for none.
     //   Repaint       Gives a placed block another paint and pattern.
+    //   SetPose       Gives a placed block its free pose (shift, turn, scale), looks only.
     //   RemoveAt      Removes a block, the ones above fall.
     //   Clear         Removes every block.
     //   CopyFrom      Takes over function and blocks of another design.
@@ -171,6 +182,33 @@ public sealed class BuildingDesign
             return false;
         }
         _blocks[index] = _blocks[index] with { Paint = paint, Pattern = System.Math.Clamp(pattern, 0, BlockCatalog.PATTERN_COUNT - 1) };
+        return true;
+    }
+
+    public const float MAX_OFFSET = 3f;              // model units a block may be shifted from its place, per axis
+    public const float MIN_SCALE = 0.25f;            // a block shrinks to this share per axis
+    public const float MAX_SCALE = 3f;               // and grows to this many times
+
+    /// <summary>Gives a placed block its free pose: looks only, the stacking of the blocks ignores it.</summary>
+    /// <param name="index">(Required) Index in Blocks.</param>
+    /// <param name="offset">(Required) Shift from its place in model units, clamped to MAX_OFFSET per axis.</param>
+    /// <param name="rotation">(Required) Euler angles in radians on top of its quarter turns.</param>
+    /// <param name="scale">(Required) Scale per axis in its own frame, clamped to MIN_SCALE..MAX_SCALE.</param>
+    /// <returns>False for an index outside Blocks.</returns>
+    /// <example><code>design.SetPose(0, new Vector3(0.2f, 0f, 0f), new Vector3(0f, 0.4f, 0f), Vector3.One * 1.5f);</code></example>
+    public bool SetPose(int index, Vector3 offset, Vector3 rotation, Vector3 scale)
+    {
+        if (index < 0 || index >= _blocks.Count)
+        {
+            return false;
+        }
+        Vector3 limit = Vector3.One * MAX_OFFSET;
+        _blocks[index] = _blocks[index] with
+        {
+            Offset   = offset.Clamp(-limit, limit),
+            Rotation = rotation,
+            Grow     = scale.Clamp(Vector3.One * MIN_SCALE, Vector3.One * MAX_SCALE) - Vector3.One,
+        };
         return true;
     }
 

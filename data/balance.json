@@ -348,6 +348,11 @@
       "hutDistance": 9,
       "buildRadius": 26,
       "buildSpacing": 6,
+      "slotInnerCount": 6,
+      "slotInnerRadius": 16.25,
+      "slotOuterCount": 10,
+      "slotOuterRadius": 31.25,
+      "slotDepth": 5,
       "villagerSeconds": 20,
       "gatherRange": 12,
       "foodPerFruit": 1,
@@ -373,6 +378,7 @@
     "rivals": {
       "count": 3,
       "sameIslandDistance": 70,
+      "settleDistance": 135,
       "huts": 3,
       "villagers": 3,
       "friendlyAt": 0.3,
@@ -445,15 +451,15 @@
     "foundBuildings": 5,
     "knowledgePerVillager": 1,
     "techs": {
-      "Pottery":    { "cost": 10, "amount": 1 },
-      "Bronze":     { "cost": 10, "amount": 1.5 },
-      "Farming":    { "cost": 10, "amount": 2 },
-      "Masonry":    { "cost": 25, "amount": 2 },
-      "Sailing":    { "cost": 25, "amount": 2.2 },
-      "Writing":    { "cost": 25, "amount": 1.5 },
-      "Philosophy": { "cost": 45, "amount": 1 },
-      "Navigation": { "cost": 45, "amount": 1.5 },
-      "Currency":   { "cost": 45, "amount": 2 }
+      "Cooling":    { "cost": 10, "amount": 1 },
+      "Steel":     { "cost": 10, "amount": 1.5 },
+      "Tractor":    { "cost": 10, "amount": 2 },
+      "Concrete":    { "cost": 25, "amount": 2 },
+      "Engine":    { "cost": 25, "amount": 2.2 },
+      "Computer":    { "cost": 25, "amount": 1.5 },
+      "University": { "cost": 45, "amount": 1 },
+      "Radar": { "cost": 45, "amount": 1.5 },
+      "Bank":   { "cost": 45, "amount": 2 }
     }
   },
 

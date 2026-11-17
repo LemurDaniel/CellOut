@@ -166,7 +166,6 @@ public partial class TribeCommander : Node3D
     //
 
     private const float CHOPPER_SHARE = 0.5f;        // at most this share of the villagers chops at once
-    private const float CHOP_REACH = 1.2f;           // build radii around the fire where trees are chopped
 
     /// <summary>Every kin that works in the village: villagers, not the retinue that follows the chieftain.</summary>
     public List<Kin> Villagers()
@@ -223,7 +222,7 @@ public partial class TribeCommander : Node3D
                 kin.OrderMove(nearest.Position);
                 continue;
             }
-            if (choppers < villagers.Count * CHOPPER_SHARE && NearestTree(kin.Position, Tune.BuildRadius * Coast.Unit * CHOP_REACH) is Coast.Tree tree)
+            if (choppers < villagers.Count * CHOPPER_SHARE && NearestTree(kin.Position, Settlement.Radius(Coast.Unit) + Tune.BuildRadius * Coast.Unit) is Coast.Tree tree)
             {
                 kin.OrderChop(tree.Position, tree.TrunkRadius);
                 choppers++;
@@ -270,8 +269,10 @@ public partial class TribeCommander : Node3D
     //   Huts          Every standing building of the player's tribe.
     //   Update        Villagers work, choppers fill the stock, huts raise villagers and stay on the
     //                 ground, the fire shows the stock.
-    //   CanBuildAt    Whether a building may stand at a spot.
-    //   TryBuildAt    Pays a building of a function and places it where the player chose.
+    //   Slots / IsFree / FreeSlotNear   The plots of the settlement (Settlement.cs), which are free, the free one closest to a point.
+    //   LayFoundation The one round foundation all plots lie on.
+    //   CanBuildAt    Whether a building may stand at a spot: only on a free plot.
+    //   TryBuildAt    Pays a building of a function and puts it on the plot at a spot.
     //   TryBuild      The same without a chosen spot: the next free slot around the fire.
     //   TryBuildHall  The headquarters of the city on the fire (Civ/CivKeeper.cs).
     //   Hall          The headquarters, HasHall whether it stands.
@@ -291,6 +292,7 @@ public partial class TribeCommander : Node3D
             return;
         }
         float size = Player.BodySize();
+        LayFoundation();
         Work(size);
 
         // The orchard: fruit also falls around the fire and stays there while the chieftain is away (Spawner, ContactResolver)
@@ -333,39 +335,46 @@ public partial class TribeCommander : Node3D
         }
     }
 
-    private const int HUT_TRIES = 12;
-    private const float WALL_SHARE = 0.5f;           // share of BuildSpacing a new building keeps to the walls of a big one
     private const float SECONDS_PER_MINUTE = 60f;
 
     private float _farmFood;                         // food of the fields not yet whole
-    private const int HUTS_PER_RING = 6;             // slots around the fire before the next ring starts
-    private static readonly float HUT_ANGLE = Mathf.Tau / HUTS_PER_RING;
+
+    private const float SLOT_SNAP = 0.5f;            // Units a spot may lie off the middle of a plot and still mean it
+
+    private IReadOnlyList<SettlementSlot> _slots;
+    private Vector2 _slotsFire;
+
+    /// <summary>The building plots of the settlement around the fire (Settlement.cs), the inner ring first.</summary>
+    public IReadOnlyList<SettlementSlot> Slots
+    {
+        get
+        {
+            if (null == _slots || _slotsFire != Fire)
+            {
+                _slotsFire = Fire;
+                _slots     = Settlement.SlotsAround(Fire, Coast.Unit);
+            }
+            return _slots;
+        }
+    }
 
     /*
-      A building may stand where all of this holds:
-      > The tribe exists and the spot is on land.
-      > It lies within BuildRadius of the fire, but not on the fire itself.
-      > It keeps BuildSpacing to every standing building, and half of it to the walls of a big one.
+      A plot is free where all of this holds:
+      > It lies on land, SlotDepth away from the shore (a settlement near the beach has fewer plots).
+      > No standing building has its middle within BuildSpacing of it (also buildings of an
+        older save that stand between the plots).
     */
-    /// <summary>Whether a building may stand at a spot: on land, within BuildRadius of the fire, BuildSpacing clear of the fire and of other buildings.</summary>
-    /// <param name="spot">(Required) Plane point of its center.</param>
-    public bool CanBuildAt(Vector2 spot)
+    /// <summary>Whether a plot of the settlement is free to build on.</summary>
+    public bool IsFree(SettlementSlot slot)
     {
-        if (!IsActive || !Coast.IsOnLand(spot))
-        {
-            return false;
-        }
-        float unit     = Coast.Unit;
-        float fromFire = spot.DistanceTo(_pack.Nest.Position);
-        if (fromFire > Tune.BuildRadius * unit || fromFire < Tune.BuildSpacing * unit)
+        float unit = Coast.Unit;
+        if (Coast.LandDepth(slot.Spot) < Tune.SlotDepth * unit)
         {
             return false;
         }
         foreach (Hut hut in _huts)
         {
-            // Clear of its middle and of its walls: a big headquarters reaches further than the spacing
-            float clear = Mathf.Max(Tune.BuildSpacing * unit, hut.BlockRadius + Tune.BuildSpacing * unit * WALL_SHARE);
-            if (!hut.IsQueuedForDeletion() && hut.Position.DistanceTo(spot) < clear)
+            if (!hut.IsQueuedForDeletion() && hut.Position.DistanceTo(slot.Spot) < Tune.BuildSpacing * unit)
             {
                 return false;
             }
@@ -373,21 +382,69 @@ public partial class TribeCommander : Node3D
         return true;
     }
 
-    /// <summary>Pays a building from the stock and places it where the player chose.</summary>
+    /// <summary>The free plot closest to a plane point, null when the settlement is full or the tribe does not exist yet.</summary>
+    /// <param name="point">(Required) Plane point, e.g. the spot in front of the chieftain.</param>
+    /// <example><code>if (tribe.FreeSlotNear(spot) is SettlementSlot plot) tribe.TryBuildAt(kind, plot.Spot);</code></example>
+    public SettlementSlot? FreeSlotNear(Vector2 point)
+    {
+        if (!IsActive)
+        {
+            return null;
+        }
+        SettlementSlot? nearest  = null;
+        float           distance = float.PositiveInfinity;
+        foreach (SettlementSlot slot in Slots)
+        {
+            float d = slot.Spot.DistanceSquaredTo(point);
+            if (d < distance && IsFree(slot))
+            {
+                nearest  = slot;
+                distance = d;
+            }
+        }
+        return nearest;
+    }
+
+    /// <summary>Whether a building may stand at a spot: only on a free plot of the settlement (wish of the user 2026-11-17, no free placing any more).</summary>
+    /// <param name="spot">(Required) Plane point of its center.</param>
+    public bool CanBuildAt(Vector2 spot)
+    {
+        return FreeSlotNear(spot) is SettlementSlot slot && slot.Spot.DistanceTo(spot) <= SLOT_SNAP * Coast.Unit;
+    }
+
+    /// <summary>Pays a building from the stock and puts it on the free plot at a spot, its front to the fire.</summary>
     /// <param name="kind">(Required) The function, built from its blueprint (DesignOf).</param>
-    /// <param name="spot">(Required) Plane point of its center, see CanBuildAt.</param>
-    /// <param name="turn">(Optional) Turn around the vertical axis in radians. Defaults to a random one.</param>
-    /// <returns>True when it was built: the spot is allowed and the stock pays for it.</returns>
-    /// <example><code>if (tribe.CanBuildAt(spot)) tribe.TryBuildAt(BuildingKind.Market, spot);</code></example>
+    /// <param name="spot">(Required) Plane point of a free plot (FreeSlotNear), see CanBuildAt.</param>
+    /// <param name="turn">(Optional) Turn around the vertical axis in radians. Defaults to the turn of the plot.</param>
+    /// <returns>True when it was built: the plot is free and the stock pays for it.</returns>
+    /// <example><code>if (tribe.FreeSlotNear(spot) is SettlementSlot plot) tribe.TryBuildAt(BuildingKind.Market, plot.Spot);</code></example>
     public bool TryBuildAt(BuildingKind kind, Vector2 spot, float? turn = null)
     {
         BuildingDesign design = DesignOf(kind);
-        if (!CanBuildAt(spot) || !Economy.BuildHut(design))
+        if (!CanBuildAt(spot) || FreeSlotNear(spot) is not SettlementSlot slot || !Economy.BuildHut(design))
         {
             return false;
         }
-        PutUp(design, spot, turn);
+        PutUp(design, slot.Spot, turn ?? slot.Turn);
         return true;
+    }
+
+    private bool _isFoundationTried;
+
+    /// <summary>The one round foundation of the settlement around the fire: every plot lies on it, flat and clear of trees. Laid once, a save brings it back with the coast.</summary>
+    public void LayFoundation()
+    {
+        if (IsActive && !_isFoundationTried && !Coast.HasPadAt(Fire))
+        {
+            bool isLaid = Coast.AddPad(Fire, Settlement.Radius(Coast.Unit));
+            Log.Verbose("TribeCommander", $"The foundation of the settlement around {Fire}: laid {isLaid}.");
+        }
+        _isFoundationTried = _isFoundationTried || IsActive;
+        if (IsActive)
+        {
+            // Trodden ways while it is a village, streets once the headquarters of the city stands
+            Coast.StylePad(Fire, HasHall ? CoastTerrain.PadStyle.City : CoastTerrain.PadStyle.Village);
+        }
     }
 
     /// <summary>The headquarters of the city where nest and fire stood: pays the hall from the stock, the fire gives way.</summary>
@@ -415,7 +472,7 @@ public partial class TribeCommander : Node3D
     {
         var hut = new Hut { Position = spot, Size = Coast.Unit * Hut.SCALE * share, GroundHeight = Coast.GroundHeight(spot) * Player.BodySize(), Turn = turn };
         hut.Setup(design, faction: 0);
-        Coast.AddPad(spot, hut.FoundationRadius);
+        LayFoundation();
         hut.Destroyed += () => EmitSignal(SignalName.Changed);
         hut.BlockOn(Coast);
         _huts.Add(hut);
@@ -425,7 +482,7 @@ public partial class TribeCommander : Node3D
         return hut;
     }
 
-    /// <summary>Builds without a chosen spot: the next free slot on a ring HutDistance around the fire (tests, the graphics reel).</summary>
+    /// <summary>Builds without a chosen spot: on the first free plot of the settlement, the inner ring first (tests, the graphics reel).</summary>
     /// <param name="kind">(Required) The function, built from its blueprint (DesignOf).</param>
     /// <returns>True when it was built.</returns>
     /// <example><code>if (!tribe.TryBuild(BuildingKind.Market)) ...   // not enough food or wood, or no free slot</code></example>
@@ -435,16 +492,11 @@ public partial class TribeCommander : Node3D
         {
             return false;
         }
-        Vector2 fire = _pack.Nest.Position;
-        for (int i = 0; i < HUT_TRIES; i++)
+        foreach (SettlementSlot slot in Slots)
         {
-            // Building n takes slot n around the fire, every HUTS_PER_RING a ring further out, a try skips to the next slot
-            int     slot  = Economy.Huts + i;
-            float   angle = HUT_ANGLE * slot + 0.5f * HUT_ANGLE * (slot / HUTS_PER_RING);
-            Vector2 spot  = fire + Vector2.FromAngle(angle) * Tune.HutDistance * Coast.Unit * (1f + 0.6f * (slot / HUTS_PER_RING));
-            if (TryBuildAt(kind, Coast.PushOutOfTrees(spot, Coast.Unit * Hut.SCALE)))
+            if (IsFree(slot))
             {
-                return true;
+                return TryBuildAt(kind, slot.Spot);
             }
         }
         return false;

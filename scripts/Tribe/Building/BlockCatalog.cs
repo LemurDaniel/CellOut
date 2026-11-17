@@ -1,6 +1,6 @@
 // NOTE:
-//   The building blocks of the village builder: six groups of three blocks each, what a
-//   block is (its group in the palette, the cells it fills on the grid, its default paint)
+//   The building blocks of the village builder by era and group of its palette, what a
+//   block is (its era and group in the palette, the cells it fills on the grid, its default paint)
 //   and the paints a block can take.
 //   Blocks are looks only, a building gets its costs and effects from its function
 //   (BuildingKind, data/balance.json tribe.buildings). Pure data without the engine.
@@ -24,9 +24,13 @@ namespace CellOut;
 // ================================   TYPES   ================================
 // ===========================================================================
 //
-//   BlockKind    Every block of the builder, three per group.
-//   BlockGroup   Group of the palette: walls, roofs, frames, defense, trade, decoration, antique.
-//   BlockInfo    One block: group, cells it fills (width along X, height, depth along Z), default paint.
+//   BlockKind    Every block of the builder (the order is the order of BLOCKS, new kinds go to the end;
+//                saves name blocks, so a kind may be removed: the antique column, steps, temple roof,
+//                obelisk and fountain were).
+//   BlockEra     Top section of the palette (wish of the user 2026-11-17): the village of the tribe, the modern
+//                town, later space travel (no blocks yet, its tab is locked). Every era has its own groups.
+//   BlockGroup   Group of the palette inside an era: walls, roofs, frames, defense, trade, decoration.
+//   BlockInfo    One block: era, group, cells it fills (width along X, height, depth along Z), default paint.
 //
 
 public enum BlockKind
@@ -37,12 +41,21 @@ public enum BlockKind
     Palisade, Torch, Banner,                // defense
     Stall, Awning, Crate,                   // trade
     Door, Totem, Horns,                     // decoration
-    Column, Steps, Pediment,                // antique
+    StoneRoom, SmallRoom,                   // more walls
+    DomeRoof, HipRoof, FlatRoof,            // more roofs
+    Stairs, Railing,                        // more frames
+    Gate, StoneWall, Spikes, Fence,         // more defense
+    Barrel, Pots, DryingRack, Cart,         // more trade
+    Window, Well, Firepit,                  // more decoration
+    BrickRoom, GlassFloor, RoofDeck, Entrance,          // modern: the town of the last stage
+    Antenna, Smokestack, StreetLamp, Car,
 }
 
-public enum BlockGroup { Wall, Roof, Frame, Defense, Trade, Decor, Antique }
+public enum BlockEra { Village, Modern, Space }
 
-public readonly record struct BlockInfo(BlockKind Kind, BlockGroup Group, int Width, int Height, int Depth, int Paint);
+public enum BlockGroup { Wall, Roof, Frame, Defense, Trade, Decor }
+
+public readonly record struct BlockInfo(BlockKind Kind, BlockEra Era, BlockGroup Group, int Width, int Height, int Depth, int Paint);
 
 public static class BlockCatalog
 {
@@ -55,7 +68,7 @@ public static class BlockCatalog
     //   PAINTS          The paints a block can take, by index.
     //   BLOCKS          Every block in palette order.
     //   Get             The entry of a block.
-    //   In              The blocks of a group.
+    //   In              The blocks of a group, of a group of an era, or of an era.
     //   Footprint       Width and depth of a block after quarter turns.
     //   PaintOf         The color of a block with a paint index.
     //
@@ -65,14 +78,18 @@ public static class BlockCatalog
 
     // Paint indices, used as defaults in BLOCKS
     private const int CLAY = 0;
+    private const int WATTLE = 1;
     private const int STONE = 2;
     private const int WOOD = 3;
     private const int GRASS = 4;
+    private const int REED = 5;
     private const int SHINGLE = 6;
     private const int RED = 7;
     private const int BLUE = 8;
     private const int BONE = 9;
     private const int OCHRE = 10;
+    private const int BRICK = 11;
+    private const int CONCRETE = 12;
 
     public static readonly IReadOnlyList<Color> PAINTS = new[]
     {
@@ -87,31 +104,56 @@ public static class BlockCatalog
         new Color(0.25f, 0.55f, 0.75f),     // blue cloth
         new Color(0.9f, 0.88f, 0.8f),       // bone
         new Color(0.9f, 0.6f, 0.2f),        // ochre
+        new Color(0.72f, 0.36f, 0.27f),     // brick
+        new Color(0.8f, 0.8f, 0.78f),       // concrete
     };
 
     public static readonly IReadOnlyList<BlockInfo> BLOCKS = new[]
     {
-        new BlockInfo(BlockKind.RoundRoom,     BlockGroup.Wall,    4, 2, 4, CLAY),
-        new BlockInfo(BlockKind.SquareRoom,    BlockGroup.Wall,    4, 2, 4, CLAY),
-        new BlockInfo(BlockKind.RoundTower,    BlockGroup.Wall,    2, 2, 2, STONE),
-        new BlockInfo(BlockKind.ConeRoof,      BlockGroup.Roof,    4, 2, 4, GRASS),
-        new BlockInfo(BlockKind.GableRoof,     BlockGroup.Roof,    4, 2, 4, SHINGLE),
-        new BlockInfo(BlockKind.SmallConeRoof, BlockGroup.Roof,    2, 2, 2, GRASS),
-        new BlockInfo(BlockKind.Stilts,        BlockGroup.Frame,   2, 2, 2, WOOD),
-        new BlockInfo(BlockKind.Platform,      BlockGroup.Frame,   4, 1, 4, WOOD),
-        new BlockInfo(BlockKind.Ladder,        BlockGroup.Frame,   1, 2, 1, WOOD),
-        new BlockInfo(BlockKind.Palisade,      BlockGroup.Defense, 4, 2, 1, WOOD),
-        new BlockInfo(BlockKind.Torch,         BlockGroup.Defense, 1, 2, 1, WOOD),
-        new BlockInfo(BlockKind.Banner,        BlockGroup.Defense, 1, 3, 1, BLUE),
-        new BlockInfo(BlockKind.Stall,         BlockGroup.Trade,   2, 1, 2, WOOD),
-        new BlockInfo(BlockKind.Awning,        BlockGroup.Trade,   2, 2, 2, RED),
-        new BlockInfo(BlockKind.Crate,         BlockGroup.Trade,   1, 1, 1, WOOD),
-        new BlockInfo(BlockKind.Door,          BlockGroup.Decor,   1, 2, 2, WOOD),
-        new BlockInfo(BlockKind.Totem,         BlockGroup.Decor,   2, 2, 2, OCHRE),
-        new BlockInfo(BlockKind.Horns,         BlockGroup.Decor,   2, 1, 2, BONE),
-        new BlockInfo(BlockKind.Column,        BlockGroup.Antique, 1, 3, 1, BONE),
-        new BlockInfo(BlockKind.Steps,         BlockGroup.Antique, 4, 1, 4, BONE),
-        new BlockInfo(BlockKind.Pediment,      BlockGroup.Antique, 4, 2, 8, BONE),
+        new BlockInfo(BlockKind.RoundRoom,     BlockEra.Village, BlockGroup.Wall,    4, 2, 4, CLAY),
+        new BlockInfo(BlockKind.SquareRoom,    BlockEra.Village, BlockGroup.Wall,    4, 2, 4, CLAY),
+        new BlockInfo(BlockKind.RoundTower,    BlockEra.Village, BlockGroup.Wall,    2, 2, 2, STONE),
+        new BlockInfo(BlockKind.ConeRoof,      BlockEra.Village, BlockGroup.Roof,    4, 2, 4, GRASS),
+        new BlockInfo(BlockKind.GableRoof,     BlockEra.Village, BlockGroup.Roof,    4, 2, 4, SHINGLE),
+        new BlockInfo(BlockKind.SmallConeRoof, BlockEra.Village, BlockGroup.Roof,    2, 2, 2, GRASS),
+        new BlockInfo(BlockKind.Stilts,        BlockEra.Village, BlockGroup.Frame,   2, 2, 2, WOOD),
+        new BlockInfo(BlockKind.Platform,      BlockEra.Village, BlockGroup.Frame,   4, 1, 4, WOOD),
+        new BlockInfo(BlockKind.Ladder,        BlockEra.Village, BlockGroup.Frame,   1, 2, 1, WOOD),
+        new BlockInfo(BlockKind.Palisade,      BlockEra.Village, BlockGroup.Defense, 4, 2, 1, WOOD),
+        new BlockInfo(BlockKind.Torch,         BlockEra.Village, BlockGroup.Defense, 1, 2, 1, WOOD),
+        new BlockInfo(BlockKind.Banner,        BlockEra.Village, BlockGroup.Defense, 1, 3, 1, BLUE),
+        new BlockInfo(BlockKind.Stall,         BlockEra.Village, BlockGroup.Trade,   2, 1, 2, WOOD),
+        new BlockInfo(BlockKind.Awning,        BlockEra.Village, BlockGroup.Trade,   2, 2, 2, RED),
+        new BlockInfo(BlockKind.Crate,         BlockEra.Village, BlockGroup.Trade,   1, 1, 1, WOOD),
+        new BlockInfo(BlockKind.Door,          BlockEra.Village, BlockGroup.Decor,   1, 2, 2, WOOD),
+        new BlockInfo(BlockKind.Totem,         BlockEra.Village, BlockGroup.Decor,   2, 2, 2, OCHRE),
+        new BlockInfo(BlockKind.Horns,         BlockEra.Village, BlockGroup.Decor,   2, 1, 2, BONE),
+        new BlockInfo(BlockKind.StoneRoom,     BlockEra.Village, BlockGroup.Wall,    4, 2, 4, STONE),
+        new BlockInfo(BlockKind.SmallRoom,     BlockEra.Village, BlockGroup.Wall,    2, 2, 2, CLAY),
+        new BlockInfo(BlockKind.DomeRoof,      BlockEra.Village, BlockGroup.Roof,    4, 2, 4, REED),
+        new BlockInfo(BlockKind.HipRoof,       BlockEra.Village, BlockGroup.Roof,    4, 2, 4, SHINGLE),
+        new BlockInfo(BlockKind.FlatRoof,      BlockEra.Village, BlockGroup.Roof,    4, 1, 4, CLAY),
+        new BlockInfo(BlockKind.Stairs,        BlockEra.Village, BlockGroup.Frame,   2, 2, 2, WOOD),
+        new BlockInfo(BlockKind.Railing,       BlockEra.Village, BlockGroup.Frame,   4, 1, 1, WOOD),
+        new BlockInfo(BlockKind.Gate,          BlockEra.Village, BlockGroup.Defense, 4, 3, 1, WOOD),
+        new BlockInfo(BlockKind.StoneWall,     BlockEra.Village, BlockGroup.Defense, 4, 2, 1, STONE),
+        new BlockInfo(BlockKind.Spikes,        BlockEra.Village, BlockGroup.Defense, 2, 1, 1, WOOD),
+        new BlockInfo(BlockKind.Fence,         BlockEra.Village, BlockGroup.Defense, 4, 1, 1, WATTLE),
+        new BlockInfo(BlockKind.Barrel,        BlockEra.Village, BlockGroup.Trade,   1, 1, 1, WOOD),
+        new BlockInfo(BlockKind.Pots,          BlockEra.Village, BlockGroup.Trade,   1, 1, 1, OCHRE),
+        new BlockInfo(BlockKind.DryingRack,    BlockEra.Village, BlockGroup.Trade,   2, 2, 1, WOOD),
+        new BlockInfo(BlockKind.Cart,          BlockEra.Village, BlockGroup.Trade,   2, 1, 2, WOOD),
+        new BlockInfo(BlockKind.Window,        BlockEra.Village, BlockGroup.Decor,   1, 2, 2, WOOD),
+        new BlockInfo(BlockKind.Well,          BlockEra.Village, BlockGroup.Decor,   2, 2, 2, SHINGLE),
+        new BlockInfo(BlockKind.Firepit,       BlockEra.Village, BlockGroup.Decor,   2, 1, 2, STONE),
+        new BlockInfo(BlockKind.BrickRoom,     BlockEra.Modern,  BlockGroup.Wall,    4, 2, 4, BRICK),
+        new BlockInfo(BlockKind.GlassFloor,    BlockEra.Modern,  BlockGroup.Wall,    4, 2, 4, CONCRETE),
+        new BlockInfo(BlockKind.RoofDeck,      BlockEra.Modern,  BlockGroup.Roof,    4, 1, 4, CONCRETE),
+        new BlockInfo(BlockKind.Entrance,      BlockEra.Modern,  BlockGroup.Decor,   1, 2, 2, BLUE),
+        new BlockInfo(BlockKind.Antenna,       BlockEra.Modern,  BlockGroup.Roof,    1, 4, 1, BONE),
+        new BlockInfo(BlockKind.Smokestack,    BlockEra.Modern,  BlockGroup.Roof,    2, 4, 2, BRICK),
+        new BlockInfo(BlockKind.StreetLamp,    BlockEra.Modern,  BlockGroup.Decor,   1, 3, 1, RED),
+        new BlockInfo(BlockKind.Car,           BlockEra.Modern,  BlockGroup.Decor,   2, 1, 4, RED),
     };
 
     /// <summary>The entry of a block. BLOCKS lists the kinds in enum order.</summary>
@@ -126,6 +168,31 @@ public static class BlockCatalog
         foreach (BlockInfo info in BLOCKS)
         {
             if (group == info.Group)
+            {
+                yield return info;
+            }
+        }
+    }
+
+    /// <summary>The blocks of a group of an era in palette order.</summary>
+    /// <example><code>BlockCatalog.In(BlockEra.Modern, BlockGroup.Roof)   // roof deck, antenna, smokestack</code></example>
+    public static IEnumerable<BlockInfo> In(BlockEra era, BlockGroup group)
+    {
+        foreach (BlockInfo info in BLOCKS)
+        {
+            if (era == info.Era && group == info.Group)
+            {
+                yield return info;
+            }
+        }
+    }
+
+    /// <summary>The blocks of an era in palette order, none for an era that is not built yet.</summary>
+    public static IEnumerable<BlockInfo> In(BlockEra era)
+    {
+        foreach (BlockInfo info in BLOCKS)
+        {
+            if (era == info.Era)
             {
                 yield return info;
             }

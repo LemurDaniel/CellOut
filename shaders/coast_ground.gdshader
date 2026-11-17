@@ -5,7 +5,9 @@
 //                clover cushions, flower specks, tufts as relief, a sheen at flat angles,
 //                gusts of wind running over it as lighter waves
 //     - dunes:   an irregular edge between sand and grass that frays into tufts
-//     - yards:   trampled earth with pebbles on the flat foundations of buildings
+//     - yards:   trampled earth with pebbles on the flat foundations of buildings; a
+//                settlement is meadow with trodden ways (a place around the fire, a ring
+//                way, ways to the gates), a city has asphalt streets, sidewalks and paving
 //     - clouds:  their shadows drift over the land (planet.gdshaderinc)
 //     - beach:   dry sand with ripples along the shore, wet sand behind the swash, a sheen
 //     - water:   teal sand with dancing caustics, sinking into the sea floor color
@@ -25,10 +27,18 @@ uniform vec3 shallow_color : source_color = vec3(0.10, 0.32, 0.34);
 uniform vec3 deep_color : source_color = vec3(0.03, 0.11, 0.15);
 uniform float caustic_strength = 0.12;
 
-// Flat foundations of buildings (World/CoastTerrain.cs, MAX_PADS): xy center, z radius
+// Flat foundations of buildings (World/CoastTerrain.cs, MAX_PADS): xy center, z radius,
+// w look (0 yard of trampled earth, 1 settlement with trodden ways, 2 city with streets)
 const int MAX_PADS = 48;
 uniform vec4 pads[MAX_PADS];
 uniform int pad_count = 0;
+
+// Ground plan of a settlement (Tribe/Village/Settlement.cs) in world units: x radius of the
+// place around the fire, y radius of the ring way, z half the width of a way. Straight
+// ways run from the place out through the gates at the plane angles settlement_gates
+uniform vec3 settlement_plan = vec3(90.0, 266.0, 18.0);
+uniform vec4 settlement_gates = vec4(1.0, 2.95, 4.14, 6.09);
+const float WAY_TRAIL = 22.0;                // Units a way runs on beyond the foundation while it thins out
 
 varying vec3 world_pos;
 varying float height;                        // in player sizes, the mesh is scaled by them
@@ -45,6 +55,26 @@ float ground_relief(vec2 q, float meadow) {
 	float tufts = coast_noise(q * 7.0) * 0.65 + coast_noise(q * 17.0 + 2.0) * 0.35;
 	float sand = coast_noise(q * vec2(4.0, 9.0) + 5.0) * 0.2;
 	return mix(sand, tufts, meadow);
+}
+
+// The nearest way of a settlement around a point relative to its fire: x the distance to the
+// middle line of the way (below 0 on the place around the fire), y the length along the way
+// (-1 on the place)
+vec2 settlement_lane(vec2 rel) {
+	float r = length(rel);
+	if (r < settlement_plan.x) {
+		return vec2(r - settlement_plan.x, -1.0);
+	}
+	vec2 lane = vec2(abs(r - settlement_plan.y), atan(rel.y, rel.x) * settlement_plan.y + 100.0 * settlement_plan.y);
+	for (int k = 0; k < 4; k++) {
+		vec2 out_dir = vec2(cos(settlement_gates[k]), sin(settlement_gates[k]));
+		float along = dot(rel, out_dir);
+		float off = abs(dot(rel, vec2(-out_dir.y, out_dir.x)));
+		if (along > 0.0 && off < lane.x) {
+			lane = vec2(off, along);
+		}
+	}
+	return lane;
 }
 
 void fragment() {
@@ -97,10 +127,50 @@ void fragment() {
 
 	// Yards: trampled earth on the foundations of buildings, frayed into the grass at the
 	// edge, worn darker in the middle, pebbles and a few blades left standing
+	// A settlement (w 1) is meadow with trodden ways, a city (w 2) a lawn with asphalt streets,
+	// sidewalks and a paved place
 	float yard = 0.0;
+	float street = 0.0;
+	float walk = 0.0;
+	float paved = 0.0;
+	float dash = 0.0;
+	float half_way = settlement_plan.z;
 	for (int i = 0; i < pad_count; i++) {
-		float reach = length(world_pos.xz - pads[i].xy) + (coast_noise(q * 1.8 + float(i) * 3.1) - 0.5) * 1.6 * unit;
-		yard = max(yard, 1.0 - smoothstep(pads[i].z * 0.8, pads[i].z + 0.6 * unit, reach));
+		vec2 rel = world_pos.xz - pads[i].xy;
+		float reach = length(rel) + (coast_noise(q * 1.8 + float(i) * 3.1) - 0.5) * 1.6 * unit;
+		float here = 1.0 - smoothstep(pads[i].z * 0.8, pads[i].z + 0.6 * unit, reach);
+		if (pads[i].w < 0.5) {
+			yard = max(yard, here);
+			continue;
+		}
+		vec2 lane = settlement_lane(rel);
+		// Beyond the foundation nothing ends at a line: the ways through the gates run on, get
+		// narrower and break up (trail 0 at the edge .. 1 where they are gone), and trampled
+		// patches lie scattered in the meadow around the edge
+		float beyond = length(rel) - pads[i].z;
+		float trail = clamp(beyond / (WAY_TRAIL * unit), 0.0, 1.0);
+		float width = half_way * mix(1.0, 0.4, trail);
+		float wobble = (coast_noise(q * 1.3 + float(i) * 5.0) - 0.5) * 1.2 * unit;
+		float crumble = coast_fbm(q * 0.9 + float(i) * 2.3);
+		float track = (1.0 - smoothstep(width * 0.5, width * 1.4, lane.x + wobble)) * (1.0 - trail)
+			* smoothstep(trail * 0.75 - 0.2, trail * 0.75 + 0.1, crumble);
+		float patches = smoothstep(0.5, 0.72, coast_fbm(q * 0.45 + float(i) * 4.1)) * (1.0 - smoothstep(-2.0 * unit, 9.0 * unit, beyond)) * 0.55;
+		if (pads[i].w < 1.5) {
+			yard = max(yard, max(here * (0.18 + 0.82 * track), max(track, patches)));
+			continue;
+		}
+		// City: the whole foundation is paved but a few lawns away from the streets; outside,
+		// the asphalt crumbles into the dirt track of the old way
+		float on_pad = smoothstep(0.35, 0.6, here);
+		float edge = 0.06 * unit;
+		float solid = smoothstep(trail * 1.3 - 0.1, trail * 1.3 + 0.1, crumble) * (1.0 - trail);
+		float lane_here = (1.0 - smoothstep(width - edge, width + edge, lane.x)) * step(0.0, lane.y) * solid;
+		float lawn = smoothstep(0.6, 0.66, coast_fbm(q * 0.3 + float(i) * 7.7)) * smoothstep(half_way * 2.0, half_way * 2.6, lane.x);
+		street = max(street, lane_here);
+		walk = max(walk, on_pad * (1.0 - smoothstep(half_way * 1.5 - edge, half_way * 1.5 + edge, lane.x)));
+		paved = max(paved, on_pad * (1.0 - lawn));
+		dash = max(dash, lane_here * step(beyond, 0.0) * (1.0 - step(0.07 * unit, lane.x)) * step(fract(lane.y / (2.4 * unit)), 0.5));
+		yard = max(yard, max(track, patches) * (1.0 - on_pad));
 	}
 	vec3 earth = mix(vec3(0.3, 0.21, 0.13), vec3(0.42, 0.32, 0.2), coast_fbm(q * 1.2 + 3.0)) * (0.9 + 0.2 * grain);
 	vec2 pebbleCell = floor(q * 6.0);
@@ -108,6 +178,20 @@ void fragment() {
 	earth = mix(earth, vec3(0.55, 0.52, 0.47) * (0.85 + 0.3 * coast_hash(pebbleCell)), pebble * 0.8 * near);
 	float stubble = smoothstep(0.62, 0.8, coast_noise(q * 13.0)) * (1.0 - yard * yard);
 	col = mix(col, mix(earth, grass, stubble), yard * meadow);
+	// City: pale paving slabs with joints, dark asphalt with a dashed middle line
+	vec2 slab = abs(fract(q * 1.1) - 0.5);
+	float joint = smoothstep(0.44, 0.48, max(slab.x, slab.y)) * near;
+	vec3 paving = vec3(0.58, 0.56, 0.52) * (0.92 + 0.14 * coast_hash(floor(q * 1.1))) * (1.0 - 0.25 * joint);
+	vec3 asphalt = vec3(0.12, 0.12, 0.135) * (0.85 + 0.3 * grain);
+	// Between the streets: worn grey asphalt of yards and parking lots with patched spots and cracks
+	float patched = smoothstep(0.55, 0.6, coast_fbm(q * 0.7 + 13.0));
+	float crack = (1.0 - smoothstep(0.0, 0.035, abs(coast_fbm(q * 0.8 + 31.0) - 0.5))) * near;
+	vec3 lot = vec3(0.3, 0.3, 0.32) * (0.88 + 0.24 * grain) * (1.0 - 0.18 * patched) * (1.0 - 0.3 * crack);
+	col = mix(col, lot, paved * meadow);
+	col = mix(col, paving, walk * meadow);
+	col = mix(col, asphalt, street * meadow);
+	col = mix(col, vec3(0.86, 0.82, 0.62), dash * meadow);
+	yard = max(yard, max(walk, max(paved, street)));     // paved ground has no tufts either
 	float wetEdge = shore + 0.9 * unit + sin(TIME * 0.7 + (q.x + q.y) * 0.11 - 0.6) * 0.3 * unit;
 	float wetness = 1.0 - smoothstep(wetEdge - 0.3 * unit, wetEdge + 0.3 * unit, d);
 	col = mix(col, wet, wetness);

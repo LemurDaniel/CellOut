@@ -494,8 +494,13 @@ public sealed record WildlifeBalance
 public sealed record VillageBalance
 {
     public required float HutDistance { get; init; }             // Units from the fire to a building placed without a chosen spot
-    public required float BuildRadius { get; init; }             // Units around the fire the player may place buildings in
-    public required float BuildSpacing { get; init; }            // Units a building keeps to the fire and to other buildings
+    public required float BuildRadius { get; init; }             // Units beyond the foundation of the settlement the villagers chop trees in
+    public required float BuildSpacing { get; init; }            // Units around the middle of a plot that a standing building takes
+    public required int SlotInnerCount { get; init; }            // building plots on the inner ring of a settlement (Tribe/Village/Settlement.cs)
+    public required float SlotInnerRadius { get; init; }         // Units from the fire to the inner ring
+    public required int SlotOuterCount { get; init; }            // plots on the outer ring
+    public required float SlotOuterRadius { get; init; }         // Units from the fire to the outer ring
+    public required float SlotDepth { get; init; }               // Units of land a plot needs towards the shore, plots nearer to the water stay empty
     public required float VillagerSeconds { get; init; }         // seconds a hut needs to raise a villager
     public required float GatherRange { get; init; }             // body sizes an idle villager looks for fruit
     public required int FoodPerFruit { get; init; }              // food stock one gathered fruit brings
@@ -527,7 +532,8 @@ public sealed record BuildingBalance
 public sealed record RivalsBalance
 {
     public required int Count { get; init; }                     // neighbor tribes, the first on the own island
-    public required float SameIslandDistance { get; init; }      // Units from the own fire to the neighbor on the same island
+    public required float SameIslandDistance { get; init; }      // Units from the own nest to the den of a foreign pack on the same island (times PACK_DISTANCE)
+    public required float SettleDistance { get; init; }          // Units from the own fire to the fire of a pack that became a tribe: room for two foundations and land between
     public required int Huts { get; init; }                      // huts of a rival village
     public required int Villagers { get; init; }                 // villagers of a rival village
     public required float FriendlyAt { get; init; }              // relation from which a tribe trades

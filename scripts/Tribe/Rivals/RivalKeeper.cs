@@ -109,6 +109,9 @@ public partial class RivalKeeper : Node2D
     private static readonly string[] SPECIES = { "TRICERATOPS", "ELEPHANT", "GIRAFFE", "CROCODILE", "CHAMELEON", "FROG", "TREX", "PARROT" };
 
     private const float PACK_DISTANCE = 0.55f;       // share of SameIslandDistance between the nest and a foreign den
+    private const float SETTLE_TURN = 0.26f;         // radians per step when looking for a spot to settle around the player's fire
+    private const float SETTLE_DEPTH = 0.6f;         // share of the foundation radius a settlement lies inland at least
+    private const float SETTLE_GAP = 2.4f;           // foundation radii between two settlements of neighbors
 
     /*
       The foreign packs of the pack stage, once when the nest is built:
@@ -164,15 +167,19 @@ public partial class RivalKeeper : Node2D
             TribePath.Warlike  => -Balance.Current.Tribe.Ways.StartShift,
             _                  => 0f,
         };
+        // A den lies close to the nest; a settlement needs room for its own foundation, so the pack moves away first
+        float   size = Player.BodySize();
+        Vector2 fire = _pack.Nest.Position;
+        var     homes = new List<Vector2>();
         foreach (RivalTribe pack in _rivals)
         {
-            pack.Settle();
+            Vector2? home = SettleSpotFor(pack.Fire, fire, homes);
+            homes.Add(home ?? pack.Fire);
+            pack.Settle(home, home is Vector2 spot ? EntryFor(spot, fire) : null);
             pack.Shift(shift);
         }
 
         // Further tribes on the next islands, the first is friendly, the second hostile, the rest in between
-        float   size = Player.BodySize();
-        Vector2 fire = _pack.Nest.Position;
         var     kinds = new List<string>(SPECIES);
         kinds.RemoveAll(kind => _rivals.Exists(rival => rival.Species == kind) || Loners.Any(loner => loner.Species == kind));
         for (int island = 1; _rivals.Count < Tune.Count && island < Coast.Islands.Count; island++)
@@ -217,6 +224,32 @@ public partial class RivalKeeper : Node2D
             Vector2 spot     = fire + Vector2.FromAngle(Rand.Angle()) * Tune.SameIslandDistance * share * Coast.Unit * Rand.Range(0.8f, 1.1f);
             bool    isCrowded = _rivals.Exists(rival => rival.Fire.DistanceTo(spot) < Tune.SameIslandDistance * share * Coast.Unit * 0.6f);
             if (Coast.LandDepth(spot) >= grass && !isCrowded)
+            {
+                return spot;
+            }
+        }
+        return null;
+    }
+
+    /*
+      Where a pack settles on the player's island:
+      - SettleDistance from the player's fire, first straight on from the nest through its den,
+        then turned further and further to both sides.
+      - Deep enough in the land for its foundation and SETTLE_GAP foundations away from the homes taken.
+      No such spot (small island): it stays at its den.
+    */
+    /// <summary>The spot a pack moves to when it becomes a tribe, null when the island has no room.</summary>
+    private Vector2? SettleSpotFor(Vector2 den, Vector2 fire, List<Vector2> taken)
+    {
+        float unit   = Coast.Unit;
+        float room   = Settlement.Radius(unit);
+        float toward = (den - fire).Angle();
+        for (int attempt = 0; attempt < HOME_TRIES; attempt++)
+        {
+            // 0, +1, -1, +2, -2 ... steps around the fire
+            float   turn = (attempt + 1) / 2 * SETTLE_TURN * (0 == attempt % 2 ? 1f : -1f);
+            Vector2 spot = fire + Vector2.FromAngle(toward + turn) * Tune.SettleDistance * unit;
+            if (Coast.LandDepth(spot) >= room * SETTLE_DEPTH && !taken.Exists(home => home.DistanceTo(spot) < room * SETTLE_GAP))
             {
                 return spot;
             }

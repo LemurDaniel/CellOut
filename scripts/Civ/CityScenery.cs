@@ -37,7 +37,7 @@ public partial class CityScenery : Node3D
     private const string FIELD_MODEL = "res://assets/models/civ/civ.field.glb";
     private const string PIER_MODEL = "res://assets/models/civ/civ.pier.glb";
     private const float SCALE = 3f;                  // world units per model unit, in coast units (a field is about 7 x 5 units)
-    private static readonly Color CLOTH = new(0.75f, 0.35f, 0.3f);    // shirt of the scarecrow, amphoras
+    private static readonly Color CLOTH = new(0.75f, 0.35f, 0.3f);    // the tractor of a field, the crane and a container of the pier
 
     private WorldSession _session;
     private TribeCommander _tribe;
@@ -77,7 +77,6 @@ public partial class CityScenery : Node3D
     //
 
     private const int FIELD_COUNT = 4;
-    private const float FIELD_RING = 0.62f;          // share of the build radius the fields lie on
     private const float FIELD_RADIUS = 1.45f;        // model units of a field from its middle to a corner
     private const int SHORE_RAYS = 32;
     private const float SHORE_STEP = 1f;             // coast units per step towards the sea
@@ -113,8 +112,8 @@ public partial class CityScenery : Node3D
     private void PlaceFields(Coast coast, Hut hall)
     {
         float unit   = coast.Unit;
-        float ring   = Balance.Current.Tribe.Village.BuildRadius * unit * FIELD_RING;
         float radius = FIELD_RADIUS * SCALE * unit;
+        float ring   = Settlement.Radius(unit) + radius;      // just outside the foundation of the settlement, its plots stay free
         for (int i = 0; i < SHORE_RAYS && _fields.Count < FIELD_COUNT; i++)
         {
             // Every other ray around the hall, the second pass fills in between

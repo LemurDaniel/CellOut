@@ -17,6 +17,10 @@ Builds every model of Cell Out as `.glb` into `assets/models/` (never edit them 
 | `models/cells.py` | The eighteen cell editor parts as micro monsters. |
 | `models/trees.py` | Primeval trees of the islands: tree fern, cycad, horsetail, broadleaf, scale tree giant. |
 | `models/village.py` | Props of pack and tribe: the woven nest, the fire pit. |
-| `models/buildings.py` | The eighteen blocks of the building designer: walls, roofs, frames, defense, trade, decoration. |
+| `models/buildings.py` | The primitives of every building block (pole, beam, lathe, plate, sheet, rock) and the first eighteen blocks of the building designer: walls, roofs, frames, defense, trade, decoration. |
+| `models/antique.py` | The antique blocks of the city: column, steps, temple roof. |
+| `models/new_blocks_home.py` | Seven blocks around the house: stone room, small room, dome, hip and flat roof, window, well. |
+| `models/new_blocks_work.py` | Eight blocks of the working village: stairs, railing, wattle fence, barrel, pots, drying rack, hand cart, cooking fire. |
+| `models/new_blocks_guard.py` | Five blocks of defense and the antique: gate, stone wall, spiked barrier, obelisk, fountain. |
 
 New family: a module in `models/` that imports from `models.helpers`, its builders registered in `PARTS`, new material names in `helpers.MATERIAL_COLORS` and in the game loader (`Core/PartModels.cs` or `Core/TreeModels.cs`).
