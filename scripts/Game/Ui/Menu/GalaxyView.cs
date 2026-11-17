@@ -73,8 +73,14 @@ public partial class GalaxyView : Control
             AddMarker(planet);
         }
 
-        // The view starts at the first planet (Terra), right of the logo
-        Vector2 home = Planets.All[0].GalaxySpot.Rotated(-_angle);
+        // Instruments and the card of what lies under the mouse over everything
+        _hud = new GalaxyHud { ToScreen = ToScreen };
+        AddChild(_hud);
+        _card = new SystemCard();
+        AddChild(_card);
+
+        // The view starts at the current planet (Terra in a fresh game), right of the logo
+        Vector2 home = Planets.Current.GalaxySpot.Rotated(-_angle);
         _pan = START_SPOT - new Vector2(home.X, home.Y * TILT) * _scale;
     }
 
@@ -88,16 +94,26 @@ public partial class GalaxyView : Control
         _material.SetShaderParameter("scale", _scale);
         _material.SetShaderParameter("pan", _pan);
         _material.SetShaderParameter("dim", _dim);
+        _material.SetShaderParameter("warp", _warp);
+        _material.SetShaderParameter("warp_center", _warpCenter);
+        _material.SetShaderParameter("warp_way", _warpWay);
         _systems.ViewScale = _scale;
         _systems.Modulate  = new Color(1f, 1f, 1f, 1f - _dim);
-        _center.Position   = ToScreen(Vector2.Zero) + new Vector2(14f, 6f);
+        _systems.Hovered   = _hovered;
+        _hud.ViewScale     = _scale;
+        _hud.Modulate      = _systems.Modulate;
+        _hud.Visible       = _dim < 0.95f;
+        _center.Position   = ToScreen(Vector2.Zero) + new Vector2(14f, 6f) * (1f + _holeGlow);
         _center.Visible    = _dim < 0.5f;
+        _holeGlow = Mathf.MoveToward(_holeGlow, _isHoleHovered ? 1f : 0f, (float)delta * 4f);
+        _material.SetShaderParameter("hole_glow", _holeGlow);
+        RefreshCard();
 
         // Markers on their orbits, bigger when close, at the star when far out
         float zoom = Mathf.Clamp(_scale / START_SCALE, 0.55f, 1.8f);
         foreach ((Planet planet, StarSystem system, Button marker, Label name) in _markers)
         {
-            Vector2 spot = _systems.Shown > 0.5f ? _systems.HomeSpot(system) : ToScreen(planet.GalaxySpot);
+            Vector2 spot = MarkerSpot(planet, system);
             marker.Size        = Vector2.One * MARKER_SIZE * planet.GlobeSize * zoom;
             marker.PivotOffset = marker.Size * 0.5f;
             marker.GetChild<PlanetGlobe>(0).Size = marker.Size;
@@ -110,7 +126,7 @@ public partial class GalaxyView : Control
     }
 
     /// <summary>A point on the disk of the galaxy (-1..1) in pixels of this control, the same mapping as the shader.</summary>
-    private Vector2 ToScreen(Vector2 disk)
+    public Vector2 ToScreen(Vector2 disk)
     {
         Vector2 turned = disk.Rotated(-_angle);
         var q = new Vector2(turned.X, turned.Y * TILT) * _scale + _pan;
@@ -123,7 +139,9 @@ public partial class GalaxyView : Control
     // ===========================================================================
     //
     //   MIN_SCALE / MAX_SCALE   The whole spiral .. a few systems.
-    //   _GuiInput               A drag with any button pans, the wheel zooms towards the mouse.
+    //   _GuiInput               A drag with any button pans, the wheel zooms towards the mouse,
+    //                           a click without a drag picks what is under the mouse (HOVER AND CLICK),
+    //                           moving the mouse hovers.
     //   ZoomAt                  Changes the scale, the disk point under the mouse stays under it.
     //
 
@@ -141,15 +159,42 @@ public partial class GalaxyView : Control
         }
         if (@event is InputEventMouseButton { Pressed: true } wheel && wheel.ButtonIndex is MouseButton.WheelUp or MouseButton.WheelDown)
         {
+            StopLooking();
             ZoomAt(wheel.Position, MouseButton.WheelUp == wheel.ButtonIndex ? WHEEL_STEP : 1f / WHEEL_STEP);
+            AcceptEvent();
+        }
+        else if (@event is InputEventMouseButton { ButtonIndex: MouseButton.Left } click)
+        {
+            // A press without a drag before its release is a click
+            if (click.Pressed)
+            {
+                _pressAt    = click.Position;
+                _hasDragged = false;
+            }
+            else if (!_hasDragged)
+            {
+                ClickAt(click.Position);
+            }
             AcceptEvent();
         }
         else if (@event is InputEventMouseMotion motion && 0 != motion.ButtonMask)
         {
+            StopLooking();
             _pan += motion.Relative / Size.Y;
+            _hasDragged |= motion.Position.DistanceTo(_pressAt) > CLICK_SLOP;
+            HoverAt(null);
             AcceptEvent();
         }
+        else if (@event is InputEventMouseMotion hover)
+        {
+            HoverAt(hover.Position);
+        }
     }
+
+    private const float CLICK_SLOP = 6f;             // pixels a press may move and still be a click
+
+    private Vector2 _pressAt;
+    private bool _hasDragged;
 
     private void ZoomAt(Vector2 mouse, float factor)
     {
@@ -162,17 +207,124 @@ public partial class GalaxyView : Control
     }
 
     // ===========================================================================
+    // ===========================   HOVER AND CLICK   ===========================
+    // ===========================================================================
+    //
+    //   HoverAt       The star system or Sgr A* under the mouse, null clears it.
+    //   HolePixels    The radius of Sgr A* on the screen, the size formula of the shader.
+    //   RefreshCard   The card follows what is hovered (a star, a planet marker, the hole), hides in the planet view.
+    //   ClickAt       A pointer flies to its planet, a playable star picks its planet,
+    //                 a wild star and the hole fly close.
+    //
+
+    private const float HOVER_PIXELS = 16f;          // a star counts as hovered this close to the mouse
+    private const float HOVER_SHOWN = 0.3f;          // .. once the systems show this much
+    private const float SYSTEM_SCALE = 3.2f;         // a click on a wild star flies at least this close
+    private const float HOLE_SCALE = 3.5f;
+    private const float BH_RING = 0.034f;            // shaders/galaxy.gdshader BH_RING and BH_MAX_SCALE
+    private const float BH_MAX_SCALE = 0.9f;
+
+    private GalaxyHud _hud;
+    private SystemCard _card;
+    private StarSystem _hovered;
+    private StarSystem _markerHovered;
+    private bool _isHoleHovered;
+    private float _holeGlow;
+
+    private void HoverAt(Vector2? mouse)
+    {
+        _hovered       = null;
+        _isHoleHovered = false;
+        if (mouse is not Vector2 at || !IsNavigable)
+        {
+            return;
+        }
+        float best = HOVER_PIXELS;
+        if (_systems.Shown > HOVER_SHOWN)
+        {
+            foreach (StarSystem system in Galaxy.Systems)
+            {
+                float distance = ToScreen(system.Spot).DistanceTo(at);
+                if (distance < best)
+                {
+                    best     = distance;
+                    _hovered = system;
+                }
+            }
+        }
+        _isHoleHovered = null == _hovered && ToScreen(Vector2.Zero).DistanceTo(at) < HolePixels();
+    }
+
+    private float HolePixels()
+    {
+        float size = _scale < BH_MAX_SCALE ? _scale : BH_MAX_SCALE * Mathf.Pow(_scale / BH_MAX_SCALE, 0.6f);
+        return Mathf.Max(HOVER_PIXELS, BH_RING * size * Size.Y * 1.6f);
+    }
+
+    private void RefreshCard()
+    {
+        if (!IsNavigable)
+        {
+            _hovered = _markerHovered = null;
+            _isHoleHovered = false;
+            _card.HideCard();
+        }
+        else if (null != _markerHovered)
+        {
+            _card.ShowSystem(_markerHovered, MarkerSpot(Planets.Get(_markerHovered.PlanetKey), _markerHovered));
+        }
+        else if (null != _hovered)
+        {
+            _card.ShowSystem(_hovered, ToScreen(_hovered.Spot));
+        }
+        else if (_isHoleHovered)
+        {
+            _card.ShowHole(ToScreen(Vector2.Zero));
+        }
+        else
+        {
+            _card.HideCard();
+        }
+    }
+
+    private void ClickAt(Vector2 mouse)
+    {
+        Planet pointed = _hud.PlanetAt(mouse);
+        if (null != pointed)
+        {
+            LookAt(pointed.GalaxySpot, Mathf.Max(_scale, START_SCALE));
+        }
+        else if (null != _hovered?.PlanetKey)
+        {
+            PlanetPicked?.Invoke(Planets.Get(_hovered.PlanetKey));
+        }
+        else if (null != _hovered)
+        {
+            LookAt(_hovered.Spot, Mathf.Max(_scale, SYSTEM_SCALE));
+        }
+        else if (_isHoleHovered)
+        {
+            LookAt(Vector2.Zero, HOLE_SCALE);
+        }
+    }
+
+    // ===========================================================================
     // ===============================   PLANETS   ===============================
     // ===========================================================================
     //
     //   PlanetPicked   A planet was clicked (a C# event: a record is no Variant).
     //   AddMarker      A round button with the globe of a planet and its name below.
+    //   MarkerSpot     Where a marker sits on the screen.
+    //   DrawProgress   The ring of phases reached around a marker.
     //   Translate      Names in the current language.
     //
 
     public event System.Action<Planet> PlanetPicked;
 
     private const float MARKER_SIZE = 46f;
+    private const float GLOBE_SHARE = 0.8f;          // shaders/planet_globe.gdshader RADIUS: the globe fills this much of its rect
+    private const float PROGRESS_GAP = 4f;           // pixels between the globe and its ring of phases
+    private const float PROGRESS_SPACE = 0.06f;      // radians left free at each end of an arc
 
     private readonly List<(Planet Planet, StarSystem System, Button Marker, Label Name)> _markers = new();
 
@@ -200,20 +352,45 @@ public partial class GalaxyView : Control
         name.AddThemeConstantOverride("outline_size", 4);
         name.Modulate = new Color(1f, 1f, 1f, 0.85f);
 
+        StarSystem system = System.Linq.Enumerable.First(Galaxy.Systems, each => each.PlanetKey == planet.Key);   // the same instance the hover finds
         marker.MouseEntered += () =>
         {
+            _markerHovered = system;
             globe.Glow = 1f;
             EditorStyle.ScaleTo(marker, 1.18f);
         };
         marker.MouseExited += () =>
         {
+            _markerHovered = system == _markerHovered ? null : _markerHovered;
             globe.Glow = 0.4f;
             EditorStyle.ScaleTo(marker, 1f);
         };
         marker.Pressed += () => PlanetPicked?.Invoke(planet);
+        marker.Draw    += () => DrawProgress(marker, planet);
         AddChild(marker);
         AddChild(name);
-        _markers.Add((planet, StarSystem.Of(planet), marker, name));
+        _markers.Add((planet, system, marker, name));
+    }
+
+    /// <summary>Where the marker of a planet sits: on its orbit when the systems show, else at its star.</summary>
+    private Vector2 MarkerSpot(Planet planet, StarSystem system)
+    {
+        return _systems.Shown > 0.5f ? _systems.HomeSpot(system) : ToScreen(planet.GalaxySpot);
+    }
+
+    /// <summary>A ring of one arc per start phase around the globe, the phases reached on the planet lit (Core/PlanetProgress.cs).</summary>
+    private static void DrawProgress(Button marker, Planet planet)
+    {
+        int     reached = (int)PlanetProgress.Reached(planet.Key);
+        Vector2 middle  = marker.Size * 0.5f;
+        float   radius  = marker.Size.X * 0.5f * GLOBE_SHARE + PROGRESS_GAP;
+        float   arc     = Mathf.Tau / StartPhases.COUNT;
+        for (int phase = 0; phase < StartPhases.COUNT; phase++)
+        {
+            float from  = -Mathf.Pi * 0.5f + phase * arc + PROGRESS_SPACE;
+            var   color = phase <= reached ? new Color(planet.AtmosphereColor.Lerp(Colors.White, 0.3f), 0.95f) : new Color(1f, 1f, 1f, 0.16f);
+            marker.DrawArc(middle, radius, from, from + arc - PROGRESS_SPACE * 2f, 8, color, 2f, true);
+        }
     }
 
     /// <summary>Names of the planets in the current language.</summary>
@@ -231,6 +408,9 @@ public partial class GalaxyView : Control
     //
     //   Focus     The disk slides and grows so the planet comes to the left third, it darkens.
     //   Unfocus   Back to where the player was before.
+    //   LookAt    Flies to any point of the disk at a scale (edge markers, the graphics reel).
+    //   StopLooking   Breaks off a LookAt flight.
+    //   FlyTo     The tween behind all three, warp streaks on the way.
     //
 
     private const float FOCUS_SECONDS = 0.8f;
@@ -245,27 +425,69 @@ public partial class GalaxyView : Control
     /// <param name="planet">(Required) The planet to look at.</param>
     public void Focus(Planet planet)
     {
+        _isLooking = false;
         _homePan   = _pan;
         _homeScale = _scale;
         // Where the pan has to be so the planet sits at FOCUS_SPOT at the focus scale (the disk keeps turning slowly)
         Vector2 turned = planet.GalaxySpot.Rotated(-_angle);
         Vector2 pan    = FOCUS_SPOT - new Vector2(turned.X, turned.Y * TILT) * FOCUS_SCALE;
-        FlyTo(pan, FOCUS_SCALE, 1f);
+        FlyTo(pan, FOCUS_SCALE, 1f, FOCUS_SPOT);
     }
 
     /// <summary>Flies back to where the player was before the focus.</summary>
     public void Unfocus()
     {
-        FlyTo(_homePan, _homeScale, 0f);
+        _isLooking = false;
+        FlyTo(_homePan, _homeScale, 0f, Vector2.Zero);
     }
 
-    private void FlyTo(Vector2 pan, float scale, float dim)
+    /// <summary>Flies the view to a point of the disk at a scale, the stars streak on the way.</summary>
+    /// <param name="disk">(Required) The point of the disk (-1..1) that comes to the middle of the screen.</param>
+    /// <param name="scale">(Required) The disk radius in screen heights at the end, clamped to the zoom range.</param>
+    /// <example><code>galaxy.LookAt(Vector2.Zero, 3f);   // close to Sgr A*</code></example>
+    public void LookAt(Vector2 disk, float scale)
     {
+        scale = Mathf.Clamp(scale, MIN_SCALE, MAX_SCALE);
+        Vector2 turned = disk.Rotated(-_angle);
+        FlyTo(-new Vector2(turned.X, turned.Y * TILT) * scale, scale, 0f, Vector2.Zero);
+        _isLooking = true;
+    }
+
+    private const float WARP_MIN = 0.3f;             // streaks of a short hop
+
+    private bool _isLooking;                         // a LookAt flight runs, the player may break it off
+
+    /// <summary>Breaks off a LookAt flight when the player drags or zooms; a focus flight runs on.</summary>
+    private void StopLooking()
+    {
+        if (!_isLooking)
+        {
+            return;
+        }
+        _isLooking = false;
+        _focusTween?.Kill();
+        _warp = 0f;
+    }
+
+    private float _warp;
+    private Vector2 _warpCenter = new(0.5f, 0.5f);
+    private float _warpWay = 1f;
+
+    /// <summary>Tweens pan, scale and dim; streaks rush away from where the view flies to, most in the middle of the flight.</summary>
+    private void FlyTo(Vector2 pan, float scale, float dim, Vector2 target)
+    {
+        float aspect = Size.X / Mathf.Max(Size.Y, 1f);
+        _warpCenter = target / new Vector2(aspect, 1f) + new Vector2(0.5f, 0.5f);
+        _warpWay    = scale >= _scale ? 1f : -1f;      // zooming in the streaks rush outwards, out they rush in
+        // Longer jumps in scale streak more, a planet focus fully
+        float strength = Mathf.Clamp(Mathf.Abs(Mathf.Log(scale / _scale)) / Mathf.Log(FOCUS_SCALE / START_SCALE), WARP_MIN, 1f);
         _focusTween?.Kill();
         _focusTween = CreateTween().SetPauseMode(Tween.TweenPauseMode.Process).SetParallel()
             .SetTrans(Tween.TransitionType.Cubic).SetEase(Tween.EaseType.InOut);
         _focusTween.TweenMethod(Callable.From<Vector2>(value => _pan = value), _pan, pan, FOCUS_SECONDS);
         _focusTween.TweenMethod(Callable.From<float>(value => _scale = value), _scale, scale, FOCUS_SECONDS);
         _focusTween.TweenMethod(Callable.From<float>(value => _dim = value), _dim, dim, FOCUS_SECONDS);
+        _focusTween.TweenMethod(Callable.From<float>(value => _warp = Mathf.Sin(value * Mathf.Pi) * strength), 0f, 1f, FOCUS_SECONDS)
+            .SetTrans(Tween.TransitionType.Linear);
     }
 }

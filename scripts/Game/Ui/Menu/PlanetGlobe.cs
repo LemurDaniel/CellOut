@@ -25,6 +25,8 @@ public partial class PlanetGlobe : ColorRect
     //   Show   The colors and shares of a planet, a seed from its key.
     //   Glow   0 .. 1, the halo around the globe.
     //   Spin   Radians per second the ground turns.
+    //   Radius / Ring   A ringed giant: smaller globe in a larger rect, the ring around it.
+    //   Light   Where the light of its star comes from.
     //
 
     private static readonly Shader GLOBE_SHADER = GD.Load<Shader>("res://shaders/planet_globe.gdshader");
@@ -47,6 +49,29 @@ public partial class PlanetGlobe : ColorRect
     {
         set => _material.SetShaderParameter("spin", value);
     }
+
+    /// <summary>Share of the rect the globe fills (0.8, smaller with a ring: RING_RADIUS).</summary>
+    public float Radius
+    {
+        set => _material.SetShaderParameter("radius", value);
+    }
+
+    /// <summary>0 no ring .. 1 a full ring; the rect must be RING_GROWTH times larger and Radius RING_RADIUS.</summary>
+    public float Ring
+    {
+        set => _material.SetShaderParameter("ring", value);
+    }
+
+    /// <summary>Where the light comes from: x right, y up, z towards the camera; behind the globe it shows a crescent.</summary>
+    public Vector3 Light
+    {
+        set => _material.SetShaderParameter("sun_dir", value);
+    }
+
+    public static readonly Vector3 DEFAULT_LIGHT = new Vector3(-0.55f, 0.45f, 0.7f).Normalized();   // shaders/planet_globe.gdshader sun_dir: upper left, from the front
+
+    public const float RING_RADIUS = 0.44f;          // shaders/planet_globe.gdshader: the outer ring edge (2.15 radii) still fits the rect
+    public const float RING_GROWTH = 0.8f / RING_RADIUS;   // rect size of a ringed globe against a plain one of the same globe size
 
     /// <summary>Shows a planet: its colors, land, clouds and ice, a seed of its own.</summary>
     /// <param name="planet">(Required) The planet.</param>

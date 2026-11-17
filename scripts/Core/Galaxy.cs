@@ -12,6 +12,7 @@
 //
 //   Chapters:
 //     SYSTEMS   The playable systems, then the wild ones on the arms and in the disk.
+//     MEASURE   Light years on the disk, for the hover card and the scale bar of the menu.
 //
 
 using System;
@@ -98,5 +99,34 @@ public static class Galaxy
     {
         float r = 0.2f + (float)Math.Sqrt(dice.NextDouble()) * 0.85f;
         return Vector2.FromAngle((float)(dice.NextDouble() * Math.PI * 2.0)) * r;
+    }
+
+    // ===========================================================================
+    // ===============================   MEASURE   ===============================
+    // ===========================================================================
+    //
+    //   RADIUS_LIGHT_YEARS   The disk radius 1 in light years (the Milky Way is about 100,000 across).
+    //   LightYears           The distance of two disk points, rounded to whole hundreds.
+    //   RoundLightYears      1, 2 or 5 times a power of ten at or below a length, for the scale bar.
+    //
+
+    public const float RADIUS_LIGHT_YEARS = 50000f;
+
+    /// <summary>The distance of two points of the disk in light years, rounded to whole hundreds.</summary>
+    /// <param name="from">(Required) A disk point, -1..1.</param>
+    /// <param name="to">(Required) Another disk point.</param>
+    /// <example><code>Galaxy.LightYears(Vector2.Zero, new Vector2(0.5f, 0f))   // 25000</code></example>
+    public static int LightYears(Vector2 from, Vector2 to)
+    {
+        return (int)Math.Round(from.DistanceTo(to) * RADIUS_LIGHT_YEARS / 100.0) * 100;
+    }
+
+    /// <summary>The round length (1, 2 or 5 times a power of ten) at or below a number of light years, at least 1.</summary>
+    /// <example><code>Galaxy.RoundLightYears(3700f)   // 2000</code></example>
+    public static int RoundLightYears(float years)
+    {
+        double power = Math.Pow(10.0, Math.Floor(Math.Log10(Math.Max(years, 1f))));
+        double lead  = Math.Max(years, 1f) / power;
+        return (int)(power * (lead >= 5.0 ? 5.0 : lead >= 2.0 ? 2.0 : 1.0));
     }
 }

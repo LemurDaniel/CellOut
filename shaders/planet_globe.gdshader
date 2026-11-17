@@ -1,9 +1,10 @@
 // NOTE:
 //   A planet of the galaxy menu as a turning globe on a square rect (Game/Ui/Menu/PlanetGlobe.cs):
 //   oceans and continents from 3D noise (land_share of the surface), beaches at the coast,
-//   highlands inside, ice caps at the poles, clouds drifting on their own, sunlight from the
-//   upper left with a soft terminator, a glint on the sea and an atmosphere that glows at
+//   highlands inside, ice caps at the poles, clouds drifting on their own, sunlight from sun_dir
+//   (upper left by default) with a soft terminator, a glint on the sea and an atmosphere that glows at
 //   the rim and around the globe. Colors and shares come from data/planets.json (Core/Planets.cs).
+//   Giants may wear a ring (ring > 0, radius shrinks so it fits the rect).
 //   Pure screen shader: looks the same on every graphics tier.
 
 shader_type canvas_item;
@@ -20,8 +21,13 @@ uniform float bands = 0.0;          // 0 a rocky globe .. 1 a gas giant: stripes
 uniform float seed = 0.0;
 uniform float spin = 0.12;           // turns per ... radians per second
 uniform float glow = 1.0;            // 0 .. 1, the halo around the globe (hover, selection)
+uniform float radius = 0.8;          // globe radius in half rect sizes, the halo fills the rest (smaller with rings)
+uniform float ring = 0.0;            // 0 no ring .. 1 a full ring of ice and dust around the equator
+uniform vec3 sun_dir = vec3(-0.55, 0.45, 0.7);   // where the light comes from: x right, y up, z towards the camera (behind: a crescent)
 
-const float RADIUS = 0.8;            // globe radius in half rect sizes, the halo fills the rest
+const float RING_TILT = 0.28;        // the ring plane seen from a little above: flat ellipse
+const float RING_INNER = 1.3;        // ring from .. to, in globe radii
+const float RING_OUTER = 2.15;
 
 // Integer hash of a lattice point: float hashes gave whole flat lattice cells (straight
 // coast lines) or mirrored continents
@@ -51,15 +57,16 @@ vec3 rot_y(vec3 v, float a) {
 }
 
 void fragment() {
-	vec2 c = (UV * 2.0 - 1.0) / RADIUS;
+	vec2 c = (UV * 2.0 - 1.0) / radius;
 	float r = length(c);
-	vec3 sun = normalize(vec3(-0.55, 0.45, 0.7));
+	vec3 sun = normalize(sun_dir);
 
 	// Halo outside the globe
 	float halo = smoothstep(1.0 + 0.25, 1.0, r) * step(1.0, r);
 	vec4 outside = vec4(atmosphere, pow(halo, 2.2) * (0.35 + 0.45 * glow));
+	vec4 base;
 	if (r >= 1.0) {
-		COLOR = outside;
+		base = outside;
 	} else {
 		vec3 n = vec3(c.x, -c.y, sqrt(1.0 - r * r));
 		vec3 s = rot_y(n, TIME * spin);
@@ -108,6 +115,22 @@ void fragment() {
 
 		// Antialiased edge against the halo
 		float edge = smoothstep(1.0, 1.0 - 0.02, r);
-		COLOR = mix(outside, vec4(col, 1.0), edge);
+		base = mix(outside, vec4(col, 1.0), edge);
 	}
+
+	// Ring: bands of ice and dust on a tilted plane; the far half hides behind the globe,
+	// the near half crosses in front of it, lit from the left like the globe
+	if (ring > 0.001) {
+		vec2 e = vec2(c.x, c.y / RING_TILT);
+		float rr = length(e);
+		float stripes = 0.55 + 0.45 * sin(rr * 38.0 + seed) * sin(rr * 11.0 + seed * 0.3);
+		float in_ring = smoothstep(RING_INNER, RING_INNER + 0.04, rr) * smoothstep(RING_OUTER, RING_OUTER - 0.04, rr);
+		float gap = 1.0 - exp(-pow((rr - mix(RING_INNER, RING_OUTER, 0.62)) / 0.025, 2.0)) * 0.9;
+		float alpha = in_ring * stripes * gap * ring * 0.85;
+		vec3 ring_col = mix(highland, sand, 0.6) * (0.75 + 0.35 * stripes) * (0.6 + 0.5 * smoothstep(0.6, -0.6, c.x));
+		bool is_far = c.y < 0.0;
+		float behind = is_far ? step(1.0, r) : 1.0;
+		base = mix(base, vec4(ring_col, 1.0), alpha * behind);
+	}
+	COLOR = base;
 }

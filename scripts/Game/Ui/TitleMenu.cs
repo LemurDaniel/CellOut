@@ -80,6 +80,10 @@ public partial class TitleMenu : CanvasLayer
         }
         _isStarting = true;
         Planets.Choose((_planet.Planet ?? Planets.Current).Key);
+        if (_planet.Visible)
+        {
+            _planet.Dive();
+        }
         Log.Verbose("TitleMenu", $"Start on {Planets.Current.Key} in phase {phase} -> fading out.");
 
         Tween fade = CreateTween().SetPauseMode(Tween.TweenPauseMode.Process).SetParallel();
@@ -162,7 +166,7 @@ public partial class TitleMenu : CanvasLayer
     //
     //   _Process   Bobs and tilts the logo.
     //   FadeIn     The menu fades in, the logo drops in.
-    //   FadeLogo   Logo and hint leave while a planet is shown.
+    //   FadeLogo   Logo and tag line leave while a planet is shown.
     //
 
     private const float BOB_PIXELS = 6f;
@@ -176,7 +180,6 @@ public partial class TitleMenu : CanvasLayer
         _time += (float)delta;
         _logo.Rotation    = Mathf.Sin(_time * BOB_SPEED * 0.7f) * TILT_RADIANS;
         _logoBob.Position = new Vector2(0f, Mathf.Sin(_time * BOB_SPEED) * BOB_PIXELS);
-        _hint.Modulate    = new Color(1f, 1f, 1f, _logoColumn.Modulate.A * (0.8f + 0.2f * Mathf.Sin(_time * 2.2f)));
     }
 
     private void FadeIn()
@@ -198,7 +201,7 @@ public partial class TitleMenu : CanvasLayer
     // ===========================================================================
     //
     //   _Ready      Keeps running while paused, builds and fades in.
-    //   BuildUi     Galaxy, planet view, logo and tag line top left, a hint below, graphics and language buttons.
+    //   BuildUi     Galaxy, planet view, logo and tag line top left, graphics and language buttons.
     //   Translate   Every text in the current language.
     //   NewLabel    Label with outline, translated here.
     //
@@ -212,7 +215,6 @@ public partial class TitleMenu : CanvasLayer
     private Control _logo;
     private Control _logoBob;
     private Label _tagLine;
-    private Label _hint;
     private Button _languageButton;
     private Button _graphicsButton;
 
@@ -260,9 +262,6 @@ public partial class TitleMenu : CanvasLayer
         _tagLine = NewLabel(20);
         _tagLine.Modulate = new Color(1f, 1f, 1f, 0.8f);
         column.AddChild(_tagLine);
-        _hint = NewLabel(18);
-        column.AddChild(new Control { CustomMinimumSize = new Vector2(0, 14), MouseFilter = Control.MouseFilterEnum.Ignore });
-        column.AddChild(_hint);
 
         // Settings bottom right
         _languageButton = new Button { FocusMode = Control.FocusModeEnum.None, AutoTranslateMode = AutoTranslateModeEnum.Disabled };
@@ -293,7 +292,6 @@ public partial class TitleMenu : CanvasLayer
     private void Translate()
     {
         _tagLine.Text        = Tr("MENU_TAGLINE");
-        _hint.Text           = Tr("MENU_GALAXY_HINT");
         _languageButton.Text = Tr("LANGUAGE_BUTTON");
         _graphicsButton.Text = string.Format(Tr("GRAPHICS_BUTTON"), Tr($"GRAPHICS_{GraphicsQuality.Tier}".ToUpperInvariant()));
         _galaxy.Translate();

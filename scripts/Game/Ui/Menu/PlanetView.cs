@@ -16,6 +16,7 @@
 //     SIGNALS   Start and back.
 //     SHOW      Fills the view with a planet, picks its furthest phase.
 //     BUILD     Globe, info panel, phase buttons, start and back buttons.
+//     MOONS AND DIVE   Moons around the globe, the dive into it at the start.
 //
 
 using System.Collections.Generic;
@@ -70,7 +71,10 @@ public partial class PlanetView : Control
         _save    = SaveSlots.Read(planet.Key);
         _continueButton.Visible = null != _save;
         _globe.Show(planet);
+        _globe.Scale = Vector2.One;
+        _panel.Modulate = _backButton.Modulate = Colors.White;
         _system.Show(planet, GLOBE_CENTER);
+        ShowMoons(StarSystem.Of(planet));
         PickPhase(StartPhase.RnaWorld);
         Translate();
         Visible  = true;
@@ -144,14 +148,16 @@ public partial class PlanetView : Control
     //   NewPhaseButton A toggle tile for one phase, a lock drawn on closed ones.
     //
 
-    private const float GLOBE_SIZE = 400f;
+    private const float GLOBE_SIZE = 105f;
     private static readonly Vector2 GLOBE_CENTER = new(0.28f, 0.5f);   // middle of the left part (AnchorRight 0.56), share of the screen
     private const float PANEL_WIDTH = 470f;
+    private const float GLOBE_SHARE = 0.8f;          // shaders/planet_globe.gdshader radius: the globe fills this much of its rect
     private static readonly Color START_ACCENT = new(0.55f, 0.85f, 0.95f);
     private static readonly Color PHASE_ACCENT = new(0.75f, 0.7f, 0.95f);
 
     private readonly List<Button> _phaseButtons = new();
     private PlanetGlobe _globe;
+    private PanelContainer _panel;
     private StarSystemView _system;
     private Label _name;
     private Label _text;
@@ -176,6 +182,7 @@ public partial class PlanetView : Control
         // The globe, centered in the left part of the screen
         var left = new CenterContainer { MouseFilter = MouseFilterEnum.Ignore, AnchorRight = 0.56f, AnchorBottom = 1f };
         AddChild(left);
+        _left = left;
         _globe = new PlanetGlobe { CustomMinimumSize = Vector2.One * GLOBE_SIZE, PivotOffset = Vector2.One * GLOBE_SIZE * 0.5f, Spin = 0.18f, Glow = 1f };
         left.AddChild(_globe);
 
@@ -190,6 +197,7 @@ public partial class PlanetView : Control
         box.SetContentMarginAll(24);
         panel.AddThemeStyleboxOverride("panel", box);
         AddChild(panel);
+        _panel = panel;
         var column = new VBoxContainer();
         column.AddThemeConstantOverride("separation", 12);
         panel.AddChild(column);
@@ -278,5 +286,80 @@ public partial class PlanetView : Control
         label.AddThemeColorOverride("font_outline_color", EditorStyle.OUTLINE);
         label.AddThemeConstantOverride("outline_size", Mathf.Max(4, fontSize / 6));
         return label;
+    }
+
+    // ===========================================================================
+    // ============================   MOONS AND DIVE   ===========================
+    // ===========================================================================
+    //
+    //   ShowMoons   A small globe per moon of the planet (Core/StarSystem.cs Moons).
+    //   _Process    Light from the star on planet and moons; the moons circle the globe on a
+    //               tilted path, in front of it on the near half and behind it on the far half.
+    //   Dive        Start: the globe rushes towards the camera while the menu fades.
+    //
+
+    private const float MOON_TILT = 0.3f;            // the moon paths seen from a little above
+    private const float MOON_MIN_PIXELS = 16f;       // a moon stays visible next to the small globe
+    private const float DIVE_SCALE = 22f;
+    private const float DIVE_SECONDS = 0.55f;
+
+    private readonly List<(StarSystem.Moon Moon, PlanetGlobe Globe)> _moons = new();
+    private Control _left;
+    private float _moonTime;
+
+    private void ShowMoons(StarSystem system)
+    {
+        foreach ((StarSystem.Moon _, PlanetGlobe globe) in _moons)
+        {
+            globe.QueueFree();
+        }
+        _moons.Clear();
+        foreach (StarSystem.Moon moon in system.Moons)
+        {
+            var globe = new PlanetGlobe { Size = Vector2.One * Mathf.Max(GLOBE_SIZE * moon.Size, MOON_MIN_PIXELS), Glow = 0.15f, Spin = 0.05f };
+            globe.Show(moon.Look);
+            AddChild(globe);
+            _moons.Add((moon, globe));
+        }
+    }
+
+    public override void _Process(double delta)
+    {
+        if (!Visible)
+        {
+            return;
+        }
+        // Planet and moons are lit from where the star stands now (StarSystemView, the camera rides along the orbit)
+        Vector3 light = _system.HomeLight;
+        _globe.Light  = light;
+        _moonTime    += (float)delta;
+        Vector2 middle = GLOBE_CENTER * Size;
+        float   radius = GLOBE_SIZE * 0.5f * GLOBE_SHARE * _globe.Scale.X;
+        foreach ((StarSystem.Moon moon, PlanetGlobe globe) in _moons)
+        {
+            float angle   = moon.Start + _moonTime * moon.Speed;
+            bool  isFront = Mathf.Sin(angle) > 0f;
+            globe.Position = middle + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle) * MOON_TILT) * radius * moon.Distance - globe.Size * 0.5f;
+            globe.Scale    = _globe.Scale;
+            globe.Light    = light;
+            // Moving onto the index of the globe column puts the moon on its other side
+            bool isAhead = globe.GetIndex() > _left.GetIndex();
+            if (isFront != isAhead)
+            {
+                MoveChild(globe, _left.GetIndex());
+            }
+        }
+    }
+
+    /// <summary>The globe rushes towards the camera and the panel fades: the start of a game.</summary>
+    public void Dive()
+    {
+        Tween dive = CreateTween().SetPauseMode(Tween.TweenPauseMode.Process).SetParallel()
+            .SetTrans(Tween.TransitionType.Cubic).SetEase(Tween.EaseType.In);
+        dive.TweenProperty(_globe, "scale", Vector2.One * DIVE_SCALE, DIVE_SECONDS);
+        foreach (Control panel in new Control[] { _panel, _backButton })
+        {
+            dive.TweenProperty(panel, "modulate:a", 0f, DIVE_SECONDS * 0.5f);
+        }
     }
 }

@@ -28,6 +28,7 @@ public partial class GalaxySystemsLayer : Control
     //
     //   ToScreen    (Required) Disk point to pixels, the mapping of GalaxyView.
     //   ViewScale   Disk radius in screen heights, set every frame.
+    //   Hovered     The system under the mouse, drawn in full with brackets.
     //   Shown       0 .. 1, how much of the systems shows at the current scale.
     //   _Process    Advances the time of the orbits and redraws.
     //
@@ -35,6 +36,9 @@ public partial class GalaxySystemsLayer : Control
     public System.Func<Vector2, Vector2> ToScreen { get; set; }
 
     public float ViewScale { get; set; } = 1f;
+
+    /// <summary>The system under the mouse: all its orbits and planets show, brackets turn around its star. Null for none.</summary>
+    public StarSystem Hovered { get; set; }
 
     private const float SHOW_FROM = 0.6f;            // scale the systems start to fade in
     private const float SHOW_FULL = 1.1f;            // scale they are fully there
@@ -65,10 +69,14 @@ public partial class GalaxySystemsLayer : Control
     //   HomeSpot      Where the playable planet of a system stands right now.
     //   _Draw         Every system on screen.
     //   OnOrbit       A point on a flat orbit around a star.
+    //   DrawReticle   The turning brackets around the hovered star.
     //
 
     private const float TILT = 0.58f;                // the same tilt as the disk
     private const float PLAYABLE_SPREAD = 2.6f;      // orbits of playable systems are this much wider
+    private const float PLANETS_FROM = 1.35f;        // scale the planets of the systems start to show
+    private const float PLANETS_FULL = 2.1f;
+    private const float RETICLE_SPEED = 0.8f;        // radians per second the brackets turn
 
     private float StarPixels => Mathf.Clamp(3.4f * ViewScale, 2f, 12f);
 
@@ -109,8 +117,10 @@ public partial class GalaxySystemsLayer : Control
             Color light = StarSystem.ColorOf(system.Star);
             float star  = StarPixels * StarSystem.SizeOf(system.Star);
 
-            // Orbits and planets, the orbits only once the view is close
-            float orbitAlpha = Mathf.SmoothStep(0.9f, 1.8f, ViewScale) * 0.18f * shown;
+            // Orbits and planets, the orbits only once the view is close; the hovered system shows all of it
+            bool  isHovered   = system == Hovered;
+            float orbitAlpha  = isHovered ? 0.3f : Mathf.SmoothStep(0.9f, 1.8f, ViewScale) * 0.18f * shown;
+            float planetAlpha = isHovered ? 1f : Mathf.SmoothStep(PLANETS_FROM, PLANETS_FULL, ViewScale);    // at the start view only the stars, no confetti
             foreach (StarSystem.Neighbor planet in system.Neighbors)
             {
                 if (orbitAlpha > 0.01f)
@@ -120,7 +130,7 @@ public partial class GalaxySystemsLayer : Control
                 }
                 Vector2 spot = OnOrbit(system, planet.Orbit, planet.Start);
                 float   size = Mathf.Max(1.4f, planet.Size * 0.9f * Mathf.Clamp(ViewScale, 1f, 4f));
-                DrawCircle(spot, size, new Color(Planet.ColorOf(planet.Look.Land), shown));
+                DrawCircle(spot, size, new Color(StarSystem.DotOf(planet), shown * planetAlpha));
             }
             if (null != system.PlanetKey && orbitAlpha > 0.01f)
             {
@@ -131,6 +141,20 @@ public partial class GalaxySystemsLayer : Control
             DrawCircle(at, star * 4.5f, new Color(light, 0.07f * shown));
             DrawCircle(at, star * 2.2f, new Color(light, 0.2f * shown));
             DrawCircle(at, star, new Color(light.Lerp(Colors.White, 0.55f), shown));
+            if (isHovered)
+            {
+                DrawReticle(at, star * 4f + 8f, light);
+            }
+        }
+    }
+
+    /// <summary>Four corner brackets around a point, turning slowly: the system under the mouse.</summary>
+    private void DrawReticle(Vector2 center, float radius, Color color)
+    {
+        for (int corner = 0; corner < 4; corner++)
+        {
+            float angle = _time * RETICLE_SPEED + corner * Mathf.Pi * 0.5f;
+            DrawArc(center, radius, angle - 0.35f, angle + 0.35f, 8, new Color(color.Lerp(Colors.White, 0.5f), 0.9f), 2f, true);
         }
     }
 

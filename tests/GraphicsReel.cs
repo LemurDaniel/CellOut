@@ -13,8 +13,9 @@
 //   $env:CELLOUT_REEL_MODE = 'Paint'   # optional, with a template: the editor shows this mode (Build, Paint, Animate) instead of the build mode
 //   $env:CELLOUT_REEL_PART = '0'       # optional, with a mode: the index of the part picked in the editor
 //   $env:CELLOUT_REEL_SKY = '1'       # optional, while rushing: the camera tilts flat, the still shows sky and horizon
-//   $env:CELLOUT_REEL_GALAXY = '1'    # optional: only the title menu, the galaxy (still 58), then a planet up close (still 118), end with --quit-after 130
+//   $env:CELLOUT_REEL_GALAXY = '1'    # optional: only the title menu, the galaxy (still 58), then a planet up close (still 118), end with --quit-after 130; longer: a neighbor hovered (still 330), the start dives into the planet (still 410), --quit-after 420
 //   $env:CELLOUT_REEL_PLANET = 'RUBRA' # optional: the planet of the game (Core/Planets.cs keys), with the galaxy the one shown up close
+//   $env:CELLOUT_REEL_GALAXY_TOUR = '1' # optional, with the galaxy: a tour first, stills 70 (whole spiral), 100 (deep in an arm), 130 (Sgr A*), 142 (warp), 175 (planet), end with --quit-after 180
 //   $env:CELLOUT_REEL_PHASE = 'Pack'  # optional: starts like the galaxy menu in this phase (StartPhase), the jumps run by themselves (still 238)
 //   $env:CELLOUT_REEL_WIDE = '1'      # optional, while rushing: the camera zooms all the way out and the HUD hides, for looking at the scenery
 //   $env:CELLOUT_REEL_MAP = '1'       # optional: the tribe opens the world map (rushing: still 198)
@@ -75,6 +76,7 @@ public partial class GraphicsReel : Node
     private static readonly bool IS_WIDE = "1" == OS.GetEnvironment("CELLOUT_REEL_WIDE");
     private static readonly bool IS_SHOWING_GALAXY = "1" == OS.GetEnvironment("CELLOUT_REEL_GALAXY");
     private static readonly string GALAXY_PLANET = OS.GetEnvironment("CELLOUT_REEL_PLANET");
+    private static readonly bool IS_TOURING_GALAXY = "1" == OS.GetEnvironment("CELLOUT_REEL_GALAXY_TOUR");
     private static readonly StartPhase? START_PHASE = System.Enum.TryParse(OS.GetEnvironment("CELLOUT_REEL_PHASE"), true, out StartPhase phase) ? phase : null;
     private static readonly string TEMPLATE_KEY = OS.GetEnvironment("CELLOUT_REEL_TEMPLATE");
     private static readonly bool IS_SHOWING_ABILITIES = "1" == OS.GetEnvironment("CELLOUT_REEL_ABILITIES");
@@ -380,14 +382,66 @@ public partial class GraphicsReel : Node
         }
     }
 
-    /// <summary>The title menu only: the galaxy, from frame 70 a planet up close.</summary>
+    /// <summary>The title menu only: the galaxy, from frame 70 a planet up close; with CELLOUT_REEL_GALAXY_TOUR first a tour through the galaxy.</summary>
     private void ShowGalaxy()
     {
-        if (70 != _frame)
+        TitleMenu  menu   = _main.FindChildren("*", "", true, false).OfType<TitleMenu>().FirstOrDefault();
+        GalaxyView galaxy = _main.FindChildren("*", "", true, false).OfType<GalaxyView>().FirstOrDefault();
+        Planet     planet = Planets.Get(string.IsNullOrEmpty(GALAXY_PLANET) ? "RUBRA" : GALAXY_PLANET);
+        if (!IS_TOURING_GALAXY)
         {
+            // The planet up close (still 118), a neighbor hovered (still 330), the start dives into the planet (still 410)
+            if (70 == _frame)
+            {
+                menu?.ShowPlanet(planet);
+            }
+            else if (300 == _frame)
+            {
+                PlanetGlobe neighbor = _main.FindChildren("*", "", true, false).OfType<StarSystemView>().FirstOrDefault()?.GetChildren().OfType<PlanetGlobe>().FirstOrDefault(globe => new Rect2(40f, 40f, 680f, 600f).HasPoint(globe.GlobalPosition + globe.Size * 0.5f));   // one on the screen, left of the panel
+                MoveMouse(null == neighbor ? Vector2.Zero : neighbor.GlobalPosition + neighbor.Size * 0.5f);
+            }
+            else if (400 == _frame)
+            {
+                menu?.Start(StartPhase.RnaWorld);
+            }
             return;
         }
-        TitleMenu menu = _main.FindChildren("*", "", true, false).OfType<TitleMenu>().FirstOrDefault();
-        menu?.ShowPlanet(Planets.Get(string.IsNullOrEmpty(GALAXY_PLANET) ? "RUBRA" : GALAXY_PLANET));
+        // Tour: the star of the current planet hovered (still 35), whole spiral (still 70), deep in an arm with a star hovered (still 100),
+        // Sgr A* hovered (still 130), the flight onto a planet (still 142, warp) and the planet (still 175)
+        Vector2 inArm = Planets.All[0].GalaxySpot + new Vector2(0.03f, 0.02f);
+        switch (_frame)
+        {
+            case 28:
+                MoveMouse(galaxy?.ToScreen(Planets.Current.GalaxySpot) ?? Vector2.Zero);
+                break;
+            case 36:
+                MoveMouse(Vector2.One * 5f);
+                break;
+            case 40:
+                galaxy?.LookAt(Vector2.Zero, 0.42f);
+                break;
+            case 72:
+                galaxy?.LookAt(inArm, 4.5f);
+                break;
+            case 96:
+                StarSystem near = Galaxy.Systems.Where(system => null == system.PlanetKey).OrderBy(system => system.Spot.DistanceTo(inArm)).First();
+                MoveMouse(galaxy?.ToScreen(near.Spot) ?? Vector2.Zero);
+                break;
+            case 102:
+                galaxy?.LookAt(Vector2.Zero, 3.5f);
+                break;
+            case 126:
+                MoveMouse(galaxy?.ToScreen(Vector2.Zero) ?? Vector2.Zero);
+                break;
+            case 133:
+                menu?.ShowPlanet(planet);
+                break;
+        }
+    }
+
+    /// <summary>Moves the mouse like the player would, the GUI hovers what lies under it.</summary>
+    private void MoveMouse(Vector2 at)
+    {
+        GetViewport().PushInput(new InputEventMouseMotion { Position = at, GlobalPosition = at });
     }
 }
