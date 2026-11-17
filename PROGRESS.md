@@ -400,3 +400,19 @@ Fünf Wünsche des Users nacheinander: Nachbarstämme liegen zu nah; ein kleiner
 - [ ] Nicht von Hand gespielt. Die Zeiten der Autopiloten (Rudel, Stamm) sind mit der größeren Siedlung und den weiteren Wegen zu den Nachbarn nicht neu gemessen.
 - [ ] Die Moderne hat erst 8 Bausteine (2 Wände, 3 Dächer, 3 Schmuck), keine in Gerüste, Wehr, Handel. Raumfahrt hat keine.
 - [ ] Der Wall bleibt in der Stadt ein Steinwall; alte Spielstände behalten die nahen Nachbarn.
+
+## Moderne ausgebaut, Bibliothek, Pausemenü (2026-11-17/18)
+Wünsche des Users nacheinander: Moderne mit Bausteinen auffüllen und Stadt-Wall; kein Grün mehr im Asphalt; Ressourcen-Cheat; das Rathaus ändert sich mit seinem Bauplan; moderne Bauplätze und Vorlagen, auf die die Stadt umbaut; Siedlung und Abstände noch einmal 25 % größer; Vorlagen-Bibliothek über Spielstände mit Vorschau-Fenster, auch über ESC; Totem und Kriegerhütte modern benennen.
+- **12 moderne Bausteine** (drei Agenten, Referenzbilder geladen und angesehen; Wikimedia hat gedrosselt, Balkon und Stadtmauer haben schwache Referenzen): kleine Backstein-Etage, Ziegeldach, Solarmodule, Balkon, Feuertreppe, Maschendrahtzaun, Betonbarriere, Kiosk, Automat, Container, Parkbank, Ampel (56 Bausteine). Jede Gruppe der Moderne ist gefüllt.
+- **Stadt:** Fundament komplett Asphalt und Pflaster, Betonmauer mit Geländer und Torpfeilern statt Steinwall, Bauplätze mit Leitkegeln und Absperrband.
+- **Moderne Vorlagen** je Funktion (Stadthaus, Bungalow, Lagerhalle, Containerhof, Ladenzeile, Kaufhaus, Funkmast, Polizeiwache, Kontrollposten, Kontrollturm). Mit der Stadtgründung werden Baupläne und stehende Gebäude, die noch eine Dorf-Vorlage sind, zur modernen (`BuildingTemplates.Upgrade`), auch bei den Nachbarn. Eigene Entwürfe bleiben.
+- **Rathaus** übernimmt einen geänderten Bauplan sofort (`Hut.Redesign`); andere stehende Gebäude behalten ihr Aussehen.
+- **Siedlung:** Platz-Ringe 20,5 und 39 Einheiten, Fundament 50, Nachbarn 140 entfernt (auf kleinen Inseln bis 105).
+- **Bibliothek:** `user://blueprints.json` (`BlueprintLibrary`), Fenster mit Live-Vorschau je Vorlage in drei Regalen (Stamm, Moderne, Meine Bibliothek) statt des Aufklappmenüs; Speichern unter Namen, Löschen am eigenen Eintrag.
+- **Pausemenü:** Escape im freien Spiel: Weiter, Speichern, Vorlagen-Bibliothek (Reiter je Funktion, Klick macht die Vorlage zum Bauplan des Stamms), Hauptmenü.
+- **Namen in der Stadt:** Totem → Funkstation, Kriegerhütte → Kaserne, Wohnhütte → Wohnhaus (`BuildingNames`, letzteres ohne Rückfrage).
+- **Cheat-Menü:** zwei Spalten, der Ressourcen-Knopf lag unter dem Bildrand.
+- Geprüft: 190 Unit-Tests, Smoke-Test (Umbau des Rathauses), Zufalls-Autopilot Stamm und Moderne ohne Fehler, Reels von Stadt, Vorlagen-Fenster, Pausemenü, Bibliothek.
+- [ ] Nichts davon von Hand gespielt; Tempo-Autopiloten mit der größeren Siedlung nicht neu gemessen.
+- [ ] Solarmodule sind hellblau (festes Material `Glass`), ein dunkles Material fehlt. Die Wirkungstexte sprechen in der Stadt weiter von „Kriegern“.
+- [ ] Die Kollision eines umgebauten Gebäudes rechnet mit der alten Grundfläche.

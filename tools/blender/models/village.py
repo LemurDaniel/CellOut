@@ -12,6 +12,7 @@
 #     VILLAGE PARTS   Twigs, the nest and the fire pit.
 #     PLOT            The staked out building plot.
 #     WALL            The low wall around the settlement and its gate.
+#     CITY PLOT       The building plot of a city: cones, tape and painted marks.
 #
 
 import math
@@ -19,7 +20,7 @@ import random
 
 from mathutils import Vector
 
-from models.buildings import lashing, pole, rock
+from models.buildings import beam, lashing, pole, rock
 from models.helpers import G, ellipsoid, tube
 from models.trees import clouds_texture
 
@@ -199,3 +200,43 @@ def build_wall_gate(scene):
     # Crossbeam through the lashings, a little crooked and longer than the opening
     pole(scene, "Beam", [G(0.0, GATE_HEIGHT - 0.24, -GATE_HALF - 0.3), G(0.03, GATE_HEIGHT - 0.14, 0.0), G(0.0, GATE_HEIGHT - 0.2, GATE_HALF + 0.3)],
          [0.09, 0.1, 0.085], "Wood", sides=6)
+
+
+# ===========================================================================
+# ===============================   CITY PLOT   =============================
+# ===========================================================================
+#
+#   build_city_plot   The free building plot of a city: white corner marks painted on the
+#                     asphalt, a traffic cone on every corner and red and white barrier
+#                     tape between them.
+#
+#   The same frame and size as build_plot, straight and clean like the modern blocks.
+#
+
+CONE_HEIGHT = 0.42
+TAPE_HEIGHT = 0.3                                     # where the tape is tied around a cone
+TAPE_PIECES = 8                                       # red and white in turns along one side
+MARK_LENGTH = 0.7                                     # legs of a painted corner mark
+
+
+def build_city_plot(scene):
+    corners = [(1, 1), (1, -1), (-1, -1), (-1, 1)]
+    for i, (sx, sz) in enumerate(corners):
+        x, z = sx * PLOT_HALF, sz * PLOT_HALF
+        # Cone: black foot plate, red body with a white band, a flat tip
+        beam(scene, f"Foot{i}", G(x, 0.0, z), G(x, 0.03, z), 0.3, 0.3, "Rubber")
+        pole(scene, f"Cone{i}", [G(x, 0.03, z), G(x, 0.18, z)], [0.12, 0.085], "FruitRed", sides=10, is_level=True)
+        pole(scene, f"Band{i}", [G(x, 0.18, z), G(x, 0.27, z)], [0.087, 0.066], "Bone", sides=10, is_level=True)
+        pole(scene, f"Tip{i}", [G(x, 0.27, z), G(x, CONE_HEIGHT, z)], [0.064, 0.03], "FruitRed", sides=10, is_level=True)
+        # Corner mark painted on the ground, inside the cones
+        inner_x, inner_z = x - sx * 0.2, z - sz * 0.2
+        beam(scene, f"MarkX{i}", G(inner_x, 0.006, inner_z), G(inner_x - sx * MARK_LENGTH, 0.006, inner_z), 0.09, 0.012, "Bone")
+        beam(scene, f"MarkZ{i}", G(inner_x, 0.006, inner_z), G(inner_x, 0.006, inner_z - sz * MARK_LENGTH), 0.09, 0.012, "Bone")
+        # Barrier tape to the next cone: flat pieces, red and white in turns, hanging a little
+        nx, nz = corners[(i + 1) % 4][0] * PLOT_HALF, corners[(i + 1) % 4][1] * PLOT_HALF
+        for piece in range(TAPE_PIECES):
+            ends = []
+            for share in (piece / TAPE_PIECES, (piece + 1) / TAPE_PIECES):
+                sag = 0.06 * math.sin(share * math.pi)
+                ends.append(G(x + (nx - x) * share, TAPE_HEIGHT - sag, z + (nz - z) * share))
+            beam(scene, f"Tape{i}{piece}", ends[0], ends[1], 0.014, 0.07, "FruitRed" if 0 == piece % 2 else "Bone")

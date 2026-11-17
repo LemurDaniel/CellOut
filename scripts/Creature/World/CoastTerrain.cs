@@ -123,6 +123,7 @@ public sealed class CoastTerrain
     //   AddPad     Levels the ground around a building at the height of its middle (or of a foundation it touches).
     //   HasPadAt   Whether a foundation lies at a point already.
     //   StylePad   Changes what the ground shows on a foundation.
+    //   StyleAt    What the ground shows on the foundation at a point.
     //   IsOnPad    Whether a point lies on a foundation: no props, no trees there.
     //
 
@@ -188,6 +189,14 @@ public sealed class CoastTerrain
         _pads[index] = _pads[index] with { Style = style };
         Revision++;
         return true;
+    }
+
+    /// <summary>What the ground shows on the foundation at a point, Yard where none lies.</summary>
+    /// <param name="center">(Required) Plane point of the middle of the foundation.</param>
+    public PadStyle StyleAt(Vector2 center)
+    {
+        int index = _pads.FindIndex(pad => pad.Center.DistanceSquaredTo(center) < 0.01f);
+        return index < 0 ? PadStyle.Yard : _pads[index].Style;
     }
 
     /// <summary>Whether a plane point lies on a foundation, or within margin of its flat part.</summary>

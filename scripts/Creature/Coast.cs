@@ -256,6 +256,13 @@ public partial class Coast : Node3D
         return _terrain.StylePad(center, style);
     }
 
+    /// <summary>What the ground shows on the foundation at a point, Yard where none lies.</summary>
+    /// <param name="center">(Required) Plane point of the middle of the foundation.</param>
+    public CoastTerrain.PadStyle PadStyleAt(Vector2 center)
+    {
+        return _terrain.StyleAt(center);
+    }
+
     // ===========================================================================
     // ================================   TREES   ================================
     // ===========================================================================

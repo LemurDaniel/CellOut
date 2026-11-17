@@ -38,7 +38,7 @@ public static class Settlement
     //   WayHalfWidth   World units of half the width of a way.
     //
 
-    private const float YARD = 8.75f;                // Units of foundation beyond the middle of the outer plots: their buildings and a path around
+    private const float YARD = 11f;                  // Units of foundation beyond the middle of the outer plots: their buildings and a path around
     private const float START_ANGLE = 0.4f;          // the first plot of the inner ring, so no plot lies straight on an axis
     private const float WALL_INSET = 2f;             // Units the wall stands inside the edge of the foundation
     private const float PLAZA_SHARE = 0.5f;          // radius of the place around the fire against the inner ring of plots

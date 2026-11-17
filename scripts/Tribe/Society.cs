@@ -258,6 +258,7 @@ public partial class Society : Node
         Scenery.Update();
         Placer.Update();
         Plots.Update();
+        BuildingNames.IsModern = Civ.IsCity;     // totem, warrior hut and dwelling carry their modern names in the city
         // The build view: while a building is placed the camera shows the whole settlement from above
         _camera.Overview = Placer.IsPlacing ? (Tribe.Fire, Settlement.Radius(_session.Coast.Unit)) : null;
         Panel.Placing = Placer.Pending;

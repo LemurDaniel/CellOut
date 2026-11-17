@@ -36,6 +36,7 @@ public partial class TribeCommander : Node3D
     //   Changed         Stock or huts changed, the panel refreshes.
     //   Economy         Food, wood and huts of the tribe (TribeEconomy).
     //   DesignOf        The blueprint new buildings of a function are built from (BuildingEditor).
+    //   TakeDesign      Takes over one blueprint.
     //   TakeDesigns     Takes over the blueprints of a finished sitting in the editor.
     //   IsActive        From the tribe stage on, with a fire to build around.
     //   Fire            Where the fire burns (or the headquarters stands).
@@ -72,7 +73,7 @@ public partial class TribeCommander : Node3D
         return design;
     }
 
-    /// <summary>Takes over a blueprint per function, standing buildings keep their look.</summary>
+    /// <summary>Takes over a blueprint per function. Standing buildings keep their look, but the headquarters in the middle: there is only one, it changes with its blueprint (wish of the user 2026-11-17).</summary>
     /// <param name="designOf">(Required) The new blueprint of a function, copied.</param>
     /// <example><code>editor.Applied += session => tribe.TakeDesigns(session.Result);</code></example>
     public void TakeDesigns(System.Func<BuildingKind, BuildingDesign> designOf)
@@ -81,6 +82,16 @@ public partial class TribeCommander : Node3D
         {
             DesignOf(kind).CopyFrom(designOf(kind));
         }
+        Hall?.Redesign(DesignOf(BuildingKind.Hall));
+        EmitSignal(SignalName.Changed);
+    }
+
+    /// <summary>Takes over one blueprint (a template of the library picked in the pause menu), the headquarters that stands changes with its blueprint.</summary>
+    /// <param name="design">(Required) The new blueprint of its function, copied.</param>
+    public void TakeDesign(BuildingDesign design)
+    {
+        DesignOf(design.Kind).CopyFrom(design);
+        Hall?.Redesign(DesignOf(BuildingKind.Hall));
         EmitSignal(SignalName.Changed);
     }
 
@@ -276,6 +287,7 @@ public partial class TribeCommander : Node3D
     //   TryBuild      The same without a chosen spot: the next free slot around the fire.
     //   TryBuildHall  The headquarters of the city on the fire (Civ/CivKeeper.cs).
     //   Hall          The headquarters, HasHall whether it stands.
+    //   Modernize     Blueprints and standing buildings that are village templates become modern ones.
     //   PutUp         Puts up a paid building.
     //
 
@@ -459,7 +471,24 @@ public partial class TribeCommander : Node3D
         float share = Hut.FitShare(design, Coast.Unit * Hut.SCALE, _pack.Nest.Position, _huts, Coast.Unit);     // squeezed between the buildings around the old fire
         PutUp(design, _pack.Nest.Position, turn: 0f, share);
         _pack.Nest.GiveWayToHall();
+        Modernize();
         return true;
+    }
+
+    /// <summary>The tribe became a city (wish of the user 2026-11-17): every blueprint and every standing building that still is a village template turns into the modern template of its function, designs of the player stay.</summary>
+    private void Modernize()
+    {
+        foreach (BuildingKind kind in System.Enum.GetValues<BuildingKind>())
+        {
+            BuildingDesign modern = BuildingTemplates.Upgrade(DesignOf(kind));
+            if (null != modern)
+            {
+                DesignOf(kind).CopyFrom(modern);
+            }
+        }
+        int rebuilt = _huts.Count(hut => IsInstanceValid(hut) && hut.Modernize());
+        Log.Verbose("TribeCommander", $"The city rebuilt {rebuilt} building(s) in the modern style.");
+        EmitSignal(SignalName.Changed);
     }
 
     /// <summary>The headquarters of the city, null while none stands.</summary>

@@ -1,6 +1,7 @@
 // NOTE:
 //   Shows the free building plots of the player's settlement: on every plot of the ground
-//   plan (Settlement.cs) that is still free stands a staked out square (pegs and rope,
+//   plan (Settlement.cs) that is still free stands a staked out square (pegs and rope, in a
+//   city cones and barrier tape: village.cityplot.glb,
 //   assets/models/village/village.plot.glb), so the player sees where a building can go.
 //   A plot that gets a building, or lies too close to the shore, shows nothing. It also
 //   owns the low wall around the settlement (SettlementWall.cs). Society owns it, Update
@@ -32,12 +33,14 @@ public partial class SettlementPlots : Node3D
     //
 
     private const string PLOT_MODEL = "res://assets/models/village/village.plot.glb";
+    private const string CITY_PLOT_MODEL = "res://assets/models/village/village.cityplot.glb";
     private static readonly Color ROPE_COLOR = new(0.72f, 0.62f, 0.4f);
 
     private readonly List<Node3D> _markers = new();
     private WorldSession _session;
     private TribeCommander _tribe;
     private SettlementWall _wall;                    // the low wall around the settlement, built with the first update of a tribe
+    private bool _isCity;                            // the markers are the cones and tape of a city
 
     /// <summary>Hands in the shared state, call before AddChild.</summary>
     /// <param name="session">(Required) Player and coast.</param>
@@ -70,12 +73,20 @@ public partial class SettlementPlots : Node3D
             AddChild(_wall);
         }
         _wall.Update(size);
+        // A city stakes its plots out with cones and barrier tape instead of pegs and rope
+        bool isCity = _tribe.HasHall && ResourceLoader.Exists(CITY_PLOT_MODEL);
+        if (isCity != _isCity)
+        {
+            _isCity = isCity;
+            _markers.ForEach(marker => marker.QueueFree());
+            _markers.Clear();
+        }
         IReadOnlyList<SettlementSlot> slots = _tribe.Slots;
         for (int i = 0; i < slots.Count; i++)
         {
             if (i >= _markers.Count)
             {
-                Node3D marker = PartModels.New(PLOT_MODEL, ROPE_COLOR);
+                Node3D marker = PartModels.New(_isCity ? CITY_PLOT_MODEL : PLOT_MODEL, ROPE_COLOR);
                 AddChild(marker);
                 _markers.Add(marker);
             }

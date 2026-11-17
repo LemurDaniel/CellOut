@@ -1,7 +1,7 @@
 // NOTE:
 //   The right column of the village builder: what the function shown costs and does (the
-//   blocks are looks only), the menu "Templates" that drops down the ready-made layouts of
-//   that function, and the paint menu: the patterns as drawn swatches, the paints as
+//   blocks are looks only), the button "Templates" that opens the template window with the layouts of
+//   that function and the library (TemplatePicker.cs), and the paint menu: the patterns as drawn swatches, the paints as
 //   color swatches.
 //   Pattern and paint go with the next block dropped and repaint a block that is clicked
 //   while no block is picked. It only reports clicks, the BuildingEditor acts on them.
@@ -10,7 +10,7 @@
 //   sidebar.Setup(session);
 //   sidebar.PatternPicked += pattern => session.PickPattern(pattern);
 //   sidebar.PaintPicked   += paint => session.PickPaint(paint);
-//   sidebar.TemplatePicked += index => session.ApplyTemplate(index);
+//   sidebar.TemplatesOpened += () => picker.Open(session.Draft);
 
 //
 //   Chapters:
@@ -32,14 +32,14 @@ public partial class BuildingSidebar : VBoxContainer
     //
     //   PatternPicked   A pattern swatch was clicked, 0 is plain.
     //   PaintPicked     A paint swatch was clicked, BlockCatalog.DEFAULT_PAINT for the first one.
-    //   TemplatePicked  An entry of the templates menu was picked, with its index.
+    //   TemplatesOpened The button "Templates" was pressed: the editor opens the template window.
     //   Setup           Builds every widget and follows the session.
     //   DrawPattern     The pattern of a swatch, the same layout as shaders/building_paint.gdshader.
     //
 
     public event Action<int> PatternPicked;
     public event Action<int> PaintPicked;
-    public event Action<int> TemplatePicked;
+    public event Action TemplatesOpened;
 
     private const int WIDTH = 320;
     private const int SWATCH_PIXELS = 34;
@@ -60,8 +60,7 @@ public partial class BuildingSidebar : VBoxContainer
     private Label _patternLabel;
     private Label _paintLabel;
     private Button _defaultPaint;
-    private MenuButton _templates;
-    private BuildingKind? _templatesOf;
+    private Button _templates;
 
     /// <summary>Builds the sidebar, call once before it enters the tree.</summary>
     /// <param name="session">(Required) The sitting: function shown, pattern and paint.</param>
@@ -85,20 +84,16 @@ public partial class BuildingSidebar : VBoxContainer
         }
         _note.Modulate = new Color(1f, 1f, 1f, 0.7f);
 
-        // Templates: one menu, its entries are the layouts of the function shown
-        _templates = new MenuButton
+        // Templates: one button, the editor opens the template window with previews
+        _templates = new Button
         {
             CustomMinimumSize = new Vector2(WIDTH, 38),
             FocusMode         = FocusModeEnum.None,
             AutoTranslateMode = AutoTranslateModeEnum.Disabled,
-            Flat              = false,
         };
         _templates.AddThemeFontSizeOverride("font_size", 16);
         EditorStyle.ApplyButton(_templates, TEMPLATE_ACCENT);
-        PopupMenu menu = _templates.GetPopup();
-        menu.AutoTranslateMode = AutoTranslateModeEnum.Disabled;
-        menu.AddThemeFontSizeOverride("font_size", 16);
-        menu.IdPressed += id => TemplatePicked?.Invoke((int)id);
+        _templates.Pressed += () => TemplatesOpened?.Invoke();
         AddChild(_templates);
 
         // Patterns: one drawn swatch each, the first is plain
@@ -218,7 +213,7 @@ public partial class BuildingSidebar : VBoxContainer
     public void Refresh()
     {
         BuildingDesign draft = _session.Draft;
-        _kindName.Text = Tr($"BUILDING_{draft.Kind}".ToUpperInvariant());
+        _kindName.Text = Tr(BuildingNames.KeyOf(draft.Kind));
         _cost.Text     = string.Format(Tr("BUILDING_COST"), draft.FoodCost, draft.WoodCost, (int)draft.Health);
         _effect.Text   = EffectText(draft);
         _note.Text     = Tr("BUILDING_COSMETIC");
@@ -236,22 +231,8 @@ public partial class BuildingSidebar : VBoxContainer
             EditorStyle.ApplySwatch(swatch, BlockCatalog.PAINTS[paint], paint == _session.Paint);
         }
 
-        // The menu lists the templates of the function shown, renewed when the function or the language changes
+        // The button opens the template window (built-in templates and the library)
         _templates.Text = Tr("BUILDING_TEMPLATES");
-        PopupMenu menu = _templates.GetPopup();
-        if (draft.Kind != _templatesOf || menu.ItemCount != BuildingTemplates.Count(draft.Kind))
-        {
-            _templatesOf = draft.Kind;
-            menu.Clear();
-            for (int i = 0; i < BuildingTemplates.Count(draft.Kind); i++)
-            {
-                menu.AddItem("", i);
-            }
-        }
-        for (int i = 0; i < menu.ItemCount; i++)
-        {
-            menu.SetItemText(i, Tr(BuildingTemplates.NameKey(draft.Kind, i)));
-        }
     }
 
     private string EffectText(BuildingDesign draft)
@@ -263,7 +244,7 @@ public partial class BuildingSidebar : VBoxContainer
             BuildingKind.Market     => string.Format(Tr("BUILDING_MARKET_EFFECT"), (int)Mathf.Round(draft.TradeBonus * 100f)),
             BuildingKind.Totem      => string.Format(Tr("BUILDING_TOTEM_EFFECT"), (int)Mathf.Round(draft.RelationBonus * 100f)),
             BuildingKind.Watchtower => string.Format(Tr("BUILDING_WATCHTOWER_EFFECT"), (int)draft.Defense),
-            BuildingKind.Barracks   => string.Format(Tr("BUILDING_BARRACKS_EFFECT"), draft.Warriors),
+            BuildingKind.Barracks   => string.Format(Tr(BuildingNames.IsModern ? "BUILDING_BARRACKS_MODERN_EFFECT" : "BUILDING_BARRACKS_EFFECT"), draft.Warriors),
             BuildingKind.Hall       => string.Format(Tr("BUILDING_HALL_EFFECT"), (int)draft.Knowledge),
             _                       => "",
         };

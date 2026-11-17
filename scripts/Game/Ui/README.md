@@ -12,4 +12,5 @@ Everything on screen that is not the world. Texts are keys in `locale/translatio
 | `EditorStyle.cs` | Colors, style boxes of tiles, pills and buttons, bouncy scale tweens of both editors. |
 | `GameFonts.cs` | The display font for titles and banners, the text font is the project default. |
 | `DietBar.cs` | Herbivore / omnivore / carnivore bar with current and preview marker (the editors). |
-| `CheatMenu.cs` | F10 test menu: jump forward to a stage, bring the coast, +10 EP. |
+| `CheatMenu.cs` | F10 test menu in two columns: jump forward to a stage, bring the coast, +10 EP, food and wood. |
+| `PauseMenu.cs` | Escape in the free game: continue, save, the template library, main menu. |

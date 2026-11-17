@@ -95,6 +95,7 @@ public class TribeTests
     //   BlocksStayOnTheGrid         Outside the grid and above its top nothing is placed, a turn swaps the footprint.
     //   RemovingLetsBlocksFall      Without the room the roof lies on the ground.
     //   TemplatesFitEveryFunction   Every template builds, the default dwelling is room, roof and door.
+    //   CityUpgradesVillageTemplatesOnly   Every village template has a modern one of modern blocks, a changed design and the headquarters have none.
     //
 
     [Fact]
@@ -188,6 +189,32 @@ public class TribeTests
         copy.CopyFrom(design);
         Assert.Equal(BuildingKind.Dwelling, copy.Kind);
         Assert.Equal(design.Blocks, copy.Blocks);
+    }
+
+    [Fact]
+    public void CityUpgradesVillageTemplatesOnly()
+    {
+        foreach (BuildingKind kind in System.Enum.GetValues<BuildingKind>())
+        {
+            int village = BuildingTemplates.VillageCount(kind);
+            Assert.True(village >= 2);
+            for (int i = 0; i < BuildingTemplates.Count(kind); i++)
+            {
+                BuildingDesign modern = BuildingTemplates.Upgrade(BuildingTemplates.Build(kind, i));
+                bool isUpgraded = i < village && BuildingKind.Hall != kind;
+                Assert.Equal(isUpgraded, null != modern);
+                if (isUpgraded)
+                {
+                    Assert.Equal(kind, modern.Kind);
+                    Assert.All(modern.Blocks, block => Assert.Equal(BlockEra.Modern, BlockCatalog.Get(block.Kind).Era));
+                }
+            }
+        }
+
+        // A design of the player stays what it is
+        BuildingDesign mine = BuildingTemplates.Default(BuildingKind.Dwelling);
+        mine.TryPlace(BlockKind.Crate, 0, 0);
+        Assert.Null(BuildingTemplates.Upgrade(mine));
     }
 
     [Fact]
@@ -307,15 +334,15 @@ public class TribeTests
     [Fact]
     public void SettlementHasPlotsOnTwoRings()
     {
-        // The fixture: 6 plots at 16.25 Units, 10 at 31.25 Units; a Unit of 2 doubles every distance
+        // The fixture: 6 plots at 20.5 Units, 10 at 39 Units; a Unit of 2 doubles every distance
         var fire = new Godot.Vector2(100f, 50f);
         System.Collections.Generic.IReadOnlyList<SettlementSlot> plots = Settlement.SlotsAround(fire, 2f);
 
         Assert.Equal(16, plots.Count);
-        Assert.All(System.Linq.Enumerable.Take(plots, 6), plot => Assert.Equal(32.5f, plot.Spot.DistanceTo(fire), 2));
-        Assert.All(System.Linq.Enumerable.Skip(plots, 6), plot => Assert.Equal(62.5f, plot.Spot.DistanceTo(fire), 2));
+        Assert.All(System.Linq.Enumerable.Take(plots, 6), plot => Assert.Equal(41f, plot.Spot.DistanceTo(fire), 2));
+        Assert.All(System.Linq.Enumerable.Skip(plots, 6), plot => Assert.Equal(78f, plot.Spot.DistanceTo(fire), 2));
         Assert.Equal(16, System.Linq.Enumerable.Count(System.Linq.Enumerable.Distinct(System.Linq.Enumerable.Select(plots, plot => plot.Spot))));
-        Assert.True(Settlement.Radius(2f) > 62.5f);
+        Assert.True(Settlement.Radius(2f) > 78f);
 
         // The front of a building (+X of its blocks, turned around the upright axis) looks at the fire
         foreach (SettlementSlot plot in plots)

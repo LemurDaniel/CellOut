@@ -35,12 +35,14 @@ public partial class CheatMenu : CanvasLayer
     // ===========================================================================
     //
     //   Main              (Required) The game the buttons act on.
-    //   _Ready            Hidden panel with one button per target.
+    //   _Ready            Hidden panel with one button per target, in two columns.
     //   _UnhandledInput   F10 toggles the panel, also while paused.
     //   ApplyTexts        Title and button texts in the current language.
     //
 
     public Main Main { get; set; }
+
+    private const int COLUMNS = 2;
 
     private PanelContainer _panel;
     private Label _title;
@@ -65,18 +67,23 @@ public partial class CheatMenu : CanvasLayer
         _title.AddThemeColorOverride("font_color", new Color(1f, 0.6f, 0.5f));
         box.AddChild(_title);
 
+        // Two columns: one column of eleven buttons ran out of a 720 pixel screen, the last ones (points, resources) hid behind the dial
+        var grid = new GridContainer { Columns = COLUMNS };
+        grid.AddThemeConstantOverride("h_separation", 6);
+        grid.AddThemeConstantOverride("v_separation", 6);
+        box.AddChild(grid);
         foreach (CheatTarget target in System.Enum.GetValues<CheatTarget>())
         {
             var button = new Button
             {
                 FocusMode         = Control.FocusModeEnum.None,
                 AutoTranslateMode = AutoTranslateModeEnum.Disabled,
-                CustomMinimumSize = new Vector2(220, 34),
+                CustomMinimumSize = new Vector2(190, 34),
             };
             button.AddThemeFontSizeOverride("font_size", 15);
             EditorStyle.ApplyButton(button, EditorStyle.RIM_COLOR);
             button.Pressed += () => Main?.CheatTo(target);
-            box.AddChild(button);
+            grid.AddChild(button);
             _buttons.Add((target, button));
         }
         ApplyTexts();

@@ -348,7 +348,7 @@ public partial class TribePanel : CanvasLayer
             cost.Text        = string.Format(Tr("TRIBE_COST_FOOD"), design.FoodCost) + "\n" + string.Format(Tr("TRIBE_COST_WOOD"), design.WoodCost);
             tile.Disabled    = !_tribe.Economy.CanAfford(design);
             tile.SetPressedNoSignal(kind == Placing);
-            tile.TooltipText = string.Format(Tr("TRIBE_BUILD"), Tr($"BUILDING_{kind}".ToUpperInvariant()), design.FoodCost, design.WoodCost);
+            tile.TooltipText = string.Format(Tr("TRIBE_BUILD"), Tr(BuildingNames.KeyOf(kind)), design.FoodCost, design.WoodCost);
         }
     }
 

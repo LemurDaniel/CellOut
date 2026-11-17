@@ -40,6 +40,8 @@ public partial class Hut : Node2D
     //   BlockRadius / ContactRadius   Nobody walks through it; how close counts as at it.
     //   BlockOn         Registers it as an obstacle on the coast.
     //   FitShare        How much of its size a new building may have between the others.
+    //   Redesign        Takes the look of a changed blueprint while it stands.
+    //   Modernize       A village template becomes the modern template of its function.
     //   Destroyed       Zero health: the hut is gone, its keeper forgets it.
     //   Setup           Blueprint and faction, before AddChild.
     //   Raise           Counts down to the next villager, true when one is born.
@@ -146,9 +148,9 @@ public partial class Hut : Node2D
         Turn  ??= Rand.Angle();     // kept, a save brings the building back as it stood
         _visual = new Node3D { Basis = new Basis(Vector3.Up, Turn.Value) };
         AddChild(_visual);
-        var look = new BuildingVisual3D();
-        look.Build(Design);
-        _visual.AddChild(look);
+        _look = new BuildingVisual3D();
+        _look.Build(Design);
+        _visual.AddChild(_look);
 
         // Smoke puffs over the roof tip, sized in _Process while a villager ripens
         StandardMaterial3D smoke = CellVisual3D.Material(SMOKE_COLOR, 0f, 1f);
@@ -160,6 +162,34 @@ public partial class Hut : Node2D
         }
         Place();
         Log.Verbose("Hut", $"Built at {Position}: {Design.Kind} of {Design.Blocks.Count} block(s), faction {Faction}.");
+    }
+
+    private BuildingVisual3D _look;
+
+    /// <summary>The standing building takes the look of a changed blueprint of its function (the headquarters, after the builder). Hit points, place, size and the room it blocks stay.</summary>
+    /// <param name="design">(Required) The new blueprint, copied; one of another function is ignored.</param>
+    public void Redesign(BuildingDesign design)
+    {
+        if (design.Kind != Design.Kind)
+        {
+            return;
+        }
+        Design.CopyFrom(design);
+        _look?.Build(Design);
+        Log.Verbose("Hut", $"{Design.Kind} at {Position} rebuilt from its changed blueprint: {Design.Blocks.Count} block(s).");
+    }
+
+    /// <summary>The city reached this building: one that still is a village template is rebuilt as the modern template of its function (BuildingTemplates.Upgrade), a design of the player stays.</summary>
+    /// <returns>True when it was rebuilt.</returns>
+    public bool Modernize()
+    {
+        BuildingDesign modern = BuildingTemplates.Upgrade(Design);
+        if (null == modern)
+        {
+            return false;
+        }
+        Redesign(modern);
+        return true;
     }
 
     /// <summary>Counts down to the next villager.</summary>

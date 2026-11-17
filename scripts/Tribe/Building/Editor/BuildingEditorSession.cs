@@ -93,6 +93,19 @@ public sealed class BuildingEditorSession
         Changed?.Invoke();
     }
 
+    /// <summary>Replaces the draft of the function shown with a design of the same function (a template of the template window, built in or from the library).</summary>
+    /// <param name="design">(Required) The design, copied; one of another function is ignored.</param>
+    public void ApplyDesign(BuildingDesign design)
+    {
+        if (design.Kind != Kind)
+        {
+            return;
+        }
+        Draft.CopyFrom(design);
+        Picked = null;
+        Changed?.Invoke();
+    }
+
     /// <summary>Replaces the draft of the function shown with one of its templates.</summary>
     /// <param name="index">(Required) 0..BuildingTemplates.Count(Kind).</param>
     public void ApplyTemplate(int index)

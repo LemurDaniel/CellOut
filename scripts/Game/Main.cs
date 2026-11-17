@@ -31,6 +31,7 @@ public partial class Main : Node2D
     public Hud Hud { get; private set; }
     public CellEditor Editor { get; private set; }
     public CreatureEditor CreatureEditor { get; private set; }
+    public PauseMenu Pause { get; private set; }
     public Node2D FoodLayer { get; private set; }
     public Node2D CritterLayer { get; private set; }
 
@@ -105,6 +106,10 @@ public partial class Main : Node2D
         CreatureEditor.Closed  += OnCreatureEditorClosed;
         Player.EvolveRequested += () => StartEvolve();
         AddChild(new CheatMenu { Main = this });
+        // The pause menu sees Escape after everyone else: the first child gets unhandled input last
+        Pause = new PauseMenu { Main = this };
+        AddChild(Pause);
+        MoveChild(Pause, 0);
         Player.EvolutionReady += OnEvolutionReady;
         Player.StageChanged   += OnStageChanged;
         Player.Divided        += OnPlayerDivided;

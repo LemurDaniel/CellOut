@@ -945,8 +945,13 @@ public partial class SmokeTest : Node
         SaveCiv save = civ.Save();
         civ.Restore(save);
         bool isSaved = civ.Researched.Count == save.Techs.Count && Mathf.IsEqualApprox(civ.Knowledge, save.Knowledge);
-        Log.Verbose("SmokeTest", $"City: hinted {isHinted} {isCity} antique {isAntique} scenery {isScenery} solid {isSolid} poor {isPoor} researched {isResearched} closed {isClosed} thinking {isThinking} tree {isTree} saved {isSaved}.");
-        return isHinted && isCity && isAntique && isScenery && isSolid && isPoor && isResearched && isClosed && isThinking && isTree && isSaved && !_main.TechTree.IsOpen;
+
+        // A changed blueprint of the headquarters rebuilds the one that stands
+        _main.Tribe.TakeDesigns(kind => BuildingKind.Hall == kind ? BuildingTemplates.Build(kind, 1) : _main.Tribe.DesignOf(kind));
+        bool isRedesigned = hall.Design.Blocks.Count == BuildingTemplates.Build(BuildingKind.Hall, 1).Blocks.Count
+            && hall.Design.Blocks[0].Kind == BuildingTemplates.Build(BuildingKind.Hall, 1).Blocks[0].Kind;
+        Log.Verbose("SmokeTest", $"City: hinted {isHinted} {isCity} antique {isAntique} scenery {isScenery} solid {isSolid} poor {isPoor} researched {isResearched} closed {isClosed} thinking {isThinking} tree {isTree} saved {isSaved} redesigned {isRedesigned}.");
+        return isRedesigned && isHinted && isCity && isAntique && isScenery && isSolid && isPoor && isResearched && isClosed && isThinking && isTree && isSaved && !_main.TechTree.IsOpen;
     }
 
     private bool ProbeTribe(Player player)

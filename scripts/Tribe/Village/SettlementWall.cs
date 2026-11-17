@@ -29,18 +29,24 @@ public partial class SettlementWall : Node3D
     // ===========================================================================
     //
     //   Setup    The coast and the fire, before AddChild.
-    //   _Ready   Builds a gate at every gate angle and closes the arcs between with wall pieces.
-    //   Update   Keeps every piece on the ground, pieces in the water stay hidden.
+    //   _Ready   Builds the ring.
+    //   Build    A gate at every gate angle, the arcs between closed with wall pieces.
+    //   Update   Keeps every piece on the ground, pieces in the water stay hidden; once the
+    //            ground of the settlement shows the streets of a city, the wall is rebuilt
+    //            from the city models (tools/blender/models/modern_guard.py).
     //
 
     private const string WALL_MODEL = "res://assets/models/village/village.wall.glb";
     private const string GATE_MODEL = "res://assets/models/village/village.wallgate.glb";
-    private const float PIECE_LENGTH = 2.6f;         // model units along the wall, WALL_LENGTH in tools/blender/models/village.py
+    private const string CITY_WALL_MODEL = "res://assets/models/village/village.citywall.glb";
+    private const string CITY_GATE_MODEL = "res://assets/models/village/village.citygate.glb";
+    private const float PIECE_LENGTH = 2.6f;        // model units along the wall, WALL_LENGTH in tools/blender/models/village.py
     private static readonly Color WOOD_COLOR = new(0.72f, 0.62f, 0.4f);
 
     private readonly List<(Node3D Piece, Vector2 Spot)> _pieces = new();
     private Coast _coast;
     private Vector2 _fire;
+    private bool _isCity;                            // built from the city models: low concrete wall with railing, gate pillars with lamps
 
     /// <summary>Hands in the shared state, call before AddChild.</summary>
     /// <param name="coast">(Required) The coast: ground height and land.</param>
@@ -60,6 +66,19 @@ public partial class SettlementWall : Node3D
     public override void _Ready()
     {
         TopLevel = true;
+        Build();
+    }
+
+    /// <summary>Sets every piece of the ring anew, in stone and stakes or as the wall of a city.</summary>
+    private void Build()
+    {
+        foreach ((Node3D piece, Vector2 _) in _pieces)
+        {
+            piece.QueueFree();
+        }
+        _pieces.Clear();
+        string wall   = _isCity ? CITY_WALL_MODEL : WALL_MODEL;
+        string opening = _isCity ? CITY_GATE_MODEL : GATE_MODEL;
         float   unit   = _coast.Unit;
         float   radius = Settlement.WallRadius(unit);
         float   scale  = unit * Hut.SCALE;
@@ -67,7 +86,7 @@ public partial class SettlementWall : Node3D
         float[] gates  = Settlement.GateAngles();
         for (int i = 0; i < gates.Length; i++)
         {
-            Add(GATE_MODEL, gates[i], radius, scale, stretch: 1f);
+            Add(opening, gates[i], radius, scale, stretch: 1f);
 
             float from  = gates[i] + gate * 0.5f;
             float to    = Mathf.PosMod(gates[(i + 1) % gates.Length] - gates[i], Mathf.Tau) + gates[i] - gate * 0.5f;
@@ -75,10 +94,10 @@ public partial class SettlementWall : Node3D
             float step  = (to - from) / count;
             for (int k = 0; k < count; k++)
             {
-                Add(WALL_MODEL, from + step * (k + 0.5f), radius, scale, stretch: step / gate);
+                Add(wall, from + step * (k + 0.5f), radius, scale, stretch: step / gate);
             }
         }
-        Log.Verbose("SettlementWall", $"Wall of {_pieces.Count} piece(s) around {_fire}.");
+        Log.Verbose("SettlementWall", $"Wall of {_pieces.Count} piece(s) around {_fire} (city: {_isCity}).");
     }
 
     private void Add(string model, float angle, float radius, float scale, float stretch)
@@ -94,6 +113,13 @@ public partial class SettlementWall : Node3D
     /// <param name="playerSize">(Required) Player.BodySize(), the ground height scales with it.</param>
     public void Update(float playerSize)
     {
+        // The ground of the settlement turned into streets (or a save brought a city back): the wall follows
+        bool isCity = CoastTerrain.PadStyle.City == _coast.PadStyleAt(_fire) && ResourceLoader.Exists(CITY_WALL_MODEL) && ResourceLoader.Exists(CITY_GATE_MODEL);
+        if (isCity != _isCity)
+        {
+            _isCity = isCity;
+            Build();
+        }
         foreach ((Node3D piece, Vector2 spot) in _pieces)
         {
             piece.Visible        = _coast.IsOnLand(spot);

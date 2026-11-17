@@ -212,7 +212,7 @@ public partial class BuildingEditor : CanvasLayer
 
     public override void _UnhandledInput(InputEvent @event)
     {
-        if (!IsOpen || @event is not InputEventKey { Pressed: true, Echo: false } key)
+        if (!IsOpen || _templates.IsOpen || @event is not InputEventKey { Pressed: true, Echo: false } key)
         {
             return;
         }
@@ -260,7 +260,7 @@ public partial class BuildingEditor : CanvasLayer
         _clear.Text  = Tr("BUILDING_CLEAR");
         foreach ((BuildingKind kind, (Button tab, BuildingIcon icon)) in _tabs)
         {
-            tab.TooltipText = Tr($"BUILDING_{kind}".ToUpperInvariant());
+            tab.TooltipText = Tr(BuildingNames.KeyOf(kind));
             tab.SetPressedNoSignal(kind == Session.Kind);
             icon.Display(Session.DraftOf(kind));
         }
@@ -316,6 +316,7 @@ public partial class BuildingEditor : CanvasLayer
     private BuildingStage _stage;
     private BuildingPalette _palette;
     private BuildingSidebar _sidebar;
+    private TemplatePicker _templates;              // the window with every template of the function and the library
 
     public override void _Ready()
     {
@@ -369,13 +370,24 @@ public partial class BuildingEditor : CanvasLayer
         _sidebar.Setup(Session);
         _sidebar.PatternPicked += Session.PickPattern;
         _sidebar.PaintPicked   += Session.PickPaint;
-        _sidebar.TemplatePicked += Session.ApplyTemplate;
+        _sidebar.TemplatesOpened += OpenTemplates;
         workbench.AddChild(InPanel(_sidebar));
 
         rows.AddChild(BuildFoot());
 
+        // The template window lies over everything else of the builder
+        _templates = new TemplatePicker();
+        _templates.Picked += Session.ApplyDesign;
+        _root.AddChild(_templates);
+
         Session.Changed          += Refresh;
         Session.SelectionChanged += Refresh;
+    }
+
+    /// <summary>Opens the template window for the function shown, what the button "Templates" does.</summary>
+    public void OpenTemplates()
+    {
+        _templates.Open(Session.Draft);
     }
 
     private static Control InPanel(Control view)

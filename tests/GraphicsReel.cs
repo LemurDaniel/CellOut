@@ -22,6 +22,8 @@
 //   (CELLOUT_REEL_WIDE = '1' with CELLOUT_REEL_CIV: the chieftain looks at the headquarters from afar, zoomed out, no HUD)
 //   $env:CELLOUT_REEL_LANDING = '1'   # optional, with CELLOUT_REEL_CIV: raiders from over the sea land by ship, the chieftain watches from the shore
 //   $env:CELLOUT_REEL_HALL = '1'      # optional, with CELLOUT_REEL_CIV: instead of the tech tree the builder shows the headquarters with the modern blocks
+//   $env:CELLOUT_REEL_TEMPLATES = '1' # optional, with CELLOUT_REEL_CIV: the builder with its template window (last frame)
+//   $env:CELLOUT_REEL_PAUSE = '1'     # optional, with CELLOUT_REEL_CIV: the pause menu, with CELLOUT_REEL_LIBRARY = '1' its template library (last frame)
 //   $env:CELLOUT_REEL_VISIT = '1'     # optional, with CELLOUT_REEL_CIV: instead of the tech tree the chieftain visits a neighbor over the sea
 //   $env:CELLOUT_REEL_WIDE = '1'      # optional, while rushing: the camera zooms all the way out and the HUD hides, for looking at the scenery
 //   $env:CELLOUT_REEL_MAP = '1'       # optional: the tribe opens the world map (rushing: still 198)
@@ -573,6 +575,21 @@ public partial class GraphicsReel : Node
                 _main.OpenBuildingEditor();
                 _main.BuildingEditor.Session.ShowKind(BuildingKind.Hall);
                 _main.BuildingEditor.Session.ShowEra(BlockEra.Modern);
+                break;
+            case CITY_TREE when "1" == OS.GetEnvironment("CELLOUT_REEL_TEMPLATES"):
+                // The template window of the builder: village, modern and the library with one saved blueprint
+                _main.OpenBuildingEditor();
+                _main.BuildingEditor.Session.ShowKind(BuildingKind.Dwelling);
+                BlueprintLibrary.Add("Mein Haus", BuildingTemplates.Build(BuildingKind.Dwelling, 2));
+                _main.BuildingEditor.OpenTemplates();
+                break;
+            case CITY_TREE when "1" == OS.GetEnvironment("CELLOUT_REEL_PAUSE"):
+                // The pause menu, with CELLOUT_REEL_LIBRARY its template library
+                _main.Pause.Open();
+                if ("1" == OS.GetEnvironment("CELLOUT_REEL_LIBRARY"))
+                {
+                    _main.Pause.OpenLibrary();
+                }
                 break;
             case CITY_TREE when IS_PLACING:
                 // The build view over the city: its streets, sidewalks and paved ground

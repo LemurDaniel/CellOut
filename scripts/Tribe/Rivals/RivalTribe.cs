@@ -223,6 +223,13 @@ public partial class RivalTribe : Node2D
             return;
         }
         _coast.StylePad(Fire, CoastTerrain.PadStyle.City);       // its trodden ways become streets
+        foreach (Hut hut in _huts)
+        {
+            if (IsInstanceValid(hut))
+            {
+                hut.Modernize();                                 // and its huts the buildings of a town
+            }
+        }
         if (_huts.Exists(hut => IsInstanceValid(hut) && BuildingKind.Hall == hut.Design.Kind))
         {
             return;
@@ -235,7 +242,7 @@ public partial class RivalTribe : Node2D
     /// <summary>A building of a function from a random template at a spot: leveled ground, it blocks the way; squeezed it shrinks to fit between the others.</summary>
     private void PutUp(BuildingKind kind, Vector2 spot, bool isSqueezed = false, float? turn = null)
     {
-        BuildingDesign design = BuildingTemplates.Build(kind, Rand.Index(BuildingTemplates.Count(kind)));
+        BuildingDesign design = BuildingTemplates.Build(kind, Rand.Index(BuildingTemplates.VillageCount(kind)));     // a city rebuilds them modern (BuildHall)
         float          share  = isSqueezed ? Hut.FitShare(design, _coast.Unit * Hut.SCALE, spot, _huts, _coast.Unit) : 1f;
         var hut = new Hut { Position = spot, Size = _coast.Unit * Hut.SCALE * share, GroundHeight = _coast.GroundHeight(spot) * _size, Turn = turn };
         hut.Setup(design, Faction);

@@ -110,8 +110,9 @@ public partial class RivalKeeper : Node2D
 
     private const float PACK_DISTANCE = 0.55f;       // share of SameIslandDistance between the nest and a foreign den
     private const float SETTLE_TURN = 0.26f;         // radians per step when looking for a spot to settle around the player's fire
-    private const float SETTLE_DEPTH = 0.6f;         // share of the foundation radius a settlement lies inland at least
-    private const float SETTLE_GAP = 2.4f;           // foundation radii between two settlements of neighbors
+    private const float SETTLE_DEPTH = 0.4f;         // share of the foundation radius a settlement lies inland at least
+    private const float SETTLE_GAP = 2.15f;          // foundation radii between two settlements of neighbors
+    private static readonly float[] SETTLE_REACHES = { 1f, 0.85f, 0.75f };     // shares of SettleDistance tried one after the other, the last still keeps two foundations apart
 
     /*
       The foreign packs of the pack stage, once when the nest is built:
@@ -244,11 +245,12 @@ public partial class RivalKeeper : Node2D
         float unit   = Coast.Unit;
         float room   = Settlement.Radius(unit);
         float toward = (den - fire).Angle();
-        for (int attempt = 0; attempt < HOME_TRIES; attempt++)
+        for (int attempt = 0; attempt < HOME_TRIES * SETTLE_REACHES.Length; attempt++)
         {
-            // 0, +1, -1, +2, -2 ... steps around the fire
-            float   turn = (attempt + 1) / 2 * SETTLE_TURN * (0 == attempt % 2 ? 1f : -1f);
-            Vector2 spot = fire + Vector2.FromAngle(toward + turn) * Tune.SettleDistance * unit;
+            // 0, +1, -1 ... all the way round at the full distance first, then closer (a small island)
+            int     step = attempt % HOME_TRIES;
+            float   turn = (step + 1) / 2 * SETTLE_TURN * (0 == step % 2 ? 1f : -1f);
+            Vector2 spot = fire + Vector2.FromAngle(toward + turn) * Tune.SettleDistance * SETTLE_REACHES[attempt / HOME_TRIES] * unit;
             if (Coast.LandDepth(spot) >= room * SETTLE_DEPTH && !taken.Exists(home => home.DistanceTo(spot) < room * SETTLE_GAP))
             {
                 return spot;

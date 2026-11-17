@@ -27,7 +27,9 @@ public static class BuildingTemplates
     // ===========================================================================
     //
     //   TEMPLATE_SIZE   Cells along X and Z the drops below are written for.
-    //   Count     Templates of a function.
+    //   Count     Templates of a function, village and modern.
+    //   VillageCount   The village ones among them, they come first.
+    //   Upgrade   The modern layout a city replaces an unchanged village template with.
     //   NameKey   Translation key of a template.
     //   Build     A new design from a template.
     //   Default   The first template of a function.
@@ -38,6 +40,20 @@ public static class BuildingTemplates
     private readonly record struct Drop(BlockKind Kind, int X, int Z, int Turns = 0, int Paint = BlockCatalog.DEFAULT_PAINT);
 
     private sealed record Template(string NameKey, Drop[] Drops);
+
+    /// <summary>Per function the modern layouts a city upgrades to (Modern, Upgrade): they follow the village ones in TEMPLATES, VillageCount tells where they start.</summary>
+    private static readonly IReadOnlyDictionary<BuildingKind, int> MODERN_COUNT = new Dictionary<BuildingKind, int>
+    {
+        [BuildingKind.Dwelling]   = 2,
+        [BuildingKind.Storehouse] = 2,
+        [BuildingKind.Market]     = 2,
+        [BuildingKind.Totem]      = 1,
+        [BuildingKind.Barracks]   = 2,
+        [BuildingKind.Watchtower] = 1,
+        [BuildingKind.Hall]       = 0,      // the headquarters is modern from the start
+    };
+
+    private const int BRICK = 11;
 
     // Paint indices of BlockCatalog.PAINTS used below
     private const int STONE = 2;
@@ -99,6 +115,26 @@ public static class BuildingTemplates
                 new Drop(BlockKind.DryingRack, 6, 0),
                 new Drop(BlockKind.Firepit, 6, 6),
             }),
+            // Modern. The balcony lands on the entrance and so hangs in front of the upper storey
+            new Template("TEMPLATE_TOWNHOUSE", new[]
+            {
+                new Drop(BlockKind.BrickRoom, 2, 2),
+                new Drop(BlockKind.BrickRoom, 2, 2),
+                new Drop(BlockKind.TileRoof, 2, 2),
+                new Drop(BlockKind.Entrance, 6, 3),
+                new Drop(BlockKind.Balcony, 6, 3),
+                new Drop(BlockKind.StreetLamp, 7, 6),
+                new Drop(BlockKind.Bench, 7, 0),
+            }),
+            new Template("TEMPLATE_BUNGALOW", new[]
+            {
+                new Drop(BlockKind.BrickRoom, 2, 2, Paint: CONCRETE),
+                new Drop(BlockKind.RoofDeck, 2, 2),
+                new Drop(BlockKind.SolarPanels, 3, 3),
+                new Drop(BlockKind.Entrance, 6, 3),
+                new Drop(BlockKind.Car, 0, 2, Paint: BLUE),
+                new Drop(BlockKind.Bench, 7, 6),
+            }),
         },
         [BuildingKind.Storehouse] = new[]
         {
@@ -136,6 +172,27 @@ public static class BuildingTemplates
                 new Drop(BlockKind.Barrel, 6, 6),
                 new Drop(BlockKind.Barrel, 7, 6),
                 new Drop(BlockKind.DryingRack, 3, 0),
+            }),
+            // Modern
+            new Template("TEMPLATE_WAREHOUSE", new[]
+            {
+                new Drop(BlockKind.BrickRoom, 2, 2, Paint: CONCRETE),
+                new Drop(BlockKind.RoofDeck, 2, 2),
+                new Drop(BlockKind.Entrance, 6, 3),
+                new Drop(BlockKind.Container, 0, 2),
+                new Drop(BlockKind.Container, 0, 2, Paint: BLUE),
+                new Drop(BlockKind.Smokestack, 6, 0),
+                new Drop(BlockKind.Barrier, 6, 6),
+            }),
+            new Template("TEMPLATE_DEPOT", new[]
+            {
+                new Drop(BlockKind.Container, 1, 2),
+                new Drop(BlockKind.Container, 1, 2, Paint: RED),
+                new Drop(BlockKind.Container, 4, 2, Paint: BLUE),
+                new Drop(BlockKind.SmallBrickRoom, 6, 0),
+                new Drop(BlockKind.ChainFence, 2, 0),
+                new Drop(BlockKind.ChainFence, 2, 7),
+                new Drop(BlockKind.StreetLamp, 7, 7),
             }),
         },
         [BuildingKind.Market] = new[]
@@ -180,6 +237,29 @@ public static class BuildingTemplates
                 new Drop(BlockKind.Barrel, 6, 6),
                 new Drop(BlockKind.Pots, 7, 6),
             }),
+            // Modern
+            new Template("TEMPLATE_SHOP_STREET", new[]
+            {
+                new Drop(BlockKind.Kiosk, 1, 1),
+                new Drop(BlockKind.Kiosk, 5, 1, Paint: BLUE),
+                new Drop(BlockKind.Kiosk, 3, 5, Paint: OCHRE),
+                new Drop(BlockKind.VendingMachine, 3, 1),
+                new Drop(BlockKind.VendingMachine, 4, 1, Paint: RED),
+                new Drop(BlockKind.Bench, 0, 4),
+                new Drop(BlockKind.TrafficLight, 7, 7),
+                new Drop(BlockKind.StreetLamp, 0, 7),
+            }),
+            new Template("TEMPLATE_STORE", new[]
+            {
+                new Drop(BlockKind.BrickRoom, 2, 2),
+                new Drop(BlockKind.GlassFloor, 2, 2),
+                new Drop(BlockKind.RoofDeck, 2, 2),
+                new Drop(BlockKind.SolarPanels, 3, 3),
+                new Drop(BlockKind.Entrance, 6, 3),
+                new Drop(BlockKind.Kiosk, 0, 3),
+                new Drop(BlockKind.VendingMachine, 6, 6),
+                new Drop(BlockKind.VendingMachine, 6, 1, Paint: RED),
+            }),
         },
         [BuildingKind.Totem] = new[]
         {
@@ -203,6 +283,17 @@ public static class BuildingTemplates
                 new Drop(BlockKind.Torch, 5, 5),
                 new Drop(BlockKind.Crate, 2, 5),
                 new Drop(BlockKind.Crate, 5, 2),
+            }),
+            // Modern: what a town gathers around today
+            new Template("TEMPLATE_RADIO_MAST", new[]
+            {
+                new Drop(BlockKind.SmallBrickRoom, 3, 3, Paint: CONCRETE),
+                new Drop(BlockKind.SmallBrickRoom, 3, 3),
+                new Drop(BlockKind.Antenna, 3, 3),
+                new Drop(BlockKind.StreetLamp, 1, 3),
+                new Drop(BlockKind.StreetLamp, 6, 4),
+                new Drop(BlockKind.Bench, 1, 5),
+                new Drop(BlockKind.Bench, 6, 1),
             }),
         },
         [BuildingKind.Barracks] = new[]
@@ -245,6 +336,29 @@ public static class BuildingTemplates
                 new Drop(BlockKind.RoundTower, 0, 6), new Drop(BlockKind.RoundTower, 6, 6),
                 new Drop(BlockKind.SmallConeRoof, 0, 0), new Drop(BlockKind.SmallConeRoof, 6, 0),
                 new Drop(BlockKind.SmallConeRoof, 0, 6), new Drop(BlockKind.SmallConeRoof, 6, 6),
+            }),
+            // Modern
+            new Template("TEMPLATE_POLICE_STATION", new[]
+            {
+                new Drop(BlockKind.BrickRoom, 2, 2, Paint: BLUE),
+                new Drop(BlockKind.RoofDeck, 2, 2),
+                new Drop(BlockKind.Antenna, 2, 2),
+                new Drop(BlockKind.Entrance, 6, 3),
+                new Drop(BlockKind.ChainFence, 2, 0),
+                new Drop(BlockKind.ChainFence, 2, 7),
+                new Drop(BlockKind.Barrier, 6, 1),
+                new Drop(BlockKind.Barrier, 6, 6),
+                new Drop(BlockKind.Car, 0, 2, Paint: BLUE),
+            }),
+            new Template("TEMPLATE_CHECKPOINT", new[]
+            {
+                new Drop(BlockKind.SmallBrickRoom, 3, 3),
+                new Drop(BlockKind.SolarPanels, 3, 3),
+                new Drop(BlockKind.ChainFence, 0, 0), new Drop(BlockKind.ChainFence, 4, 0),
+                new Drop(BlockKind.ChainFence, 0, 7), new Drop(BlockKind.ChainFence, 4, 7),
+                new Drop(BlockKind.Barrier, 6, 3, Turns: 1),
+                new Drop(BlockKind.TrafficLight, 7, 1),
+                new Drop(BlockKind.StreetLamp, 7, 6),
             }),
         },
         [BuildingKind.Hall] = new[]
@@ -306,12 +420,61 @@ public static class BuildingTemplates
                 new Drop(BlockKind.Torch, 2, 6),
                 new Drop(BlockKind.Crate, 6, 1),
             }),
+            // Modern. The fire escapes go up before the deck, like the ladders above
+            new Template("TEMPLATE_CONTROL_TOWER", new[]
+            {
+                new Drop(BlockKind.SmallBrickRoom, 3, 3, Paint: CONCRETE),
+                new Drop(BlockKind.SmallBrickRoom, 3, 3, Paint: CONCRETE),
+                new Drop(BlockKind.SmallBrickRoom, 3, 3, Paint: CONCRETE),
+                new Drop(BlockKind.FireEscape, 5, 3),
+                new Drop(BlockKind.FireEscape, 5, 3),
+                new Drop(BlockKind.FireEscape, 5, 3),
+                new Drop(BlockKind.RoofDeck, 2, 2),
+                new Drop(BlockKind.Antenna, 2, 2),
+                new Drop(BlockKind.ChainFence, 2, 0),
+                new Drop(BlockKind.ChainFence, 2, 7),
+            }),
         },
     };
 
     public static int Count(BuildingKind kind)
     {
         return TEMPLATES[kind].Length;
+    }
+
+    /// <summary>Templates of a function in the style of the village: what a tribe builds before its city, the modern ones follow them.</summary>
+    /// <example><code>BuildingTemplates.Build(kind, Rand.Index(BuildingTemplates.VillageCount(kind)));</code></example>
+    public static int VillageCount(BuildingKind kind)
+    {
+        return TEMPLATES[kind].Length - MODERN_COUNT[kind];
+    }
+
+    /*
+      A city rebuilds what its tribe built (wish of the user 2026-11-17):
+      - a design that still is a village template turns into a modern template of its function
+        (village template i becomes modern template i modulo their number),
+      - a design the player changed, a modern one or the headquarters stays as it is.
+    */
+    /// <summary>The modern layout a city replaces a design with.</summary>
+    /// <param name="design">(Required) A blueprint or the design of a standing building.</param>
+    /// <returns>The modern design, null when the design is not an unchanged village template or its function has no modern layout.</returns>
+    /// <example><code>BuildingTemplates.Upgrade(BuildingTemplates.Default(BuildingKind.Dwelling))   // the townhouse</code></example>
+    public static BuildingDesign Upgrade(BuildingDesign design)
+    {
+        int modern  = MODERN_COUNT[design.Kind];
+        int village = VillageCount(design.Kind);
+        if (0 == modern)
+        {
+            return null;
+        }
+        for (int i = 0; i < village; i++)
+        {
+            if (System.Linq.Enumerable.SequenceEqual(Build(design.Kind, i).Blocks, design.Blocks))
+            {
+                return Build(design.Kind, village + i % modern);
+            }
+        }
+        return null;
     }
 
     /// <summary>Translation key of a template name.</summary>

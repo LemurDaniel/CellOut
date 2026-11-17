@@ -73,6 +73,9 @@ import models.village
 import models.buildings
 import models.modern
 import models.modern_street
+import models.modern_guard
+import models.modern_home
+import models.modern_trade
 import models.new_blocks_home
 import models.new_blocks_work
 import models.new_blocks_guard
@@ -80,7 +83,7 @@ import models.ships
 import models.city
 
 # Inside a running Blender the modules stay loaded between runs: reload, helpers first
-for module in (models.helpers, models.limbs, models.organs, models.fins, models.mouths, models.defense, models.cells, models.new_abilities, models.trees, models.plants, models.village, models.buildings, models.modern, models.modern_street, models.new_blocks_home, models.new_blocks_work, models.new_blocks_guard, models.ships, models.city):
+for module in (models.helpers, models.limbs, models.organs, models.fins, models.mouths, models.defense, models.cells, models.new_abilities, models.trees, models.plants, models.village, models.buildings, models.modern, models.modern_street, models.modern_guard, models.modern_home, models.modern_trade, models.new_blocks_home, models.new_blocks_work, models.new_blocks_guard, models.ships, models.city):
     importlib.reload(module)
 
 from models.buildings import (
@@ -321,6 +324,8 @@ PARTS = {
     'village/village.plot.glb':            models.village.build_plot,
     'village/village.wall.glb':            models.village.build_wall,
     'village/village.wallgate.glb':        models.village.build_wall_gate,
+    'village/village.citywall.glb':        models.modern_guard.build_city_wall,
+    'village/village.citygate.glb':        models.modern_guard.build_city_gate,
     'building/building.roundroom.glb':     build_round_room,
     'building/building.squareroom.glb':    build_square_room,
     'building/building.roundtower.glb':    build_round_tower,
@@ -347,6 +352,19 @@ PARTS = {
     'building/building.smokestack.glb':   models.modern_street.build_smokestack,
     'building/building.streetlamp.glb':   models.modern_street.build_street_lamp,
     'building/building.car.glb':          models.modern_street.build_car,
+    'building/building.chainfence.glb':   models.modern_guard.build_chain_fence,
+    'building/building.barrier.glb':      models.modern_guard.build_barrier,
+    'building/building.smallbrickroom.glb': models.modern_home.build_small_brick_room,
+    'building/building.tileroof.glb':     models.modern_home.build_tile_roof,
+    'building/building.solarpanels.glb':  models.modern_home.build_solar_panels,
+    'building/building.balcony.glb':      models.modern_home.build_balcony,
+    'building/building.fireescape.glb':   models.modern_home.build_fire_escape,
+    'building/building.kiosk.glb':        models.modern_trade.build_kiosk,
+    'building/building.vendingmachine.glb': models.modern_trade.build_vending_machine,
+    'building/building.container.glb':    models.modern_trade.build_container,
+    'building/building.bench.glb':        models.modern_trade.build_bench,
+    'building/building.trafficlight.glb': models.modern_trade.build_traffic_light,
+    'village/village.cityplot.glb':       models.village.build_city_plot,
     'building/building.stoneroom.glb':    models.new_blocks_home.build_stone_room,
     'building/building.smallroom.glb':    models.new_blocks_home.build_small_room,
     'building/building.domeroof.glb':     models.new_blocks_home.build_dome_roof,

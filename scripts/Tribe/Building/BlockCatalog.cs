@@ -49,6 +49,9 @@ public enum BlockKind
     Window, Well, Firepit,                  // more decoration
     BrickRoom, GlassFloor, RoofDeck, Entrance,          // modern: the town of the last stage
     Antenna, Smokestack, StreetLamp, Car,
+    SmallBrickRoom, TileRoof, SolarPanels, Balcony, FireEscape,     // more modern: home, guard, trade and street
+    ChainFence, Barrier,
+    Kiosk, VendingMachine, Container, Bench, TrafficLight,
 }
 
 public enum BlockEra { Village, Modern, Space }
@@ -154,6 +157,18 @@ public static class BlockCatalog
         new BlockInfo(BlockKind.Smokestack,    BlockEra.Modern,  BlockGroup.Roof,    2, 4, 2, BRICK),
         new BlockInfo(BlockKind.StreetLamp,    BlockEra.Modern,  BlockGroup.Decor,   1, 3, 1, RED),
         new BlockInfo(BlockKind.Car,           BlockEra.Modern,  BlockGroup.Decor,   2, 1, 4, RED),
+        new BlockInfo(BlockKind.SmallBrickRoom, BlockEra.Modern, BlockGroup.Wall,    2, 2, 2, BRICK),
+        new BlockInfo(BlockKind.TileRoof,      BlockEra.Modern,  BlockGroup.Roof,    4, 2, 4, RED),
+        new BlockInfo(BlockKind.SolarPanels,   BlockEra.Modern,  BlockGroup.Roof,    2, 1, 2, CONCRETE),
+        new BlockInfo(BlockKind.Balcony,       BlockEra.Modern,  BlockGroup.Frame,   1, 1, 2, CONCRETE),
+        new BlockInfo(BlockKind.FireEscape,    BlockEra.Modern,  BlockGroup.Frame,   1, 2, 2, STONE),
+        new BlockInfo(BlockKind.ChainFence,    BlockEra.Modern,  BlockGroup.Defense, 4, 2, 1, OCHRE),
+        new BlockInfo(BlockKind.Barrier,       BlockEra.Modern,  BlockGroup.Defense, 2, 1, 1, RED),
+        new BlockInfo(BlockKind.Kiosk,         BlockEra.Modern,  BlockGroup.Trade,   2, 2, 2, RED),
+        new BlockInfo(BlockKind.VendingMachine, BlockEra.Modern, BlockGroup.Trade,   1, 2, 1, BLUE),
+        new BlockInfo(BlockKind.Container,     BlockEra.Modern,  BlockGroup.Trade,   2, 2, 4, OCHRE),
+        new BlockInfo(BlockKind.Bench,         BlockEra.Modern,  BlockGroup.Decor,   1, 1, 2, WOOD),
+        new BlockInfo(BlockKind.TrafficLight,  BlockEra.Modern,  BlockGroup.Decor,   1, 3, 1, OCHRE),
     };
 
     /// <summary>The entry of a block. BLOCKS lists the kinds in enum order.</summary>

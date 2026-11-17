@@ -159,16 +159,15 @@ void fragment() {
 			yard = max(yard, max(here * (0.18 + 0.82 * track), max(track, patches)));
 			continue;
 		}
-		// City: the whole foundation is paved but a few lawns away from the streets; outside,
-		// the asphalt crumbles into the dirt track of the old way
+		// City: the whole foundation is paved, no green left (wish of the user 2026-11-17);
+		// outside, the asphalt crumbles into the dirt track of the old way
 		float on_pad = smoothstep(0.35, 0.6, here);
 		float edge = 0.06 * unit;
 		float solid = smoothstep(trail * 1.3 - 0.1, trail * 1.3 + 0.1, crumble) * (1.0 - trail);
 		float lane_here = (1.0 - smoothstep(width - edge, width + edge, lane.x)) * step(0.0, lane.y) * solid;
-		float lawn = smoothstep(0.6, 0.66, coast_fbm(q * 0.3 + float(i) * 7.7)) * smoothstep(half_way * 2.0, half_way * 2.6, lane.x);
 		street = max(street, lane_here);
 		walk = max(walk, on_pad * (1.0 - smoothstep(half_way * 1.5 - edge, half_way * 1.5 + edge, lane.x)));
-		paved = max(paved, on_pad * (1.0 - lawn));
+		paved = max(paved, on_pad);
 		dash = max(dash, lane_here * step(beyond, 0.0) * (1.0 - step(0.07 * unit, lane.x)) * step(fract(lane.y / (2.4 * unit)), 0.5));
 		yard = max(yard, max(track, patches) * (1.0 - on_pad));
 	}

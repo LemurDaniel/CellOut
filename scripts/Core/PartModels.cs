@@ -171,6 +171,7 @@ public static class PartModels
             "FruitGreen"  => CellVisual3D.Material(new Color(0.5f, 0.7f, 0.3f), 0f, 0.6f),
             "Water"       => CellVisual3D.Material(new Color(0.4f, 0.72f, 0.9f, 0.8f), 0.2f, 0.08f),
             "Glass"       => CellVisual3D.Material(new Color(0.55f, 0.78f, 0.9f), 0.15f, 0.08f),
+            "Solar"       => CellVisual3D.Material(new Color(0.07f, 0.11f, 0.24f), 0.05f, 0.12f),     // the dark cells of solar panels
             "Metal"       => CellVisual3D.Material(new Color(0.62f, 0.65f, 0.7f), 0f, 0.3f),
             "Light"       => CellVisual3D.Material(new Color(1f, 0.92f, 0.65f), 1.8f, 0.4f),
             "Rubber"      => CellVisual3D.Material(new Color(0.1f, 0.1f, 0.12f), 0f, 0.9f),
