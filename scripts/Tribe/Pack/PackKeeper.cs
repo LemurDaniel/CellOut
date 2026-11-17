@@ -79,6 +79,7 @@ public partial class PackKeeper : Node2D
     //   Nest         The nest, null until built.
     //   Offer        What Space does right now, recomputed every frame.
     //   OfferHint    Translation key of what is missing for the next step, null when nothing is.
+    //   NestBiomass  Biomass at the nest, TribeBiomass the biomass that founds the tribe, TribeGrowth both since the nest.
     //   IsStaying    Whether the pack waits at the nest (F toggles).
     //   Update       Spawns wild kin, steers all, lets them eat, keeps the nest on the ground, computes the offer.
     //   SpawnWild    A wild kin on grass just outside the view.
@@ -191,14 +192,24 @@ public partial class PackKeeper : Node2D
         Offer = ComputeOffer(size);
     }
 
+    /// <summary>Biomass of the player when the nest was built, 0 before.</summary>
+    public float NestBiomass { get; private set; }
+
+    /// <summary>Biomass the player needs to found the tribe: FoundTribeGrowth more than at the nest.</summary>
+    public float TribeBiomass => NestBiomass * (1f + Tune.FoundTribeGrowth);
+
+    /// <summary>Biomass gathered since the nest, and how much of it the tribe needs (the panel shows both).</summary>
+    public (float Gathered, float Needed) TribeGrowth => (Mathf.Max(0f, Player.Biomass - NestBiomass), TribeBiomass - NestBiomass);
+
     /*
       > Land animal without a nest
           - A wild kin within CallRange: Call.
           - A member follows and the player stands on grass (NestDepth inland): Nest,
             on the sand the hint says to go inland, without a member to find kin.
       > Pack with a nest, not yet a tribe
-          - At the nest (NestRange) with FoundTribeAt members: FoundTribe,
-            else the hint says to call more kin or to go back to the nest.
+          - At the nest (NestRange) once the player gathered FoundTribeGrowth more biomass than
+            it had when the nest was built (decision of the user 2026-11-17, no head count any
+            more): FoundTribe, else the hint says to gather more or to go back to the nest.
       > Otherwise nothing
     */
     private PackOffer ComputeOffer(float size)
@@ -223,11 +234,12 @@ public partial class PackKeeper : Node2D
             return PackOffer.None;
         }
         bool isAtNest = Player.GlobalPosition.DistanceTo(Nest.Position) <= size * Tune.NestRange;
-        if (isAtNest && Members >= Tune.FoundTribeAt)
+        bool isGrown  = Player.Biomass >= TribeBiomass;
+        if (isAtNest && isGrown)
         {
             return PackOffer.FoundTribe;
         }
-        OfferHint = Members < Tune.FoundTribeAt ? "PACK_HINT_MORE" : "PACK_HINT_RETURN";
+        OfferHint = isGrown ? "PACK_HINT_RETURN" : "PACK_HINT_MORE";
         return PackOffer.None;
     }
 
@@ -301,16 +313,18 @@ public partial class PackKeeper : Node2D
     // =================================   ACT   =================================
     // ===========================================================================
     //
-    //   HandleInput     Space performs the offer, F lets the pack stay or follow.
+    //   HandleInput     Space performs the offer, F lets the pack stay or follow (in the tribe: the retinue).
     //   Act             Performs the offered action (Space, HUD button).
     //   Call            The nearest wild kin follows the leader.
     //   BuildNest       The nest in front of the player, pups are born, the pack stage.
     //   FoundTribe      The fire is lit, every member becomes a villager, the tribe stage.
     //   ToggleStay      F: the pack waits at the nest or follows again.
+    //   ToggleRetinue   F in the tribe: the closest villagers follow the chieftain, or go back to work.
     //   SpawnVillager   A grown villager at a hut (TribeCommander).
+    //   Adopt           A courted foreign animal joins the pack, a mixed pack.
     //   TryTakeOver     A dead leader lives on in the biggest member, false without members.
     //   CheatFoundPack  F10: three followers and the nest right here.
-    //   CheatFoundTribe F10: enough members, then the tribe.
+    //   CheatFoundTribe F10: enough biomass, then the tribe.
     //
 
     /// <summary>Space performs the offer, F toggles following and staying from the pack on.</summary>
@@ -326,7 +340,12 @@ public partial class PackKeeper : Node2D
         {
             return true;
         }
-        if (Key.F == key.Keycode && Player.IsPackLeader && !Player.IsTribal)
+        if (Key.F == key.Keycode && Player.IsTribal)
+        {
+            ToggleRetinue();
+            return true;
+        }
+        if (Key.F == key.Keycode && Player.IsPackLeader)
         {
             ToggleStay();
             return true;
@@ -376,6 +395,7 @@ public partial class PackKeeper : Node2D
         }
         float   size = Player.BodySize();
         Vector2 spot = Coast.PushOutOfTrees(Player.GlobalPosition + Vector2.FromAngle(Player.Facing) * size * NEST_AHEAD, size * 1.6f);
+        NestBiomass = Player.Biomass;
         Nest = new Nest { Position = spot, Size = size, GroundHeight = Coast.GroundHeight(spot) * size };
         AddChild(Nest);
         for (int i = 0; i < Tune.PupsAtNest; i++)
@@ -429,6 +449,55 @@ public partial class PackKeeper : Node2D
         Log.Verbose("PackKeeper", IsStaying ? "The pack stays." : "The pack follows.");
     }
 
+    private const int RETINUE_SIZE = 6;              // villagers the chieftain calls at most
+
+    /// <summary>Grown members that follow the chieftain of the tribe right now.</summary>
+    public int Retinue
+    {
+        get
+        {
+            int count = 0;
+            foreach (Kin kin in _kin)
+            {
+                count += KinMode.Following == kin.Mode && !kin.IsPup ? 1 : 0;
+            }
+            return count;
+        }
+    }
+
+    /// <summary>
+    /// F in the tribe: without a retinue the RETINUE_SIZE closest grown villagers drop their
+    /// work and follow the chieftain, with one the retinue goes back to work at the fire.
+    /// </summary>
+    public void ToggleRetinue()
+    {
+        if (!Player.IsTribal || null == Nest)
+        {
+            return;
+        }
+        if (Retinue > 0)
+        {
+            foreach (Kin kin in _kin)
+            {
+                if (KinMode.Following == kin.Mode)
+                {
+                    kin.JoinTribe(Nest.Position);
+                }
+            }
+            Log.Verbose("PackKeeper", "The retinue goes back to work.");
+            return;
+        }
+        var villagers = _kin.FindAll(kin => KinMode.Villager == kin.Mode && !kin.IsPup && !kin.IsQueuedForDeletion());
+        villagers.Sort((a, b) => a.GlobalPosition.DistanceSquaredTo(Player.GlobalPosition).CompareTo(b.GlobalPosition.DistanceSquaredTo(Player.GlobalPosition)));
+        for (int i = 0; i < villagers.Count && i < RETINUE_SIZE; i++)
+        {
+            villagers[i].OrderMove(villagers[i].Position);     // drops chopping and gathering
+            villagers[i].OrderTarget = null;
+            villagers[i].Follow();
+        }
+        Log.Verbose("PackKeeper", $"{Retinue} villager(s) follow the chieftain.");
+    }
+
     /// <summary>A grown villager next to a building, the tribe raised it.</summary>
     /// <param name="spot">(Required) Plane point of the building.</param>
     /// <param name="isWarrior">(Optional) Trained in a warrior hut: a warrior. Defaults to false.</param>
@@ -444,6 +513,18 @@ public partial class PackKeeper : Node2D
         {
             villager.MakeWarrior();
         }
+    }
+
+    /// <summary>A foreign animal joins the pack (courted until it trusted the player), it keeps its species: a mixed pack.</summary>
+    /// <param name="animal">(Required) A kin released by its foreign pack (RivalTribe.Release).</param>
+    public void Adopt(Kin animal)
+    {
+        animal.Faction = 0;
+        animal.Role    = KinRole.Villager;
+        animal.Follow();
+        _kin.Add(animal);
+        AddChild(animal);
+        Log.Verbose("PackKeeper", $"A foreign animal joined the pack, {Members} member(s).");
     }
 
     /// <summary>The dead leader lives on in the body of the biggest grown member, which leaves the pack.</summary>
@@ -485,7 +566,7 @@ public partial class PackKeeper : Node2D
         BuildNest();
     }
 
-    /// <summary>Cheat (F10): the pack if needed, members up to FoundTribeAt, then the tribe.</summary>
+    /// <summary>Cheat (F10): the pack if needed, the biomass of the tribe, then the tribe.</summary>
     public void CheatFoundTribe()
     {
         CheatFoundPack();
@@ -493,11 +574,7 @@ public partial class PackKeeper : Node2D
         {
             return;
         }
-        float size = Player.BodySize();
-        while (Members < Tune.FoundTribeAt)
-        {
-            SpawnKin(Nest.Position + Vector2.FromAngle(Rand.Angle()) * size * 3f, size, KinMode.Following);
-        }
+        Player.AddBiomass(Mathf.Max(0f, TribeBiomass - Player.Biomass), BiomassSource.Raw);
         FoundTribe();
     }
 }

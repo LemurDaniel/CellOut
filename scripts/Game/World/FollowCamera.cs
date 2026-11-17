@@ -1,9 +1,9 @@
 // NOTE:
 //   The chase camera of the game with everything that grows along with it: environment,
 //   sun, sky and backdrop. Top view over the soup, third person over the islands, where
-//   the world bends to a planet (Core/Plane3D.cs), and from the tribe on a strategy view
-//   from high above that the keys pan. It does not process on its own: Main advances it
-//   once per frame and routes the input to it.
+//   the world bends to a planet (Core/Plane3D.cs), for the land animal and the chieftain
+//   of the tribe alike. It does not process on its own: Main advances it once per frame
+//   and routes the input to it.
 //
 //   var followCamera = new FollowCamera();
 //   followCamera.Setup(session);
@@ -31,7 +31,7 @@ public partial class FollowCamera : Node
     private const float CAM_DISTANCE = 14f;         // camera distance in player sizes
     private static readonly Color SKY_AMBIENT = new(0.64f, 0.77f, 0.98f);     // cool sky light fills the shadows of the warm sun
     private const float SOUP_AMBIENT_ENERGY = 0.6f;
-    private const float SKY_AMBIENT_ENERGY = 0.62f;
+    private const float SKY_AMBIENT_ENERGY = 0.52f;   // less fill under the lower sun: the shade sides of hills and trees read
 
     // ===========================================================================
     // =============================   BUILD SCENE   =============================
@@ -82,11 +82,11 @@ public partial class FollowCamera : Node
 
         _sun = new DirectionalLight3D
         {
-            Basis         = Basis.LookingAt(new Vector3(0.35f, -1f, 0.45f), Vector3.Up),
+            Basis         = Basis.LookingAt(SOUP_SUN_DIRECTION, Vector3.Up),
             LightColor    = SOUP_SUN_COLOR,
             LightEnergy   = SUN_ENERGY,
             ShadowEnabled = true,
-            ShadowOpacity = 0.6f,
+            ShadowOpacity = SOUP_SHADOW_OPACITY,
         };
         AddChild(_sun);
 
@@ -130,11 +130,8 @@ public partial class FollowCamera : Node
     //   HandleInput    Mouse wheel zooms, a right drag orbits the third person camera.
     //   ZoomBy         Changes the zoom factor by steps, clamped.
     //   ThirdPerson    0 top view .. 1 third person, the land animal blends over TP_BLEND_SECONDS.
-    //   Strategy       0 chase camera .. 1 strategy view of the tribe, blends the same way.
     //   YawBehind      Camera yaw behind a facing.
     //   FollowFacing   Swings the third person camera behind the walking creature.
-    //   PanStrategy    WASD and arrows pan the strategy view over the island.
-    //   FocusOn        Moves the strategy view over a plane point (back to the village).
     //   Advance       Eases view, distance and focus, then moves camera, planet, sky and backdrop.
     //   UpdateWater    Colors of the stage, the fade into the depth, depth of field and the lens.
     //   UpdateSky      From the dark soup to sky, sunlight and haze over the open sea.
@@ -143,9 +140,6 @@ public partial class FollowCamera : Node
     //   Third person: behind and above the land animal, swinging behind it while it walks,
     //   orbited by a right drag (yaw, tilt), the keys turn with it (Player.InputTurn), the
     //   world bends to a planet (Plane3D.SetCurve).
-    //   Strategy view (tribe): high above the village, keeps the yaw it had, the keys pan
-    //   the focus instead of the creature (the tribe commands it by orders), the wheel zooms,
-    //   the right button is free for orders.
     //
 
     public const float ZOOM_STEP = 1.15f;           // the RNA prelude zooms in the same steps
@@ -165,13 +159,7 @@ public partial class FollowCamera : Node
     private const float FOLLOW_BACKWARD_LIMIT = -0.3f;   // facing this much towards the camera: no swing
     private const float TP_SEA_SINK = 0.95f;         // third person: swimmers sink this many sizes, just below the low sea (Coast.OPEN_SEA_HEIGHT)
     private const float TP_SHADOW_DISTANCE = 90f;   // third person: tall trees throw shadows this far, in player sizes
-    private const float PLANET_RADIUS = 8000f;       // in Unit of the coast, the islands are ~260 Unit across
-    private const float RTS_TILT = 0.55f;            // strategy view: tilt from vertical
-    private const float RTS_DISTANCE = 55f;          // strategy view: camera distance in Unit, above the broadleaf crowns (30 Unit), giants are hidden
-    private const float RTS_PAN_SPEED = 0.9f;        // strategy view: camera distances per second the keys pan
-    private const float RTS_VIEW_SHARE = 1.1f;       // strategy view: spawning reaches a little past the view
-    private const float RTS_MIN_ZOOM = 0.35f;        // strategy view: closer than the chase camera allows, not into the ground
-    public const float RTS_MAX_ZOOM = 1.6f;          // strategy view: the island stays in reach, no empty sky
+    private const float PLANET_RADIUS = 8000f;       // in Unit of the coast, the islands are up to ~480 Unit across
 
     /// <summary>Wheel zoom on top of the automatic distance, 1 = default, bigger = farther away.</summary>
     public float ZoomFactor { get; private set; } = 1f;
@@ -181,18 +169,6 @@ public partial class FollowCamera : Node
 
     /// <summary>SmoothStep of ThirdPerson, the blend everything uses.</summary>
     public float View => _view;
-
-    /// <summary>0 chase camera .. 1 strategy view of the tribe (SmoothStep), the keys pan instead of steering.</summary>
-    public float Strategy => _strategy;
-
-    /// <summary>(Optional) Plane point the strategy view starts over (the fire), set by Main. Defaults to the player.</summary>
-    public Vector2? StrategyAnchor { get; set; }
-
-    private const float EDGE_SCROLL_PIXELS = 12f;    // strategy view: the mouse this close to the edge pans
-
-    private float _strategyBlend;                    // 0..1 linear, _strategy is its SmoothStep
-    private float _strategy;
-    private Vector2 _strategyFocus;                  // plane point the strategy view looks at
 
     private float _camDistance;
     private const float SSAO_RADIUS = 0.35f;         // contact shadow reach in body sizes
@@ -215,8 +191,8 @@ public partial class FollowCamera : Node
     /// <example><code>if (followCamera.HandleInput(@event)) GetViewport().SetInputAsHandled();</code></example>
     public bool HandleInput(InputEvent @event)
     {
-        // Third person: a right drag orbits the camera, the cursor hides meanwhile (the strategy view orders with it)
-        if (@event is InputEventMouseButton { ButtonIndex: MouseButton.Right } orbit && _strategy < 0.5f && (_view > 0.5f || !orbit.Pressed))
+        // Third person: a right drag orbits the camera, the cursor hides meanwhile
+        if (@event is InputEventMouseButton { ButtonIndex: MouseButton.Right } orbit && (_view > 0.5f || !orbit.Pressed))
         {
             _isOrbiting     = orbit.Pressed;
             Input.MouseMode = _isOrbiting ? Input.MouseModeEnum.Captured : Input.MouseModeEnum.Visible;
@@ -258,13 +234,12 @@ public partial class FollowCamera : Node
         Log.Verbose("FollowCamera", $"Zoom {ZoomFactor:F2} and distance {distance:F0} taken over.");
     }
 
-    /// <summary>Zooms out (positive steps) or in (negative steps), clamped to MIN_ZOOM..MAX_ZOOM (the strategy view has its own limits).</summary>
+    /// <summary>Zooms out (positive steps) or in (negative steps), clamped to MIN_ZOOM..MAX_ZOOM.</summary>
     /// <param name="steps">(Required) Number of wheel steps, each one ZOOM_STEP.</param>
     /// <example><code>ZoomBy(-2)  // two steps closer</code></example>
     public void ZoomBy(int steps)
     {
-        bool isStrategy = _strategy > 0.5f;
-        ZoomFactor = Mathf.Clamp(ZoomFactor * Mathf.Pow(ZOOM_STEP, steps), isStrategy ? RTS_MIN_ZOOM : MIN_ZOOM, isStrategy ? RTS_MAX_ZOOM : MAX_ZOOM);
+        ZoomFactor = Mathf.Clamp(ZoomFactor * Mathf.Pow(ZOOM_STEP, steps), MIN_ZOOM, MAX_ZOOM);
         Log.Verbose("FollowCamera", $"Zoom factor {ZoomFactor:F2}.");
     }
 
@@ -285,7 +260,7 @@ public partial class FollowCamera : Node
     /// <summary>Swings the third person camera behind the facing of the walking creature.</summary>
     private void FollowFacing(float dt)
     {
-        if (_view < 0.5f || _isOrbiting || dt <= 0f || _strategy > 0f)
+        if (_view < 0.5f || _isOrbiting || dt <= 0f)
         {
             return;
         }
@@ -302,49 +277,10 @@ public partial class FollowCamera : Node
         _camYaw = Mathf.LerpAngle(_camYaw, YawBehind(Player.Facing), Mathf.Clamp(dt * FOLLOW_SPEED * speedShare, 0f, 1f));
     }
 
-    /// <summary>WASD, arrows and the mouse at the screen edge pan the focus of the strategy view, relative to the camera yaw.</summary>
-    private void PanStrategy(float dt)
-    {
-        if (_strategy < 0.5f || dt <= 0f)
-        {
-            return;
-        }
-        var pan = Vector2.Zero;
-        if (Input.IsPhysicalKeyPressed(Key.W) || Input.IsPhysicalKeyPressed(Key.Up))    pan.Y -= 1f;
-        if (Input.IsPhysicalKeyPressed(Key.S) || Input.IsPhysicalKeyPressed(Key.Down))  pan.Y += 1f;
-        if (Input.IsPhysicalKeyPressed(Key.A) || Input.IsPhysicalKeyPressed(Key.Left))  pan.X -= 1f;
-        if (Input.IsPhysicalKeyPressed(Key.D) || Input.IsPhysicalKeyPressed(Key.Right)) pan.X += 1f;
-
-        // Edge scrolling, only with the cursor inside the window
-        Vector2 mouse = GetViewport().GetMousePosition();
-        Vector2 size  = GetViewport().GetVisibleRect().Size;
-        if (mouse.X >= 0f && mouse.Y >= 0f && mouse.X <= size.X && mouse.Y <= size.Y)
-        {
-            if (mouse.X < EDGE_SCROLL_PIXELS)          pan.X -= 1f;
-            if (mouse.X > size.X - EDGE_SCROLL_PIXELS) pan.X += 1f;
-            if (mouse.Y < EDGE_SCROLL_PIXELS)          pan.Y -= 1f;
-            if (mouse.Y > size.Y - EDGE_SCROLL_PIXELS) pan.Y += 1f;
-        }
-        _strategyFocus += pan.LimitLength(1f).Rotated(-_camYaw) * _camDistance * RTS_PAN_SPEED * dt;
-    }
-
-    /// <summary>Plane point the strategy view looks at.</summary>
-    public Vector2 StrategyFocus => _strategyFocus;
-
-    /// <summary>Moves the strategy view over a plane point, the camera glides there. Without effect before the tribe.</summary>
-    /// <param name="point">(Required) Plane point to look at.</param>
-    /// <example><code>followCamera.FocusOn(pack.Nest.Position);</code></example>
-    public void FocusOn(Vector2 point)
-    {
-        _strategyFocus = point;
-        Log.Verbose("FollowCamera", $"Strategy view moves over {point}.");
-    }
-
     /*
       1. View      Blends towards third person once the player is a land animal; the
                    blend starts with the camera yaw behind the creature, then swings
-                   behind it while it walks (FollowFacing). From the tribe on it blends
-                   on into the strategy view, which starts over the player and pans by keys.
+                   behind it while it walks (FollowFacing), also for the chieftain of the tribe.
       2. Pose      Yaw and tilt from the top view pose to the orbit pose, distance and the
                    look-up point eased, the camera never dips into a hill.
       3. Planet    Curvature with the blend, flat around the camera.
@@ -369,35 +305,17 @@ public partial class FollowCamera : Node
         _view       = Mathf.SmoothStep(0f, 1f, ThirdPerson);
         FollowFacing(dt);
 
-        float strategyTarget = Player.IsTribal ? 1f : 0f;
-        if (strategyTarget > 0f && _strategyBlend <= 0f)
-        {
-            _strategyFocus = StrategyAnchor ?? Player.GlobalPosition;
-            Input.MouseMode = Input.MouseModeEnum.Visible;
-            _isOrbiting     = false;
-            Log.Verbose("FollowCamera", "Camera rises into the strategy view of the tribe.");
-        }
-        _strategyBlend = dt <= 0f ? strategyTarget : Mathf.MoveToward(_strategyBlend, strategyTarget, dt / TP_BLEND_SECONDS);
-        _strategy      = Mathf.SmoothStep(0f, 1f, _strategyBlend);
-        PanStrategy(dt);
-        Coast?.HideGiants(_strategy > 0.5f);     // the giants (up to 75 Unit) would stand between camera and village
-
         // Pose
         float   unit  = null == Coast ? playerSize : Coast.Unit;
         float   yaw   = Mathf.LerpAngle(0f, _camYaw, _view);
-        float   tilt  = Mathf.Lerp(Mathf.Lerp(CAM_TILT, _camTilt, _view), RTS_TILT, _strategy);
+        float   tilt  = Mathf.Lerp(CAM_TILT, _camTilt, _view);
         float   sink  = Player.IsOnLand ? 0f : playerSize * TP_SEA_SINK;
         Vector3 focus = Plane3D.To3D(Player.GlobalPosition, (TP_LOOK_UP * playerSize + Player.GroundLift - sink) * _view);
-        if (_strategy > 0f)
-        {
-            float ground = null == Coast ? 0f : Coast.GroundHeight(_strategyFocus) * playerSize;
-            focus = focus.Lerp(Plane3D.To3D(_strategyFocus, ground), _strategy);
-        }
         if (dt <= 0f)
         {
             _camFocus = focus;
         }
-        float distance = Mathf.Lerp(playerSize * Mathf.Lerp(CAM_DISTANCE, TP_DISTANCE, _view), unit * RTS_DISTANCE, _strategy) * ZoomFactor;
+        float distance = playerSize * Mathf.Lerp(CAM_DISTANCE, TP_DISTANCE, _view) * ZoomFactor;
         _camDistance = Mathf.Lerp(_camDistance, distance, Mathf.Clamp(dt * 1.5f, 0f, 1f));
         _camFocus    = _camFocus.Lerp(focus, Mathf.Clamp(dt * 5f, 0f, 1f));
 
@@ -426,7 +344,7 @@ public partial class FollowCamera : Node
         UpdateWater(dt, playerSize);
         UpdateSky(playerSize);
         _backdrop.IsMotesShown = _view < 0.5f;
-        _pollen.Follow(_camFocus, playerSize, _view > 0.5f && _strategy < 0.5f);     // too small to see from the strategy view
+        _pollen.Follow(_camFocus, playerSize, _view > 0.5f);
         // The cell stages: motes part around the player, every swimming cell leaves a wake
         bool isCellStage = !Player.IsOrganism && !Player.IsHidden;
         _backdrop.Follow(new Vector2(_camFocus.X, _camFocus.Z), playerSize, ViewRadius(), isCellStage ? Player.GlobalPosition : null);
@@ -456,7 +374,7 @@ public partial class FollowCamera : Node
     /// <summary>Colors, depth fade, depth of field and lens of the water.</summary>
     private void UpdateWater(float dt, float playerSize)
     {
-        SoupPalette target = SoupPalette.For(Player.Stage);
+        SoupPalette target = SoupPalette.For(Player.Stage).Tinted(Planets.Current.WaterTint);
         _palette = dt <= 0f ? target : _palette.Lerp(target, dt * PALETTE_SPEED);
         _backdrop.Tint(_palette);
         _environment.BackgroundColor = _palette.Background;
@@ -474,18 +392,19 @@ public partial class FollowCamera : Node
         _lens.Light(_palette.Light, 1f - _view, (_camFocus.X + _camFocus.Z * 0.5f) / Mathf.Max(ViewRadius(), 0.001f));
     }
 
-    private static readonly Color SKY_TOP = new(0.24f, 0.5f, 0.86f);
-    private static readonly Color SKY_HORIZON = new(0.7f, 0.84f, 0.95f);
+    // Sky top, horizon and the sun over the land come from the planet (Core/Planets.cs, data/planets.json)
     private static readonly Color SEA_BELOW = new(0.07f, 0.3f, 0.42f);
     private static readonly Color SKY_HAZE = new(1f, 0.93f, 0.8f);       // warm band right above the horizon
-    private static readonly Color SUN_COLOR = new(1f, 0.93f, 0.8f);      // third person: warm sun against the cool sky light
     private static readonly Color SOUP_SUN_COLOR = new(1f, 0.97f, 0.9f);
     private static readonly Shader SKY_SHADER = GD.Load<Shader>("res://shaders/sky.gdshader");
     private const float FOG_DENSITY = 0.0022f;       // per player size: trees a hill away keep their color, the next island pales
     private const float FOG_SUN_SCATTER = 0.25f;     // the haze glows towards the sun
-    private const float STRATEGY_FOG_SHARE = 0.2f;   // share of the haze left in the strategy view
     private const float SUN_ENERGY = 1.1f;
-    private const float LAND_SUN_ENERGY = 1.35f;     // third person: stronger sun, the cool ambient fills the shadows
+    private const float LAND_SUN_ENERGY = 1.45f;     // third person: stronger sun, the cool ambient fills the shadows
+    private static readonly Vector3 SOUP_SUN_DIRECTION = new(0.35f, -1f, 0.45f);    // steep from above into the water
+    private static readonly Vector3 LAND_SUN_DIRECTION = new(0.6f, -0.55f, 0.58f);  // third person: an afternoon sun, about 35 degrees high, hills and bodies get form and long shadows
+    private const float SOUP_SHADOW_OPACITY = 0.6f;
+    private const float LAND_SHADOW_OPACITY = 0.78f;
     private ShaderMaterial _sky;
 
     /// <summary>Background, ambient light and haze between the soup (view 0) and the open sky (view 1).</summary>
@@ -505,6 +424,8 @@ public partial class FollowCamera : Node
             _environment.AmbientLightEnergy = SOUP_AMBIENT_ENERGY;
             _sun.LightColor                 = SOUP_SUN_COLOR;
             _sun.LightEnergy                = SUN_ENERGY;
+            _sun.Basis                      = Basis.LookingAt(SOUP_SUN_DIRECTION, Vector3.Up);
+            _sun.ShadowOpacity              = SOUP_SHADOW_OPACITY;
             return;
         }
 
@@ -514,18 +435,19 @@ public partial class FollowCamera : Node
             _sky = new ShaderMaterial { Shader = SKY_SHADER };
             _environment.Sky = new Sky { SkyMaterial = _sky, RadianceSize = Sky.RadianceSizeEnum.Size32 };
         }
-        _sky.SetShaderParameter("top_color", _palette.Background.Lerp(SKY_TOP, _view));
-        _sky.SetShaderParameter("horizon_color", _palette.Background.Lerp(SKY_HORIZON, _view));
-        _sky.SetShaderParameter("below_color", _palette.Background.Lerp(SEA_BELOW, _view));
-        _sky.SetShaderParameter("haze_color", SKY_HAZE);
+        _sky.SetShaderParameter("top_color", _palette.Background.Lerp(Planets.Current.SkyTopColor, _view));
+        _sky.SetShaderParameter("horizon_color", _palette.Background.Lerp(Planets.Current.SkyHorizonColor, _view));
+        _sky.SetShaderParameter("below_color", _palette.Background.Lerp(SEA_BELOW * Planets.Current.WaterTint, _view));
+        _sky.SetShaderParameter("haze_color", SKY_HAZE.Lerp(Planets.Current.SunColor, 0.5f));
         _sky.SetShaderParameter("amount", _view);
-        _sun.LightColor                 = SOUP_SUN_COLOR.Lerp(SUN_COLOR, _view);
+        _sun.LightColor                 = SOUP_SUN_COLOR.Lerp(Planets.Current.SunColor, _view);
         _sun.LightEnergy                = Mathf.Lerp(SUN_ENERGY, LAND_SUN_ENERGY, _view);
+        _sun.Basis                      = Basis.LookingAt(SOUP_SUN_DIRECTION.Normalized().Slerp(LAND_SUN_DIRECTION.Normalized(), _view), Vector3.Up);
+        _sun.ShadowOpacity              = Mathf.Lerp(SOUP_SHADOW_OPACITY, LAND_SHADOW_OPACITY, _view);
         _environment.BackgroundMode     = Godot.Environment.BGMode.Sky;
         _environment.FogEnabled         = true;
-        _environment.FogLightColor      = SKY_HORIZON;
-        // The strategy view looks down from far above: with the full haze the village would pale
-        _environment.FogDensity         = FOG_DENSITY * _view * Mathf.Lerp(1f, STRATEGY_FOG_SHARE, _strategy) / playerSize;
+        _environment.FogLightColor      = Planets.Current.SkyHorizonColor;
+        _environment.FogDensity         = FOG_DENSITY * _view / playerSize;
         _environment.FogHeightDensity   = 0f;
         _environment.FogSkyAffect       = 0f;
         _environment.FogSunScatter      = FOG_SUN_SCATTER * _view;
@@ -594,16 +516,12 @@ public partial class FollowCamera : Node
     //
     //   ViewRadius     Visible radius on the plane at the current camera distance.
     //   ViewRadiusAt   Visible radius on the plane at any camera distance (title menu).
-    //   ViewFootprint  The ground the screen shows, as four plane points (the world map).
     //
 
-    private const float FOOTPRINT_MAX_REACH = 4f;    // a ray towards the horizon is cut off after this many camera distances
-
-    /// <summary>Radius of the visible area on the plane at the current camera distance, in third person a fixed reach, in the strategy view the whole view again.</summary>
+    /// <summary>Radius of the visible area on the plane at the current camera distance, in third person a fixed reach.</summary>
     public float ViewRadius()
     {
-        float chase = Mathf.Lerp(ViewRadiusAt(_camDistance), Player.BodySize() * TP_VIEW_RADIUS, _view);
-        return Mathf.Lerp(chase, ViewRadiusAt(_camDistance) * RTS_VIEW_SHARE, _strategy);
+        return Mathf.Lerp(ViewRadiusAt(_camDistance), Player.BodySize() * TP_VIEW_RADIUS, _view);
     }
 
     /// <summary>Radius of the visible area on the plane at a camera distance, with a margin for the camera tilt.</summary>
@@ -612,25 +530,5 @@ public partial class FollowCamera : Node
         Vector2 viewport = GetViewport().GetVisibleRect().Size;
         float   aspect   = viewport.X / Mathf.Max(viewport.Y, 1f);
         return distance * Mathf.Tan(Mathf.DegToRad(CAM_FOV * 0.5f)) * Mathf.Sqrt(1f + aspect * aspect) * 1.25f;
-    }
-
-    /// <summary>Where the rays through the four screen corners hit the ground at the height of the focus.</summary>
-    /// <returns>Plane points in the order top left, top right, bottom right, bottom left.</returns>
-    /// <example><code>Vector2[] view = followCamera.ViewFootprint();</code></example>
-    public Vector2[] ViewFootprint()
-    {
-        Vector2 size      = GetViewport().GetVisibleRect().Size;
-        var     corners   = new[] { Vector2.Zero, new Vector2(size.X, 0f), size, new Vector2(0f, size.Y) };
-        var     footprint = new Vector2[corners.Length];
-        for (int i = 0; i < corners.Length; i++)
-        {
-            Vector3 origin = Camera.ProjectRayOrigin(corners[i]);
-            Vector3 normal = Camera.ProjectRayNormal(corners[i]);
-            // A ray that points at the horizon or above never reaches the ground
-            float reach = normal.Y < -0.01f ? (origin.Y - _camFocus.Y) / -normal.Y : float.MaxValue;
-            Vector3 hit = origin + normal * Mathf.Min(reach, _camDistance * FOOTPRINT_MAX_REACH);
-            footprint[i] = new Vector2(hit.X, hit.Z);
-        }
-        return footprint;
     }
 }

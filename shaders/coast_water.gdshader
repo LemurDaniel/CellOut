@@ -66,7 +66,7 @@ void fragment() {
 	sea_alpha *= smoothstep(-0.2 * unit, 0.6 * unit, to_shore);
 
 	float in_water = step(-0.4 * unit, to_shore);
-	vec3 tint = mix(water_color.rgb, sea, open_sea);
+	vec3 tint = mix(water_color.rgb, sea * planet_water.rgb, open_sea);   // the open sea takes the tint of the planet
 	float tint_alpha = mix(water_color.a * body, sea_alpha, open_sea);
 	ALBEDO = mix(tint, vec3(1.0), clamp(crests + foam, 0.0, 1.0));
 	ALPHA = clamp((tint_alpha + crests * 0.3 + foam * 0.75) * in_water, 0.0, 1.0);

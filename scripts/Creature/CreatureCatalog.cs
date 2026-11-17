@@ -34,7 +34,7 @@ namespace CellOut;
 
 public enum CreatureType { Fish, MarineMammal }
 
-public enum CreatureCategory { Fins, Heads, Mouths, Defense, Eyes, Limbs, Feet, Hands, Wings, Custom }
+public enum CreatureCategory { Fins, Heads, Mouths, Defense, Eyes, Limbs, Feet, Hands, Wings, Gentle, Clever, Wild, Custom }
 
 /*
   Mounts share their spots: two parts on the same mount keep a gap along the spine.
@@ -73,6 +73,8 @@ public enum CreaturePartKind
     Blowhole, Gills, FeatherGills, Siphon,
     // Wings
     MembraneWings, FeatherWings,
+    // Ability parts (wish of the user 2026-11-17): gentle (herbivore), clever (omnivore), wild (carnivore)
+    ScentGland, HealingMoss, GlowCrest, InkSac, RoarSac, RamBrow,
 }
 
 /// <summary>Rules of one creature part kind.</summary>
@@ -285,6 +287,13 @@ public static class CreatureCatalog
         // Wings
         Part(CreaturePartKind.MembraneWings, CreatureCategory.Wings,   CreatureMount.Top,   null),
         Part(CreaturePartKind.FeatherWings,  CreatureCategory.Wings,   CreatureMount.Top,   null),
+        // Ability parts: each gives an ability on a key slot (Game/Abilities/CreatureAbilityResolver.cs)
+        Part(CreaturePartKind.ScentGland,    CreatureCategory.Gentle,  CreatureMount.Top,   null),
+        Part(CreaturePartKind.HealingMoss,   CreatureCategory.Gentle,  CreatureMount.Top,   null),
+        Part(CreaturePartKind.GlowCrest,     CreatureCategory.Clever,  CreatureMount.Top,   null),
+        Part(CreaturePartKind.InkSac,        CreatureCategory.Clever,  CreatureMount.Inner, null),
+        Part(CreaturePartKind.RoarSac,       CreatureCategory.Wild,    CreatureMount.Flank, null),
+        Part(CreaturePartKind.RamBrow,       CreatureCategory.Wild,    CreatureMount.Top,   null),
     };
 
     /// <summary>One table row: cost, weight, carry, stride and lift come from Balance.Current.Creature.Parts.</summary>

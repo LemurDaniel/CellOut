@@ -48,6 +48,7 @@ public sealed class BuildingDesign
     //   Kind          The function of the building.
     //   Blocks        The placed blocks.
     //   Height        Cells from the ground to the top of the highest block.
+    //   FootprintRadius   Cells from the middle that hold every block: the flat foundation.
     //   RestHeight    Where a block would land, null when it does not fit.
     //   TryPlace      Drops a block onto the grid.
     //   BlockAt       The block that fills a cell, -1 for none.
@@ -84,6 +85,25 @@ public sealed class BuildingDesign
                 height = System.Math.Max(height, block.Y + BlockCatalog.Get(block.Kind).Height);
             }
             return height;
+        }
+    }
+
+    /// <summary>Radius in cells around the middle of the grid that holds every block on the ground: the flat foundation.</summary>
+    /// <example><code>design.FootprintRadius  // 0 when empty, at most half the grid diagonal</code></example>
+    public float FootprintRadius
+    {
+        get
+        {
+            float half   = GRID_SIZE * 0.5f;
+            float radius = 0f;
+            foreach (PlacedBlock block in _blocks)
+            {
+                (int width, int depth) = BlockCatalog.Footprint(block.Kind, block.Turns);
+                float x = System.Math.Max(System.Math.Abs(block.X - half), System.Math.Abs(block.X + width - half));
+                float z = System.Math.Max(System.Math.Abs(block.Z - half), System.Math.Abs(block.Z + depth - half));
+                radius = System.Math.Max(radius, (float)System.Math.Sqrt(x * x + z * z));
+            }
+            return radius;
         }
     }
 

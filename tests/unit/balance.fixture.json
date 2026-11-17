@@ -240,7 +240,22 @@
       "Siphon":        { "cost": 1, "weight": 0.3 },
 
       "MembraneWings": { "cost": 3, "weight": 1.5, "lift": 6 },
-      "FeatherWings":  { "cost": 4, "weight": 2.5, "lift": 10 }
+      "FeatherWings":  { "cost": 4, "weight": 2.5, "lift": 10 },
+
+      "ScentGland":    { "cost": 3, "weight": 0.4 },
+      "HealingMoss":   { "cost": 3, "weight": 0.3, "unlockStage": 4 },
+      "GlowCrest":     { "cost": 3, "weight": 0.5 },
+      "InkSac":        { "cost": 3, "weight": 0.6, "unlockReached": "Pack" },
+      "RoarSac":       { "cost": 3, "weight": 0.5 },
+      "RamBrow":       { "cost": 3, "weight": 1.5, "unlockReached": "Tribe" }
+    },
+    "abilities": {
+      "ScentGland":  { "cooldown": 12, "duration": 6, "reach": 6, "power": 0.1 },
+      "HealingMoss": { "cooldown": 15, "reach": 6, "power": 0.3 },
+      "GlowCrest":   { "cooldown": 10, "duration": 1.8, "reach": 5 },
+      "InkSac":      { "cooldown": 12, "duration": 3, "power": 3 },
+      "RoarSac":     { "cooldown": 10, "duration": 3, "reach": 6 },
+      "RamBrow":     { "cooldown": 6, "duration": 0.6, "damage": 12, "power": 4 }
     },
     "body": {
       "density": 7.5,
@@ -304,7 +319,7 @@
       "pupGrowSeconds": 60,
       "followDistance": 2.2,
       "wanderRadius": 4,
-      "foundTribeAt": 4,
+      "foundTribeGrowth": 0.3,
       "nestRegen": 0.04
     },
     "fruit": {
@@ -358,6 +373,37 @@
       "relationPerRaze": 0.5,
       "defeatFood": 15,
       "defeatWood": 15
+    },
+    "ways": {
+      "wayBonus": 1,
+      "pathThreshold": 0.33,
+      "packsOnIsland": 2,
+      "packSize": 3,
+      "packSizeSpread": 0.15,
+      "encounterRange": 5,
+      "courtRange": 1.2,
+      "courtCooldown": 2,
+      "courtRelation": 0.08,
+      "courtSnap": 4,
+      "displayRange": 6,
+      "displayCooldown": 4,
+      "displayWin": 0.2,
+      "displayLose": 0.1,
+      "displaySeconds": 2,
+      "huntRange": 2.5,
+      "huntCooldown": 2.5,
+      "huntLunge": 3.5,
+      "huntDamage": 10,
+      "huntRelation": 0.2,
+      "respectAt": 0.6,
+      "respectDrift": 0.004,
+      "adoptAt": 0.85,
+      "allyAt": 0.8,
+      "giftInterval": 25,
+      "tributeInterval": 30,
+      "killFood": 3,
+      "courtPerSecond": 0.03,
+      "startShift": 0.2
     }
   },
 

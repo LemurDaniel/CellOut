@@ -167,6 +167,15 @@ public static class PartModels
             "FruitRed"    => CellVisual3D.Material(new Color(0.85f, 0.3f, 0.25f), 0f, 0.6f),
             "FruitGold"   => CellVisual3D.Material(new Color(0.95f, 0.75f, 0.25f), 0f, 0.6f),
             "FruitGreen"  => CellVisual3D.Material(new Color(0.5f, 0.7f, 0.3f), 0f, 0.6f),
+            // Ability parts (tools/blender/models/new_abilities.py)
+            "Scent"       => CellVisual3D.Material(new Color(0.82f, 0.6f, 0.9f), 0.15f, 0.55f),
+            "Pollen"      => CellVisual3D.Material(new Color(1f, 0.85f, 0.3f), 0.4f, 0.6f),
+            "Bloom"       => CellVisual3D.Material(new Color(0.98f, 0.97f, 0.92f), 0.1f, 0.7f),
+            "Glow"        => CellVisual3D.Material(new Color(0.3f, 1f, 0.92f), 2f, 0.3f),
+            "Ink"         => CellVisual3D.Material(new Color(0.16f, 0.08f, 0.22f), 0f, 0.1f),
+            "Sac"         => CellVisual3D.Material(new Color(0.9f, 0.3f, 0.28f), 0.05f, 0.25f),
+            "SacLine"     => CellVisual3D.Material(new Color(0.62f, 0.14f, 0.16f), 0f, 0.5f),
+            "Horn"        => CellVisual3D.Material(new Color(0.62f, 0.52f, 0.4f), 0f, 0.6f),
             _             => Skin(bodyColor),
         };
     }

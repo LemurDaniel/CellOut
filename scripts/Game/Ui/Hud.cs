@@ -13,6 +13,7 @@
 //
 
 using System.Collections.Generic;
+using System.Linq;
 using Godot;
 
 namespace CellOut;
@@ -27,7 +28,12 @@ public partial class Hud : CanvasLayer
     //   Refresh       Writes the stage into its label, the numbers into the dial.
     //   GoalText      Translated goal line of the current stage, the tooltip of the progress ring.
     //   EditorRequested   The editor icon of the dial was pressed, Main opens the editor.
-    //   _Process      Offered buttons breathe, the key slots of the abilities follow their cooldowns.
+    //   AbilityPressed    An ability slot was clicked, Main fires it like its key.
+    //   BindWays          The encounters of pack and tribe for the slots of the three ways.
+    //   SlotsNow          The ability slots of this frame: key abilities of the cell or the three ways.
+    //   FansOf            From the pack on: per way its fan, the way and the ability parts of its tab.
+    //   PressWayKey       Key 1, 2 or 3: opens the fan of that way, again uses the way.
+    //   _Process      Offered buttons breathe, the ability slots follow their cooldowns.
     //   ShowBanner    Big title with subtitle, fades out after a few seconds.
     //
 
@@ -47,6 +53,8 @@ public partial class Hud : CanvasLayer
     private Tween _bannerTween;
     private Button _languageButton;
     [Signal] public delegate void EditorRequestedEventHandler();
+    [Signal] public delegate void AbilityPressedEventHandler(int index);
+    [Signal] public delegate void AbilityFanPressedEventHandler(int way, int part);
 
     private const float OFFER_POP_SECONDS = 0.5f;
 
@@ -121,10 +129,99 @@ public partial class Hud : CanvasLayer
         // Cooldowns of the key abilities change every frame
         if (null != _player)
         {
-            _abilitySlots.Refresh(_player.Abilities, _player.BodyColor, !_player.IsOrganism && !_player.IsHidden);
+            List<AbilitySlots.Slot> slots = SlotsNow();
+            _abilitySlots.Refresh(slots, _player.BodyColor, FansOf(slots));
         }
         Breathe(_divideButton, _divideShownAt, 0f);
         Breathe(_organismButton, _organismShownAt, 2.6f);
+    }
+
+    private PackEncounter _encounter;
+
+    /// <summary>The encounters of pack and tribe: from the pack on the slots show the three ways.</summary>
+    /// <param name="encounter">(Required) The encounters with foreign packs and tribes.</param>
+    public void BindWays(PackEncounter encounter)
+    {
+        _encounter = encounter;
+    }
+
+    /*
+      The slots of this frame:
+      > A living cell: its key abilities (AbilitySet.Slots), the disc in the diet class of the part
+      > A creature: from the pack on court (herbivore), display (omnivore), hunt (carnivore), dim
+        without a stranger close by (hunt stays lit in the tribe, it tears down huts); then the
+        ability parts of its body plan in the color of their tab
+    */
+    private List<AbilitySlots.Slot> SlotsNow()
+    {
+        var slots = new List<AbilitySlots.Slot>();
+        if (_player.IsHidden || _player.IsDead)
+        {
+            return slots;
+        }
+        if (!_player.IsOrganism)
+        {
+            foreach (PartKind part in _player.Abilities.Slots)
+            {
+                slots.Add(new AbilitySlots.Slot(part, null, null, PartCatalog.Get(part).Diet, _player.Abilities.CooldownShare(part), _player.Abilities.IsRunning(part), IsDim: false));
+            }
+            return slots;
+        }
+        if (_encounter is { IsActive: true })
+        {
+            foreach (PackWay way in System.Enum.GetValues<PackWay>())
+            {
+                bool isDim = null == _encounter.Target && !(PackWay.Hunt == way && _player.IsTribal);
+                slots.Add(new AbilitySlots.Slot(null, way, null, TribeWays.DietOf(way), _encounter.CooldownShare(way), IsRunning: false, isDim));
+            }
+        }
+        if (_encounter is { IsActive: true })
+        {
+            return slots;     // from the pack on the ability parts sit in the fans of the ways (FansOf)
+        }
+        CreatureAbilitySet abilities = _player.CreatureAbilities;
+        foreach (CreaturePartKind part in abilities.Slots)
+        {
+            slots.Add(new AbilitySlots.Slot(null, null, part, CreatureAbilitySet.DietOf(part), abilities.CooldownShare(part), abilities.IsRunning(part), IsDim: false));
+        }
+        return slots;
+    }
+
+    /*
+      The fans of the ways (wish of the user 2026-11-17): from the pack on every way opens a fan
+      of the ability parts of the creature in the color of that way (court gentle, display
+      clever, hunt wild), the way itself is not in it (its key pressed again uses it). A way
+      without such parts and every other slot fire at once.
+    */
+    private List<IReadOnlyList<AbilitySlots.Slot>> _fans = new();
+
+    private List<IReadOnlyList<AbilitySlots.Slot>> FansOf(List<AbilitySlots.Slot> slots)
+    {
+        var fans = new List<IReadOnlyList<AbilitySlots.Slot>>();
+        _fans = fans;
+        CreatureAbilitySet abilities = _player.CreatureAbilities;
+        foreach (AbilitySlots.Slot slot in slots)
+        {
+            if (slot.Way is not PackWay way)
+            {
+                fans.Add(null);
+                continue;
+            }
+            var fan = new List<AbilitySlots.Slot>();
+            foreach (CreaturePartKind part in abilities.Slots.Where(part => CreatureAbilitySet.DietOf(part) == TribeWays.DietOf(way)))
+            {
+                fan.Add(new AbilitySlots.Slot(null, null, part, slot.Diet, abilities.CooldownShare(part), abilities.IsRunning(part), IsDim: false));
+            }
+            fans.Add(0 == fan.Count ? null : fan);
+        }
+        return fans;
+    }
+
+    /// <summary>The key of a way (1, 2 or 3): opens its fan, the same key again uses the way.</summary>
+    /// <returns>False when no way slot shows, the key goes on to the encounter then.</returns>
+    public bool PressWayKey(int way)
+    {
+        return _abilitySlots.Visible && _abilitySlots.PressKey(way);
     }
 
     /// <summary>A gentle pulse once the pop-in is over, which tweens the same scale.</summary>
@@ -271,6 +368,17 @@ public partial class Hud : CanvasLayer
 
         // The key slots of the cell abilities in an arc around the dial
         _abilitySlots = new AbilitySlots();
+        _abilitySlots.SlotPressed += index => EmitSignal(SignalName.AbilityPressed, index);
+        _abilitySlots.FanPressed  += (slot, item) =>
+        {
+            // The way itself, or a part of its fan
+            if (slot >= _fans.Count || null == _fans[slot] || item >= _fans[slot].Count)
+            {
+                return;
+            }
+            AbilitySlots.Slot chosen = _fans[slot][item];
+            EmitSignal(SignalName.AbilityFanPressed, slot, chosen.Creature is CreaturePartKind part ? (int)part : -1);   // -1 never comes from a fan of parts, kept for the way itself
+        };
         AddChild(_abilitySlots);
     }
 

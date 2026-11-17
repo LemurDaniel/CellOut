@@ -1,11 +1,12 @@
 // NOTE:
 //   Placing a building by hand: after a build tile of the HUD is pressed, the building of
-//   that function hangs at the mouse as a see-through preview on the ground. Where it may
-//   stand (TribeCommander.CanBuildAt: on land, within the build radius of the fire, clear
-//   of the fire and of other buildings) it is nearly solid, elsewhere it fades. R turns
-//   it a step (Shift + R back), a left click builds it there as it stands, a right click
-//   or Escape lets go. It does not process on its
-//   own: Main calls Update per physics frame and routes the input to HandleInput first.
+//   that function stands as a see-through preview on the ground in front of the chieftain
+//   (no strategy view, decision of the user 2026-11-17): the player walks it to the right
+//   spot. Where it may stand (TribeCommander.CanBuildAt: on land, within the build radius
+//   of the fire, clear of the fire and of other buildings) it is nearly solid, elsewhere it
+//   fades. R turns it a step (Shift + R back), Space or a left click builds it there as it
+//   stands, Escape lets go. It does not process on its own: Society calls Update per
+//   physics frame and routes the input to HandleInput first.
 //
 //   var placer = new BuildingPlacer();
 //   placer.Setup(session, tribe);
@@ -16,7 +17,7 @@
 
 //
 //   Chapters:
-//     PLACE   Begin, the preview at the mouse, building and letting go.
+//     PLACE   Begin, the preview in front of the chieftain, building and letting go.
 //
 
 using System.Linq;
@@ -30,17 +31,18 @@ public partial class BuildingPlacer : Node3D
     // ================================   PLACE   ================================
     // ===========================================================================
     //
-    //   IsPlacing     A building hangs at the mouse.
+    //   IsPlacing     A building stands as a preview in front of the chieftain.
     //   Pending       Its function, null when none.
-    //   IsAllowed     Whether the spot under the mouse takes it.
+    //   IsAllowed     Whether the spot in front of the chieftain takes it.
+    //   Spot          Where it would stand: in front of the chieftain, clear of its body.
     //   Turn          How the building is turned, kept for the next one.
     //   Rotate        Turns it by steps of TURN_STEP.
     //   Setup         The session and the tribe, before AddChild.
     //   Begin         Takes a function to place, the same one again lets go.
     //   Cancel        Lets go.
     //   PlaceAt       Builds the pending building at a spot.
-    //   HandleInput   R turns, left click builds, right click and Escape let go.
-    //   Update        The preview follows the mouse on the ground and shows whether the spot is allowed.
+    //   HandleInput   R turns, Space or a left click builds, Escape lets go.
+    //   Update        The preview walks with the chieftain and shows whether the spot is allowed.
     //
 
     private const float ALLOWED_FADE = 0.2f;         // transparency of the preview where it may stand
@@ -83,7 +85,7 @@ public partial class BuildingPlacer : Node3D
         AddChild(_preview);
     }
 
-    /// <summary>Hangs the building of a function at the mouse, the function that already hangs there lets go.</summary>
+    /// <summary>Stands the building of a function in front of the chieftain, the function already shown lets go.</summary>
     /// <param name="kind">(Required) The function, built from the blueprint of the tribe.</param>
     public void Begin(BuildingKind kind)
     {
@@ -117,7 +119,7 @@ public partial class BuildingPlacer : Node3D
         return true;
     }
 
-    /// <summary>Takes clicks and Escape while a building hangs at the mouse.</summary>
+    /// <summary>Takes R, Space, the left click and Escape while a building is shown.</summary>
     /// <param name="event">(Required) The event Main received in _UnhandledInput.</param>
     /// <returns>True when the placer used the event.</returns>
     public bool HandleInput(InputEvent @event)
@@ -136,28 +138,27 @@ public partial class BuildingPlacer : Node3D
             Rotate(turn.ShiftPressed ? -1 : 1);
             return true;
         }
-        if (@event is not InputEventMouseButton button)
+        bool isBuild = @event is InputEventKey { Pressed: true, Echo: false, Keycode: Key.Space or Key.Enter }
+            || @event is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left };
+        if (isBuild)
         {
-            return false;
-        }
-        if (MouseButton.Right == button.ButtonIndex && button.Pressed)
-        {
-            Cancel();
-            return true;
-        }
-        if (MouseButton.Left == button.ButtonIndex)
-        {
-            // The press builds, its release is swallowed too: it must not select units
-            if (button.Pressed)
-            {
-                PlaceAt(Plane3D.MouseOnPlane(GetViewport(), _session.Player.GlobalPosition));
-            }
+            PlaceAt(Spot());
             return true;
         }
         return false;
     }
 
-    /// <summary>Moves the preview to the mouse on the ground, once per physics frame.</summary>
+    private const float FRONT_GAP = 1.5f;            // body sizes between the chieftain and the wall of the building
+
+    /// <summary>Where the building would stand: in front of the chieftain, its wall FRONT_GAP sizes away.</summary>
+    public Vector2 Spot()
+    {
+        Player player = _session.Player;
+        float  reach  = _session.Coast.Unit * Hut.SCALE * Hut.RADIUS + player.BodySize() * FRONT_GAP;
+        return player.GlobalPosition + Vector2.FromAngle(player.Facing) * reach;
+    }
+
+    /// <summary>Moves the preview with the chieftain, once per physics frame.</summary>
     public void Update()
     {
         if (!IsPlacing)
@@ -170,7 +171,7 @@ public partial class BuildingPlacer : Node3D
             return;
         }
         Coast   coast = _session.Coast;
-        Vector2 spot  = Plane3D.MouseOnPlane(GetViewport(), _session.Player.GlobalPosition);
+        Vector2 spot  = Spot();
         float   ground = coast.GroundHeight(spot) * _session.Player.BodySize();
         _preview.Visible        = true;
         _preview.GlobalPosition = Plane3D.To3D(spot, ground - Plane3D.Drop(spot));

@@ -256,7 +256,8 @@ public partial class CreatureVisual3D : Node3D
 
         // The posture belongs to the animal, in the water and on land alike (decision of the user 2026-11-15:
         // the upright jellyfish fell over on land because its threads counted as legs)
-        float postureGoal = ShowsPosture ? design.Pitch : 0f;
+        // Body language (CellBody.Strike: rearing up, bowing, ducking) rides on top of the posture
+        float postureGoal = (ShowsPosture ? design.Pitch : 0f) + (Body?.Pose ?? 0f);
         _posture = Mathf.Lerp(_posture, postureGoal, Mathf.Clamp(dt * POSTURE_EASE, 0f, 1f));
         var pitched = new Basis(Vector3.Back, _posture);
         _parts.Basis = pitched;

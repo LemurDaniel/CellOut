@@ -27,6 +27,7 @@ void vertex() {
 void fragment() {
 	float caustic;
 	vec3 col = ocean_floor_color(world_pos.xz / world_scale, TIME, deep_color, shallow_color, caustic);
+	col *= planet_water.rgb;
 	float edge = smoothstep(0.5, 0.15, distance(UV, vec2(0.5)));
 	ALBEDO = mix(fog_color, col, edge);
 	EMISSION = caustic_color * caustic * caustic_strength * edge;

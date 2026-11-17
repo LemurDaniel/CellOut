@@ -1,20 +1,22 @@
 // NOTE:
-//   A neighbor tribe: a fire with huts and villagers somewhere on the islands, its own
-//   body plan tint and a relation to the player's tribe from hostile (-1) to friendly
-//   (+1). A friendly tribe sends traders, a hostile one raiders (both are its kin with a
+//   A neighbor: in the pack stage a foreign pack of another species around its den, from
+//   the tribe on a fire with huts and villagers somewhere on the islands (Settle turns the
+//   den into a village). It has its own body plan and tint, a relation to the player from
+//   hostile (-1) to friendly (+1) and a respect (0..1) the player wins by displays. A friendly tribe sends traders, a hostile one raiders (both are its kin with a
 //   Role), the RivalKeeper decides when and resolves what they do. Fire, huts and kin
 //   are its children, it steers its kin once per physics frame when the keeper calls
 //   Update.
 //
 //   var rival = new RivalTribe();
-//   rival.Setup(faction: 1, nameKey: "RIVAL_NAME_1", fire, entry, design, tint, relation: 0.5f);
+//   rival.Setup(faction: 1, nameKey: "RIVAL_NAME_1", fire, entry, design, tint, relation: 0.5f, size, isSettled: true);
+//   pack.Setup(...same..., isSettled: false);   // a foreign pack at its den, later pack.Settle()
 //   AddChild(rival);
 //   rival.Update(dt, coast, playerSize);
 
 //
 //   Chapters:
-//     SETTINGS   Faction, name, fire, entry point and the relation.
-//     VILLAGE    Fire, huts and villagers, built in _Ready.
+//     SETTINGS   Faction, name, fire, entry point, relation and respect.
+//     VILLAGE    The den of a pack or fire, huts and villagers of a tribe.
 //     KIN        Villagers, traders and raiders: spawning, steering and leaving.
 //
 
@@ -38,6 +40,9 @@ public partial class RivalTribe : Node2D
     //   IsHostile    Relation at HostileAt or below: it raids.
     //   Setup        Everything before AddChild.
     //   Shift        Moves the relation, clamped.
+    //   Respect      0 .. 1, won by displays, it drifts back (RivalKeeper).
+    //   IsRespectful Respect at RespectAt or above: tribute, never a raid.
+    //   ShiftRespect Moves the respect, clamped.
     //
 
     /// <summary>Village size and relation thresholds from data/balance.json (tribe.rivals).</summary>
@@ -45,6 +50,9 @@ public partial class RivalTribe : Node2D
 
     public int Faction { get; private set; } = 1;
     public string NameKey { get; private set; } = "RIVAL_NAME_1";
+
+    /// <summary>Key of its creature template (data/creatures), its body plan.</summary>
+    public string Species { get; init; } = "";
     public Vector2 Fire { get; private set; }
     public Vector2 Entry { get; private set; }
     public float Relation { get; private set; }
@@ -68,8 +76,10 @@ public partial class RivalTribe : Node2D
     /// <param name="tint">(Required) Color of its kin.</param>
     /// <param name="relation">(Required) Starting relation, -1..1.</param>
     /// <param name="size">(Required) Player.BodySize(), its kin are grown.</param>
-    public void Setup(int faction, string nameKey, Vector2 fire, Vector2 entry, CreatureDesign bodyPlan, Color tint, float relation, float size)
+    /// <param name="isSettled">(Optional) A tribe with fire and huts, false: a foreign pack at its den. Defaults to true.</param>
+    public void Setup(int faction, string nameKey, Vector2 fire, Vector2 entry, CreatureDesign bodyPlan, Color tint, float relation, float size, bool isSettled = true)
     {
+        IsSettled = isSettled;
         Faction   = faction;
         NameKey   = nameKey;
         Fire      = fire;
@@ -87,15 +97,29 @@ public partial class RivalTribe : Node2D
         Relation = Mathf.Clamp(Relation + amount, -1f, 1f);
     }
 
+    public float Respect { get; private set; }
+
+    public bool IsRespectful => Respect >= Balance.Current.Tribe.Ways.RespectAt;
+
+    /// <summary>Moves the respect, clamped to 0..1.</summary>
+    /// <param name="amount">(Required) Positive: it bows to the player.</param>
+    public void ShiftRespect(float amount)
+    {
+        Respect = Mathf.Clamp(Respect + amount, 0f, 1f);
+    }
+
     // ===========================================================================
     // ===============================   VILLAGE   ===============================
     // ===========================================================================
     //
-    //   Nest         Its fire.
+    //   Nest         Its den, the fire once it is a tribe.
+    //   IsSettled    A tribe with fire and huts, false while it is a foreign pack at its den.
     //   Huts         Its buildings still standing.
-    //   IsDefeated   It lost its last building: no trades, no raids, its people left.
+    //   IsDefeated   It lost its last building (or every animal of the pack): no trades, no raids, its people left.
     //   Defeat       Marks it defeated and sends everyone away.
-    //   _Ready   Fire, huts on a ring and the villagers around it.
+    //   _Ready       The den with the animals of the pack, or right away the village.
+    //   Settle       The pack becomes a tribe: the fire is lit, huts on a ring, villagers up to Villagers.
+    //   Release      Hands one animal over to the player's pack (courted until it joined).
     //
 
     public Nest Nest { get; private set; }
@@ -128,12 +152,42 @@ public partial class RivalTribe : Node2D
         _coast = coast;
     }
 
+    public bool IsSettled { get; private set; }
+
     public override void _Ready()
     {
         Nest = new Nest { Position = Fire, Size = _size, GroundHeight = _coast.GroundHeight(Fire) * _size };
         AddChild(Nest);
-        Nest.LightFire();
+        if (IsSettled)
+        {
+            BuildVillage();
+            return;
+        }
 
+        // A foreign pack: its animals roam around the den
+        for (int i = 0; i < Balance.Current.Tribe.Ways.PackSize; i++)
+        {
+            Kin animal = SpawnKin(Fire + Vector2.FromAngle(Rand.Angle()) * _size * 3f, KinRole.Villager);
+            animal.JoinTribe(Fire);
+        }
+        Log.Verbose("RivalTribe", $"Foreign pack {Faction} lives at its den {Fire} with {_kin.Count} animal(s).");
+    }
+
+    /// <summary>The foreign pack becomes a tribe: its den turns into a fire with huts, villagers up to Villagers.</summary>
+    public void Settle()
+    {
+        if (IsSettled || IsDefeated)
+        {
+            return;
+        }
+        IsSettled = true;
+        BuildVillage();
+    }
+
+    /// <summary>Fire, huts on a ring and villagers around the fire, the animals of the pack count as villagers.</summary>
+    private void BuildVillage()
+    {
+        Nest.LightFire();
         float unit = _coast.Unit;
         for (int i = 0; i < Tune.Huts; i++)
         {
@@ -148,16 +202,30 @@ public partial class RivalTribe : Node2D
             // Dwellings first, the last building is what the tribe is known for; every one from a random template
             BuildingKind kind = i < Tune.Huts - 1 ? BuildingKind.Dwelling : SIGNATURE_KINDS[Faction % SIGNATURE_KINDS.Length];
             hut.Setup(BuildingTemplates.Build(kind, Rand.Index(BuildingTemplates.Count(kind))), Faction);
+            _coast.AddPad(spot, hut.FoundationRadius);
             hut.Destroyed += () => _huts.Remove(hut);
             _huts.Add(hut);
             AddChild(hut);
         }
-        for (int i = 0; i < Tune.Villagers; i++)
+        for (int i = _kin.Count; i < Tune.Villagers; i++)
         {
             Kin villager = SpawnKin(Fire + Vector2.FromAngle(Rand.Angle()) * _size * 3f, KinRole.Villager);
             villager.JoinTribe(Fire);
         }
         Log.Verbose("RivalTribe", $"Faction {Faction} settled at {Fire} with {_huts.Count} hut(s), relation {Relation:F2}.");
+    }
+
+    /// <summary>One animal leaves the foreign pack for the player's pack, the caller adds it there.</summary>
+    /// <param name="animal">(Required) A kin of this pack.</param>
+    /// <returns>True when it belonged to this pack and left it.</returns>
+    public bool Release(Kin animal)
+    {
+        if (!_kin.Remove(animal))
+        {
+            return false;
+        }
+        RemoveChild(animal);
+        return true;
     }
 
     // ===========================================================================

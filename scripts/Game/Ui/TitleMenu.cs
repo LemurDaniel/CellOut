@@ -1,18 +1,22 @@
 // NOTE:
-//   Title menu over the paused primordial soup: the bobbing "Cell Out" logo, a tag line,
-//   the start button and a language switch. Start (button, Enter or Space) fades the menu
-//   out, emits StartPressed and frees itself. Created and wired by Main.
+//   Title menu: the Milky Way with the planets to play on (Menu/GalaxyView.cs), the bobbing
+//   "Cell Out" logo with its tag line, the graphics and language buttons. A click on a
+//   planet flies onto it and shows it up close with its start phases (Menu/PlanetView.cs),
+//   Back or Escape returns to the galaxy. Start (button, Enter or Space in the planet view)
+//   makes the planet current (Core/Planets.cs), fades the menu out, raises StartPressed
+//   with the phase and frees itself. Created by Flow/StartFlow.cs.
 //
 //   var menu = new TitleMenu();
 //   AddChild(menu);
-//   menu.StartPressed    += OnStartPressed;
+//   menu.StartPressed    += phase => Start(phase);
 //   menu.LanguagePressed += Hud.ToggleLanguage;
+//   menu.ShowPlanet(Planets.Get("RUBRA"));      // e.g. from the graphics reel
 
 //
 //   Chapters:
-//     SIGNALS AND INPUT   Start and language signals, keyboard start.
+//     SIGNALS AND INPUT   Start and language, keyboard, the two views.
 //     ANIMATE             Logo bob, fade in and fade out.
-//     BUILD UI            Vignette, logo, tag line, start and language buttons.
+//     BUILD UI            Galaxy, planet view, logo, tag line, settings.
 //
 
 using Godot;
@@ -25,37 +29,61 @@ public partial class TitleMenu : CanvasLayer
     // ==========================   SIGNALS AND INPUT   ==========================
     // ===========================================================================
     //
-    //   StartPressed      The player wants to play, the menu is fading out already.
+    //   StartPressed      The player starts on the current planet in a phase, the menu fades already (a C# event: an enum is kept as it is).
     //   LanguagePressed   The language button was pressed, Main toggles via the HUD.
+    //   ShowPlanet        Flies onto a planet and shows it up close.
+    //   ShowGalaxy        Back out to the whole galaxy.
+    //   Start             Chooses the planet, fades out, raises StartPressed once and frees the menu.
     //   CycleGraphics     The graphics button: next tier (Core/GraphicsQuality.cs), remembered for the next start.
-    //   Start             Fades out, emits StartPressed once and frees the menu.
-    //   _UnhandledInput   Enter and Space start as well.
+    //   _UnhandledInput   Enter and Space start in the planet view (open the first planet in the galaxy), Escape goes back, F10 opens every phase.
     //   _Notification     Re-translates after a locale change.
     //
 
-    [Signal] public delegate void StartPressedEventHandler();
+    public event System.Action<StartPhase> StartPressed;
+
     [Signal] public delegate void LanguagePressedEventHandler();
 
     private const float FADE_SECONDS = 0.5f;
 
     private bool _isStarting;
 
-    /// <summary>Fades the menu out, emits StartPressed once and frees the menu afterwards.</summary>
-    public void Start()
+    /// <summary>Flies onto a planet and shows it up close with its start phases.</summary>
+    /// <param name="planet">(Required) The planet.</param>
+    public void ShowPlanet(Planet planet)
+    {
+        if (_isStarting)
+        {
+            return;
+        }
+        _galaxy.Focus(planet);
+        _planet.Show(planet);
+        FadeLogo(0f);
+    }
+
+    /// <summary>Back out to the galaxy.</summary>
+    public void ShowGalaxy()
+    {
+        _planet.Visible = false;
+        _galaxy.Unfocus();
+        FadeLogo(1f);
+    }
+
+    /// <summary>Makes the shown planet current, fades the menu out, raises StartPressed and frees the menu.</summary>
+    /// <param name="phase">(Required) The phase to start in.</param>
+    public void Start(StartPhase phase)
     {
         if (_isStarting)
         {
             return;
         }
         _isStarting = true;
-        Log.Verbose("TitleMenu", "Start pressed -> fading out.");
+        Planets.Choose((_planet.Planet ?? Planets.Current).Key);
+        Log.Verbose("TitleMenu", $"Start on {Planets.Current.Key} in phase {phase} -> fading out.");
 
         Tween fade = CreateTween().SetPauseMode(Tween.TweenPauseMode.Process).SetParallel();
         fade.TweenProperty(_root, "modulate:a", 0f, FADE_SECONDS);
-        fade.TweenProperty(_logo, "position:y", _logo.Position.Y - 80f, FADE_SECONDS)
-            .SetTrans(Tween.TransitionType.Back).SetEase(Tween.EaseType.In);
         fade.Chain().TweenCallback(Callable.From(QueueFree));
-        EmitSignal(SignalName.StartPressed);
+        StartPressed?.Invoke(phase);
     }
 
     /// <summary>Switches to the next graphics tier and remembers it.</summary>
@@ -68,16 +96,42 @@ public partial class TitleMenu : CanvasLayer
 
     public override void _UnhandledInput(InputEvent @event)
     {
-        if (@event is InputEventKey { Pressed: true, Keycode: Key.Enter or Key.KpEnter or Key.Space })
+        if (@event is not InputEventKey { Pressed: true, Echo: false } key)
+        {
+            return;
+        }
+        if (key.Keycode is Key.Enter or Key.KpEnter or Key.Space)
         {
             GetViewport().SetInputAsHandled();
-            Start();
+            if (_planet.Visible)
+            {
+                _planet.Start();
+            }
+            else
+            {
+                ShowPlanet(Planets.Current);
+            }
+        }
+        else if (Key.F10 == key.Keycode)
+        {
+            // Cheat: every start phase open for this session, like the stage jumps of the F10 menu in the game
+            GetViewport().SetInputAsHandled();
+            PlanetProgress.IsCheatOpen = !PlanetProgress.IsCheatOpen;
+            if (_planet.Visible)
+            {
+                _planet.Refresh();
+            }
+        }
+        else if (Key.Escape == key.Keycode && _planet.Visible)
+        {
+            GetViewport().SetInputAsHandled();
+            ShowGalaxy();
         }
     }
 
     public override void _Notification(int what)
     {
-        if (NotificationTranslationChanged == what && null != _startButton)
+        if (NotificationTranslationChanged == what && null != _languageButton)
         {
             Translate();
         }
@@ -87,27 +141,23 @@ public partial class TitleMenu : CanvasLayer
     // ===============================   ANIMATE   ===============================
     // ===========================================================================
     //
-    //   _Process   Bobs and tilts the logo, the start button breathes.
-    //   FadeIn     Logo drops in, tag line and button follow.
+    //   _Process   Bobs and tilts the logo.
+    //   FadeIn     The menu fades in, the logo drops in.
+    //   FadeLogo   Logo and hint leave while a planet is shown.
     //
 
-    private const float BOB_PIXELS = 8f;
+    private const float BOB_PIXELS = 6f;
     private const float BOB_SPEED = 1.6f;
     private const float TILT_RADIANS = 0.025f;
-    private const float BREATHE_AFTER = 1.2f;        // seconds, after FadeIn
 
     private float _time;
 
     public override void _Process(double delta)
     {
         _time += (float)delta;
-        _logo.Rotation = Mathf.Sin(_time * BOB_SPEED * 0.7f) * TILT_RADIANS;
+        _logo.Rotation    = Mathf.Sin(_time * BOB_SPEED * 0.7f) * TILT_RADIANS;
         _logoBob.Position = new Vector2(0f, Mathf.Sin(_time * BOB_SPEED) * BOB_PIXELS);
-        // Breathing starts after the pop-in, which tweens the same scale
-        if (!_isStarting && _time > BREATHE_AFTER && !_startButton.IsHovered())
-        {
-            _startButton.Scale = Vector2.One * (1f + 0.025f * Mathf.Sin(_time * 3f));
-        }
+        _hint.Modulate    = new Color(1f, 1f, 1f, _logoColumn.Modulate.A * (0.8f + 0.2f * Mathf.Sin(_time * 2.2f)));
     }
 
     private void FadeIn()
@@ -116,7 +166,12 @@ public partial class TitleMenu : CanvasLayer
         Tween fade = CreateTween().SetPauseMode(Tween.TweenPauseMode.Process);
         fade.TweenProperty(_root, "modulate:a", 1f, FADE_SECONDS);
         EditorStyle.PopIn(_logo, 0.1f);
-        EditorStyle.PopIn(_startButton, 0.45f);
+    }
+
+    private void FadeLogo(float alpha)
+    {
+        Tween fade = CreateTween().SetPauseMode(Tween.TweenPauseMode.Process);
+        fade.TweenProperty(_logoColumn, "modulate:a", alpha, 0.35f);
     }
 
     // ===========================================================================
@@ -124,19 +179,21 @@ public partial class TitleMenu : CanvasLayer
     // ===========================================================================
     //
     //   _Ready      Keeps running while paused, builds and fades in.
-    //   BuildUi     Vignette, centered logo with tag line, start button, graphics and language buttons.
-    //   Translate   Texts of tag line and buttons.
+    //   BuildUi     Galaxy, planet view, logo and tag line top left, a hint below, graphics and language buttons.
+    //   Translate   Every text in the current language.
     //   NewLabel    Label with outline, translated here.
     //
 
-    private const int LOGO_FONT_SIZE = 120;
-    private static readonly Color START_ACCENT = new(0.55f, 0.85f, 0.95f);   // protocell blue
+    private const int LOGO_FONT_SIZE = 96;
 
     private Control _root;
+    private GalaxyView _galaxy;
+    private PlanetView _planet;
+    private Control _logoColumn;
     private Control _logo;
     private Control _logoBob;
     private Label _tagLine;
-    private Button _startButton;
+    private Label _hint;
     private Button _languageButton;
     private Button _graphicsButton;
 
@@ -155,85 +212,43 @@ public partial class TitleMenu : CanvasLayer
         _root.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
         AddChild(_root);
 
-        // Vignette: dark edges, the soup stays visible in the middle
-        var vignette = new TextureRect
-        {
-            Texture = new GradientTexture2D
-            {
-                Gradient = new Gradient
-                {
-                    Colors  = new[] { new Color(0.01f, 0.03f, 0.06f, 0.15f), new Color(0.01f, 0.03f, 0.06f, 0.85f) },
-                    Offsets = new[] { 0.2f, 1f },
-                },
-                Fill     = GradientTexture2D.FillEnum.Radial,
-                FillFrom = new Vector2(0.5f, 0.5f),
-                FillTo   = new Vector2(1.1f, 0.5f),
-            },
-            ExpandMode  = TextureRect.ExpandModeEnum.IgnoreSize,
-            StretchMode = TextureRect.StretchModeEnum.Scale,
-            MouseFilter = Control.MouseFilterEnum.Ignore,
-        };
-        vignette.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
-        _root.AddChild(vignette);
+        // The Milky Way fills the screen, the planet view lies over it
+        _galaxy = new GalaxyView();
+        _galaxy.PlanetPicked += ShowPlanet;
+        _root.AddChild(_galaxy);
+        _planet = new PlanetView();
+        _planet.StartPressed += Start;
+        _planet.BackPressed  += ShowGalaxy;
+        _root.AddChild(_planet);
 
-        var center = new CenterContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
-        center.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
-        _root.AddChild(center);
-        var column = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
-        column.AddThemeConstantOverride("separation", 18);
-        center.AddChild(column);
-
-        // Logo: the pivot control pops and tilts, the inner one bobs
-        _logo = new Control { CustomMinimumSize = new Vector2(760, 170), MouseFilter = Control.MouseFilterEnum.Ignore };
+        // Logo top left: the pivot control pops and tilts, the inner one bobs
+        var column = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore, Position = new Vector2(40, 30) };
+        column.AddThemeConstantOverride("separation", 4);
+        _root.AddChild(column);
+        _logoColumn = column;
+        _logo = new Control { CustomMinimumSize = new Vector2(560, 120), PivotOffset = new Vector2(280, 60), MouseFilter = Control.MouseFilterEnum.Ignore };
         column.AddChild(_logo);
         _logoBob = new Control { MouseFilter = Control.MouseFilterEnum.Ignore };
         _logoBob.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
         _logo.AddChild(_logoBob);
         Label title = NewLabel(LOGO_FONT_SIZE);
         GameFonts.UseDisplay(title);
-        title.Text                = Tr("BANNER_START_TITLE");
-        title.HorizontalAlignment = HorizontalAlignment.Center;
-        title.VerticalAlignment   = VerticalAlignment.Center;
+        title.Text              = Tr("BANNER_START_TITLE");
+        title.VerticalAlignment = VerticalAlignment.Center;
         title.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
         _logoBob.AddChild(title);
-
         _tagLine = NewLabel(20);
-        _tagLine.HorizontalAlignment = HorizontalAlignment.Center;
-        _tagLine.Modulate            = new Color(1f, 1f, 1f, 0.8f);
+        _tagLine.Modulate = new Color(1f, 1f, 1f, 0.8f);
         column.AddChild(_tagLine);
+        _hint = NewLabel(18);
+        column.AddChild(new Control { CustomMinimumSize = new Vector2(0, 14), MouseFilter = Control.MouseFilterEnum.Ignore });
+        column.AddChild(_hint);
 
-        // Start button, centered below
-        var buttonRow = new CenterContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
-        buttonRow.CustomMinimumSize = new Vector2(0f, 90f);
-        column.AddChild(buttonRow);
-        _startButton = new Button
-        {
-            CustomMinimumSize = new Vector2(260, 60),
-            FocusMode         = Control.FocusModeEnum.None,
-            AutoTranslateMode = AutoTranslateModeEnum.Disabled,
-        };
-        _startButton.AddThemeFontSizeOverride("font_size", 24);
-        EditorStyle.ApplyButton(_startButton, START_ACCENT);
-        _startButton.Pressed      += Start;
-        _startButton.MouseEntered += () => EditorStyle.ScaleTo(_startButton, 1.08f);
-        _startButton.MouseExited  += () => EditorStyle.ScaleTo(_startButton, 1f);
-        buttonRow.AddChild(_startButton);
-
-        // Settings bottom right: the language switch like in the HUD
-        _languageButton = new Button
-        {
-            FocusMode         = Control.FocusModeEnum.None,
-            AutoTranslateMode = AutoTranslateModeEnum.Disabled,
-        };
+        // Settings bottom right
+        _languageButton = new Button { FocusMode = Control.FocusModeEnum.None, AutoTranslateMode = AutoTranslateModeEnum.Disabled };
         _languageButton.AddThemeFontSizeOverride("font_size", 14);
         _languageButton.Pressed += () => EmitSignal(SignalName.LanguagePressed);
-
-        // Graphics tier next to it, a click cycles Low, Medium, High
-        _graphicsButton = new Button
-        {
-            FocusMode         = Control.FocusModeEnum.None,
-            AutoTranslateMode = AutoTranslateModeEnum.Disabled,
-        };
+        _graphicsButton = new Button { FocusMode = Control.FocusModeEnum.None, AutoTranslateMode = AutoTranslateModeEnum.Disabled };
         _graphicsButton.AddThemeFontSizeOverride("font_size", 14);
         _graphicsButton.Pressed += CycleGraphics;
 
@@ -258,9 +273,11 @@ public partial class TitleMenu : CanvasLayer
     private void Translate()
     {
         _tagLine.Text        = Tr("MENU_TAGLINE");
-        _startButton.Text    = Tr("MENU_START");
+        _hint.Text           = Tr("MENU_GALAXY_HINT");
         _languageButton.Text = Tr("LANGUAGE_BUTTON");
         _graphicsButton.Text = string.Format(Tr("GRAPHICS_BUTTON"), Tr($"GRAPHICS_{GraphicsQuality.Tier}".ToUpperInvariant()));
+        _galaxy.Translate();
+        _planet.Translate();
     }
 
     private static Label NewLabel(int fontSize)

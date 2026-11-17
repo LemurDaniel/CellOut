@@ -27,7 +27,7 @@ public sealed class TreeGrid
     //
     //   TREE_CELL        Side of a grid cell, in Unit.
     //   TreeGrid         (Required) terrain: the islands and the unit the cells scale with.
-    //   TreesIn          The trees of one grid cell, the same every time (seeded by the cell).
+    //   TreesIn          The trees of one grid cell, the same every time (seeded by the cell), none on foundations.
     //   PushOutOfTrees   A point moved out of every trunk it overlaps.
     //
     //   Heights in Unit (player sizes when the coast appeared), the ranges below times NATURE_SCALE:
@@ -52,6 +52,17 @@ public sealed class TreeGrid
         _terrain = terrain;
     }
 
+    /// <summary>The trees of one grid cell: none, one or two, none on the foundation of a building (cleared for it).</summary>
+    /// <param name="cell">(Required) Grid cell of TREE_CELL Units.</param>
+    private const float CANOPY_SHARE = 0.25f;        // crown radius per tree height, kept off foundations
+
+    public List<Coast.Tree> TreesIn(Vector2I cell)
+    {
+        List<Coast.Tree> trees = SeededTreesIn(cell);
+        trees.RemoveAll(tree => _terrain.IsOnPad(tree.Position, tree.Height * CANOPY_SHARE));   // no crown over a roof
+        return trees;
+    }
+
     /*
       > Dunes: 22% for a cycad
       > Deeper inland: the forest noise sets the chance of a tree (8% in a clearing, up to
@@ -59,9 +70,9 @@ public sealed class TreeGrid
           giant 8% (only deep in a forest), broadleaf 45%, horsetail 22%, tree fern 25%
         and in a forest 40% for a young fern of the undergrowth next to it
     */
-    /// <summary>The trees of one grid cell: none, one or two.</summary>
+    /// <summary>The seeded trees of one grid cell: none, one or two.</summary>
     /// <param name="cell">(Required) Grid cell of TREE_CELL Units.</param>
-    public List<Coast.Tree> TreesIn(Vector2I cell)
+    private List<Coast.Tree> SeededTreesIn(Vector2I cell)
     {
         float unit  = _terrain.Unit;
         var   trees = new List<Coast.Tree>(2);

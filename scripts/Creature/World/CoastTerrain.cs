@@ -14,6 +14,7 @@
 //   Chapters:
 //     SETTINGS       The size unit, the scale of nature on land and the islands.
 //     LAND AND SEA   Which side a point is on, how deep inside, the ground height.
+//     FOUNDATIONS    Flat round pads under buildings, the ground height levels on them.
 //
 
 using System.Collections.Generic;
@@ -93,13 +94,88 @@ public sealed class CoastTerrain
         return IslandShape.ToSea(_islands, point, margin);
     }
 
-    /// <summary>Ground height in player sizes at a plane point, the formula is GroundProfile.Height.</summary>
+    /// <summary>Ground height in player sizes at a plane point, the formula is GroundProfile.Height, flattened on every foundation.</summary>
     /// <param name="point">(Required) Plane point.</param>
     public float GroundHeight(Vector2 point)
     {
-        float   d = LandDepth(point) / Unit;
-        Vector2 q = point / Unit;
-        return GroundProfile.Height(d, _noise.GetNoise2D(q.X, q.Y), _hills.GetNoise2D(q.X, q.Y));
+        float   d      = LandDepth(point) / Unit;
+        Vector2 q      = point / Unit;
+        float   height = GroundProfile.Height(d, _noise.GetNoise2D(q.X, q.Y), _hills.GetNoise2D(q.X, q.Y));
+        float   blend  = PAD_BLEND * Unit;
+        foreach (Pad pad in _pads)
+        {
+            float distance = point.DistanceTo(pad.Center);
+            if (distance < pad.Radius + blend)
+            {
+                height = GroundProfile.Flatten(height, distance, pad.Radius, blend, pad.Height);
+            }
+        }
+        return height;
+    }
+
+    // ===========================================================================
+    // =============================   FOUNDATIONS   =============================
+    // ===========================================================================
+    //
+    //   Pad        A flat round foundation: plane center, radius in world units, height in player sizes.
+    //   Pads       All foundations, the ground shader draws trampled earth on them.
+    //   Revision   Counts up with every new foundation: ground, props and trees rebuild.
+    //   AddPad     Levels the ground around a building at the height of its middle (or of a foundation it touches).
+    //   IsOnPad    Whether a point lies on a foundation: no props, no trees there.
+    //
+
+    public const int MAX_PADS = 48;                  // the size of the pads array in coast_ground.gdshader
+    public const float PAD_BLEND = 4f;               // the slope from a foundation back to the land, in Unit
+
+    public readonly record struct Pad(Vector2 Center, float Radius, float Height);
+
+    private readonly List<Pad> _pads = new();
+
+    public IReadOnlyList<Pad> Pads => _pads;
+
+    public int Revision { get; private set; }
+
+    /// <summary>Levels the ground in a circle at the height of its middle, so a building stands flat on a slope.</summary>
+    /// <param name="center">(Required) Plane point of the middle, on land.</param>
+    /// <param name="radius">(Required) Radius of the flat part in world units.</param>
+    /// <returns>False when the coast holds MAX_PADS already or the point is not on land: the ground stays as it is.</returns>
+    /// <example><code>terrain.AddPad(hut.Position, coast.Unit * 6f);</code></example>
+    public bool AddPad(Vector2 center, float radius)
+    {
+        if (_pads.Count >= MAX_PADS || !IsOnLand(center))
+        {
+            return false;
+        }
+        // Overlapping an older foundation: the same height, so a village becomes one terrace without walls between
+        float height = GroundHeight(center);
+        float nearest = float.MaxValue;
+        foreach (Pad pad in _pads)
+        {
+            float distance = center.DistanceTo(pad.Center);
+            if (distance < pad.Radius + radius + PAD_BLEND * Unit && distance < nearest)
+            {
+                nearest = distance;
+                height  = pad.Height;
+            }
+        }
+        _pads.Add(new Pad(center, radius, height));
+        Revision++;
+        return true;
+    }
+
+    /// <summary>Whether a plane point lies on a foundation, or within margin of its flat part.</summary>
+    /// <param name="point">(Required) Plane point.</param>
+    /// <param name="margin">(Required) Extra distance in world units, e.g. the crown of a tree.</param>
+    public bool IsOnPad(Vector2 point, float margin)
+    {
+        foreach (Pad pad in _pads)
+        {
+            if (point.DistanceTo(pad.Center) < pad.Radius + margin)
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     /// <summary>Ground above GROUND_HEIGHT in world units (the hill), 0 in the sea and on the beach.</summary>

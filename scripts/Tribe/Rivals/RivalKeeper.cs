@@ -37,6 +37,9 @@ public partial class RivalKeeper : Node2D
     //   RaidStarted    Raiders of a tribe set out, Main shows the banner.
     //   TradeArrived   A trader delivered food and wood, Main shows the banner.
     //   TribeDefeated  A tribe lost its last building, its stock is looted, Main shows the banner.
+    //   TributePaid    A tribe that respects the player handed over food and wood.
+    //   PackGave       A foreign pack brings fruit (friendly) or fruit and meat (tribute) to the nest.
+    //   KinKilled      An enemy died in a fight: meat in the pack stage, food for a warlike tribe.
     //   Rivals         The neighbor tribes, empty before the player's tribe.
     //   Setup          The session, the pack and the tribe, before AddChild.
     //
@@ -45,6 +48,9 @@ public partial class RivalKeeper : Node2D
     [Signal] public delegate void RaidStartedEventHandler(string nameKey);
     [Signal] public delegate void TradeArrivedEventHandler(string nameKey, int food, int wood);
     [Signal] public delegate void TribeDefeatedEventHandler(string nameKey, int food, int wood);
+    [Signal] public delegate void TributePaidEventHandler(string nameKey, int food, int wood);
+    [Signal] public delegate void PackGaveEventHandler(RivalTribe rival, bool isTribute);
+    [Signal] public delegate void KinKilledEventHandler(Vector2 position, float size);
 
     /// <summary>Every tunable number of the rivals from data/balance.json (tribe.rivals).</summary>
     private static RivalsBalance Tune => Balance.Current.Tribe.Rivals;
@@ -77,8 +83,10 @@ public partial class RivalKeeper : Node2D
     // ===============================   SETTLE   ================================
     // ===========================================================================
     //
-    //   Settle       Count rival tribes: the first on the player's island, the others on the next islands.
-    //   HomeOf       A fire spot for rival i: far across the own island, or the center of another island.
+    //   SettlePacks  The foreign packs around the nest, each of another species (pack stage).
+    //   Settle       The packs become tribes, further tribes on the next islands up to Count.
+    //   AddRival     One rival of a species, a pack at its den or a tribe at its fire.
+    //   HomeOf       A home spot: on the own island away from the other homes, or the center of another island.
     //   EntryFor     Where a tribe enters the player's island: its fire on the same island, else the shore towards it.
     //   TintFor      A clearly different hue per tribe.
     //
@@ -88,48 +96,118 @@ public partial class RivalKeeper : Node2D
     private const float SHORE_STEP = 2f;             // Units per step when walking out to the shore
     private const float SHORE_MARGIN = 4f;           // Units back from the water for an entry point
 
-    /// <summary>Settles the rival tribes once, when the player's tribe exists.</summary>
-    /// <example><code>rivals.Settle();   // in Main when the stage turns to the tribe</code></example>
-    public void Settle()
+    /// <summary>Species of the foreign packs and tribes, creature templates that walk on land.</summary>
+    private static readonly string[] SPECIES = { "TRICERATOPS", "ELEPHANT", "GIRAFFE", "CROCODILE", "CHAMELEON", "FROG", "TREX", "PARROT" };
+
+    private const float PACK_DISTANCE = 0.55f;       // share of SameIslandDistance between the nest and a foreign den
+
+    /*
+      The foreign packs of the pack stage, once when the nest is built:
+      - PacksOnIsland dens on grass around the nest, every pack of another species.
+      - Neutral at first (relation 0, no respect), they roam around their den.
+      Founding the tribe turns them into the neighbor tribes (Settle), relation and respect stay.
+    */
+    /// <summary>The foreign packs around the nest, once the nest stands.</summary>
+    /// <example><code>rivals.SettlePacks();   // Society, when the nest is built</code></example>
+    public void SettlePacks()
     {
         if (_rivals.Count > 0 || null == Coast || null == _pack.Nest)
         {
             return;
         }
         float   size = Player.BodySize();
-        Vector2 fire = _pack.Nest.Position;
-        for (int i = 0; i < Tune.Count; i++)
+        Vector2 nest = _pack.Nest.Position;
+        var     kinds = new List<string>(SPECIES);
+        for (int i = 0; i < Balance.Current.Tribe.Ways.PacksOnIsland; i++)
         {
-            Vector2? home = HomeOf(i, fire);
+            Vector2? den = HomeOf(0, nest, PACK_DISTANCE);
+            if (den is not Vector2 spot)
+            {
+                continue;
+            }
+            string species = kinds[Rand.Index(kinds.Count)];
+            kinds.Remove(species);
+            AddRival(spot, nest, species, relation: 0f, size * Rand.Range(1f - Balance.Current.Tribe.Ways.PackSizeSpread, 1f + Balance.Current.Tribe.Ways.PackSizeSpread), isSettled: false);
+        }
+        Log.Verbose("RivalKeeper", $"{_rivals.Count} foreign pack(s) live around the nest.");
+        EmitSignal(SignalName.Changed);
+    }
+
+    /*
+      The neighbor tribes, once when the player's tribe is founded:
+      - The foreign packs that are left light a fire at their den and build huts.
+      - Further tribes settle on the next islands up to Count.
+      - The path of the player shifts every start relation: StartShift up for the
+        pacifist, down for the warlike.
+    */
+    /// <summary>Turns the foreign packs into tribes and settles the rest, once, when the player's tribe exists.</summary>
+    /// <param name="path">(Required) The path of the player's tribe.</param>
+    /// <example><code>rivals.Settle(TribePath.Pacifist);   // when the stage turns to the tribe</code></example>
+    public void Settle(TribePath path)
+    {
+        if (null == Coast || null == _pack.Nest || _rivals.Exists(rival => rival.IsSettled))
+        {
+            return;
+        }
+        float shift = path switch
+        {
+            TribePath.Pacifist => Balance.Current.Tribe.Ways.StartShift,
+            TribePath.Warlike  => -Balance.Current.Tribe.Ways.StartShift,
+            _                  => 0f,
+        };
+        foreach (RivalTribe pack in _rivals)
+        {
+            pack.Settle();
+            pack.Shift(shift);
+        }
+
+        // Further tribes on the next islands, the first is friendly, the second hostile, the rest in between
+        float   size = Player.BodySize();
+        Vector2 fire = _pack.Nest.Position;
+        var     kinds = new List<string>(SPECIES);
+        kinds.RemoveAll(kind => _rivals.Exists(rival => rival.Species == kind));
+        for (int island = 1; _rivals.Count < Tune.Count && island < Coast.Islands.Count; island++)
+        {
+            Vector2? home = HomeOf(island, fire);
             if (home is not Vector2 spot)
             {
                 continue;
             }
-            // The first neighbor is friendly, the second hostile, the rest are somewhere in between
-            float relation = i switch { 0 => 0.5f, 1 => -0.5f, _ => Rand.Range(-0.2f, 0.2f) };
-            var rival  = new RivalTribe();
-            rival.AttachCoast(Coast);
-            rival.Setup(i + 1, $"RIVAL_NAME_{i + 1}", spot, EntryFor(spot, fire), Player.Creature, TintFor(i), relation, size);
-            _rivals.Add(rival);
-            AddChild(rival);
+            float  relation = _rivals.Count switch { 0 => 0.5f, 1 => -0.5f, _ => Rand.Range(-0.2f, 0.2f) };
+            string species  = kinds.Count > 0 ? kinds[Rand.Index(kinds.Count)] : SPECIES[Rand.Index(SPECIES.Length)];
+            kinds.Remove(species);
+            AddRival(spot, fire, species, relation + shift, size, isSettled: true);
         }
-        Log.Verbose("RivalKeeper", $"{_rivals.Count} rival tribe(s) settled.");
+        Log.Verbose("RivalKeeper", $"{_rivals.Count} rival tribe(s) settled on the path {path}.");
         EmitSignal(SignalName.Changed);
     }
 
-    /// <summary>A fire spot for rival i: across the own island (i = 0) or the center of island i, grass only.</summary>
-    private Vector2? HomeOf(int index, Vector2 fire)
+    /// <summary>One rival of a species at a home spot, a foreign pack at its den or a tribe at its fire.</summary>
+    private void AddRival(Vector2 home, Vector2 ownHome, string species, float relation, float size, bool isSettled)
+    {
+        int            index    = _rivals.Count;
+        CreatureDesign bodyPlan = CreatureTemplates.Get(species).Build();
+        var rival = new RivalTribe { Species = species };
+        rival.AttachCoast(Coast);
+        rival.Setup(index + 1, $"RIVAL_NAME_{index + 1}", home, EntryFor(home, ownHome), bodyPlan, bodyPlan.Color ?? TintFor(index), relation, size, isSettled);
+        _rivals.Add(rival);
+        AddChild(rival);
+    }
+
+    /// <summary>A home spot: on the own island (island 0, at a share of SameIslandDistance, away from the other homes) or the center of another island, grass only.</summary>
+    private Vector2? HomeOf(int island, Vector2 fire, float share = 1f)
     {
         float grass = Balance.Current.Tribe.Pack.NestDepth * Coast.Unit;
-        if (index > 0 && index < Coast.Islands.Count)
+        if (island > 0 && island < Coast.Islands.Count)
         {
-            Vector2 center = Coast.Islands[index].Center;
+            Vector2 center = Coast.Islands[island].Center;
             return Coast.LandDepth(center) >= grass ? center : null;
         }
         for (int attempt = 0; attempt < HOME_TRIES; attempt++)
         {
-            Vector2 spot = fire + Vector2.FromAngle(Rand.Angle()) * Tune.SameIslandDistance * Coast.Unit * Rand.Range(0.8f, 1.1f);
-            if (Coast.LandDepth(spot) >= grass)
+            Vector2 spot     = fire + Vector2.FromAngle(Rand.Angle()) * Tune.SameIslandDistance * share * Coast.Unit * Rand.Range(0.8f, 1.1f);
+            bool    isCrowded = _rivals.Exists(rival => rival.Fire.DistanceTo(spot) < Tune.SameIslandDistance * share * Coast.Unit * 0.6f);
+            if (Coast.LandDepth(spot) >= grass && !isCrowded)
             {
                 return spot;
             }
@@ -167,7 +245,8 @@ public partial class RivalKeeper : Node2D
     // ===============================   RELATE   ================================
     // ===========================================================================
     //
-    //   Update        Rivals update, traders and raids set out and arrive, fights resolve, relations drift.
+    //   Update        Rivals update, gifts, tribute, traders and raids set out and arrive, fights resolve, relations and respect drift.
+    //   PayTribute    A respectful pack brings fruit and meat, a respectful tribe food and wood.
     //   SendTrade     A friendly tribe sends a trader every TradeInterval.
     //   SendRaid      A hostile tribe sends raiders every RaidInterval towards the nearest hut.
     //   Deliver       A trader at the fire hands over food and wood and walks home.
@@ -191,14 +270,40 @@ public partial class RivalKeeper : Node2D
         foreach (RivalTribe rival in _rivals)
         {
             rival.Update(dt, size);
+
+            // A foreign pack whose last animal died (hunted, adopted) is gone for good
+            if (!rival.IsSettled && 0 == rival.Kin.Count && !rival.IsDefeated)
+            {
+                rival.Defeat();
+                EmitSignal(SignalName.Changed);
+            }
             if (rival.IsDefeated)
             {
                 continue;
             }
 
-            // Relations drift towards neutral, so no war and no friendship lasts without deeds
+            // Relations drift towards neutral and respect fades, so nothing lasts without deeds
             float drift = Mathf.Min(Mathf.Abs(rival.Relation), Tune.RelationDrift * dt);
             rival.Shift(rival.Relation > 0f ? -drift : drift);
+            rival.ShiftRespect(-Balance.Current.Tribe.Ways.RespectDrift * dt);
+
+            // Friendly packs bring fruit, respectful ones (packs and tribes) pay tribute
+            _giftTimer[rival]    = _giftTimer.GetValueOrDefault(rival, Balance.Current.Tribe.Ways.GiftInterval) - dt;
+            _tributeTimer[rival] = _tributeTimer.GetValueOrDefault(rival, Balance.Current.Tribe.Ways.TributeInterval) - dt;
+            if (!rival.IsSettled && rival.IsFriendly && _giftTimer[rival] <= 0f)
+            {
+                _giftTimer[rival] = Balance.Current.Tribe.Ways.GiftInterval;
+                EmitSignal(SignalName.PackGave, rival, false);
+            }
+            if (rival.IsRespectful && _tributeTimer[rival] <= 0f)
+            {
+                _tributeTimer[rival] = Balance.Current.Tribe.Ways.TributeInterval;
+                PayTribute(rival);
+            }
+            if (!rival.IsSettled)
+            {
+                continue;     // a pack neither trades nor raids, it only roams around its den
+            }
 
             _tradeTimer[rival] = _tradeTimer.GetValueOrDefault(rival, Tune.TradeInterval * 0.5f) - dt;
             _raidTimer[rival]  = _raidTimer.GetValueOrDefault(rival, Tune.RaidInterval * 0.5f) - dt;
@@ -207,7 +312,8 @@ public partial class RivalKeeper : Node2D
                 _tradeTimer[rival] = Tune.TradeInterval;
                 rival.SendTrader(_pack.Nest.Position);
             }
-            if (rival.IsHostile && _raidTimer[rival] <= 0f)
+            // A tribe that respects the player never raids it
+            if (rival.IsHostile && !rival.IsRespectful && _raidTimer[rival] <= 0f)
             {
                 _raidTimer[rival] = Tune.RaidInterval;
                 SendRaid(rival);
@@ -267,6 +373,28 @@ public partial class RivalKeeper : Node2D
         EmitSignal(SignalName.Changed);
     }
 
+    private readonly Dictionary<RivalTribe, float> _giftTimer = new();
+    private readonly Dictionary<RivalTribe, float> _tributeTimer = new();
+
+    /*
+      Tribute of a rival that respects the player:
+      - A foreign pack drops fruit and meat at the nest (PackGave, the encounter spawns it).
+      - A tribe hands over food and wood like a trade, but its relation does not rise.
+    */
+    private void PayTribute(RivalTribe rival)
+    {
+        if (!rival.IsSettled)
+        {
+            EmitSignal(SignalName.PackGave, rival, true);
+            return;
+        }
+        _tribe.Economy.AddFood(Tune.TradeFood);
+        _tribe.Economy.AddWood(Tune.TradeWood);
+        Log.Verbose("RivalKeeper", $"Faction {rival.Faction} pays tribute: {Tune.TradeFood} food, {Tune.TradeWood} wood.");
+        EmitSignal(SignalName.TributePaid, rival.NameKey, Tune.TradeFood, Tune.TradeWood);
+        EmitSignal(SignalName.Changed);
+    }
+
     /// <summary>A gift of GiftFood food to a tribe, its relation rises by RelationPerGift.</summary>
     /// <param name="rival">(Required) The tribe.</param>
     /// <returns>True when the stock paid for it.</returns>
@@ -301,6 +429,7 @@ public partial class RivalKeeper : Node2D
     //   HutAt           The rival building under a plane point (right click orders).
     //   IsHostile       Whether two kin fight: different factions and one of them is a raider or attacks the other.
     //   EnemyAt         The enemy kin nearest to a plane point within a radius (right click orders).
+    //   ReportKill      A rival died by the player's side: relation down, KinKilled for its meat.
     //
 
     private const float CONTACT_SHARE = 1.15f;       // bodies this close (in sums of sizes) fight
@@ -315,9 +444,10 @@ public partial class RivalKeeper : Node2D
             enemies.AddRange(rival.Kin);
         }
         var own = new List<Kin>();
+        // Every member of the player's pack fights, the villagers of the tribe and the animals of the pack before it
         foreach (Kin kin in _pack.Kin)
         {
-            if (KinMode.Villager == kin.Mode)
+            if (KinMode.Wild != kin.Mode)
             {
                 own.Add(kin);
             }
@@ -485,6 +615,13 @@ public partial class RivalKeeper : Node2D
     /// <summary>A kill by the player's tribe costs relation with the victim's tribe.</summary>
     private void OnEnemyKilled(Kin enemy)
     {
+        ReportKill(enemy);
+    }
+
+    /// <summary>A rival animal or villager died by the player's side: its people like the player less, its body is meat or food (KinKilled).</summary>
+    /// <param name="enemy">(Required) The kin that died, already freed.</param>
+    public void ReportKill(Kin enemy)
+    {
         foreach (RivalTribe rival in _rivals)
         {
             if (rival.Faction == enemy.Faction)
@@ -492,6 +629,7 @@ public partial class RivalKeeper : Node2D
                 rival.Shift(-Tune.RelationPerKill);
             }
         }
+        EmitSignal(SignalName.KinKilled, enemy.GlobalPosition, enemy.AdultSize);
         EmitSignal(SignalName.Changed);
     }
 

@@ -81,6 +81,10 @@ MATERIAL_COLORS = {
     'Earth':       (0.3, 0.2, 0.12, 1.0),
     'Down':        (0.95, 0.93, 0.88, 1.0),
     'Stone':       (0.5, 0.5, 0.52, 1.0),
+    'Petal':       (1.0, 1.0, 1.0, 1.0),
+    'Pollen':      (0.98, 0.78, 0.2, 1.0),
+    'Stem':        (0.3, 0.5, 0.2, 1.0),
+    'Berry':       (0.75, 0.12, 0.2, 1.0),
     'Log':         (0.35, 0.22, 0.12, 1.0),
     'Ember':       (1.0, 0.4, 0.1, 1.0),
     # Building blocks, recolored by the game: Paint is the paint of the player, PaintDark its trim

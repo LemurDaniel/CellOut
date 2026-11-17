@@ -9,6 +9,7 @@
 //     HELPERS          Places a part wherever it fits.
 //     OFFER PARTS      Catalog entries, body types and half pairs.
 //     COMPUTE TRAITS   Body, part effects, land speed and flight.
+//     GIVE ABILITIES   The ability parts of the tabs Gentle, Clever and Wild (Creature/Design/CreatureAbilitySet.cs).
 //
 
 using System.Linq;
@@ -299,5 +300,47 @@ public class CreatureTests
         Assert.Equal(1.5f, toxic.Toxin, PRECISION);
         Assert.True(plain > 0f);
         Assert.Equal(plain * 1.5f, poisoned, PRECISION);
+    }
+
+    // ===========================================================================
+    // ===========================   GIVE ABILITIES   ============================
+    // ===========================================================================
+    //
+    //   AbilityPartsFillTheSlots   Ability parts take key slots in placement order, other parts none.
+    //   AbilityTabsHaveTheirDiet   Gentle herbivore, clever omnivore, wild carnivore, three parts each tab at least.
+    //   NoBodyNoAbilities          A cell (no body plan) has no creature abilities.
+    //
+
+    [Fact]
+    public void AbilityPartsFillTheSlots()
+    {
+        CreatureDesign design = CreatureDesign.Blob();
+        Place(design, CreaturePartKind.ScentGland);
+        Place(design, CreaturePartKind.DorsalFin);
+        Place(design, CreaturePartKind.RoarSac);
+        CreatureAbilitySet set = CreatureAbilitySet.From(design);
+
+        Assert.Equal(new[] { CreaturePartKind.ScentGland, CreaturePartKind.RoarSac }, set.Slots);
+        Assert.True(set.TryUse(CreaturePartKind.RoarSac));
+        Assert.False(set.IsReady(CreaturePartKind.RoarSac));
+        Assert.False(CreatureAbilitySet.IsAbility(CreaturePartKind.DorsalFin));
+    }
+
+    [Fact]
+    public void AbilityTabsHaveTheirDiet()
+    {
+        Assert.Equal(DietClass.Herbivore, CreatureAbilitySet.DietOf(CreaturePartKind.HealingMoss));
+        Assert.Equal(DietClass.Omnivore, CreatureAbilitySet.DietOf(CreaturePartKind.InkSac));
+        Assert.Equal(DietClass.Carnivore, CreatureAbilitySet.DietOf(CreaturePartKind.RamBrow));
+        foreach (CreatureCategory tab in new[] { CreatureCategory.Gentle, CreatureCategory.Clever, CreatureCategory.Wild })
+        {
+            Assert.All(CreatureCatalog.All().Where(part => tab == part.Category), part => Assert.True(CreatureAbilitySet.IsAbility(part.Kind)));
+        }
+    }
+
+    [Fact]
+    public void NoBodyNoAbilities()
+    {
+        Assert.Empty(CreatureAbilitySet.From(null).Slots);
     }
 }

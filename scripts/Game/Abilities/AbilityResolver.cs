@@ -86,9 +86,9 @@ public partial class AbilityResolver : Node
 
     public override void _UnhandledKeyInput(InputEvent @event)
     {
-        if (@event is not InputEventKey { Pressed: true, Echo: false } key)
+        if (Player.IsOrganism || @event is not InputEventKey { Pressed: true, Echo: false } key)
         {
-            return;
+            return;     // a creature fires its own abilities (CreatureAbilityResolver)
         }
         int slot = System.Array.IndexOf(SLOT_KEYS, key.PhysicalKeycode);
         if (slot >= 0)

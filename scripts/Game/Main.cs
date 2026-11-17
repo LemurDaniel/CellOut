@@ -49,18 +49,13 @@ public partial class Main : Node2D
     private FollowCamera _followCamera;
     private ContactResolver _contacts;
     private AbilityResolver _abilities;
+    private CreatureAbilityResolver _creatureAbilities;
     private Spawner _spawner;
     private CoastKeeper _coast;
-    private PackKeeper _pack;
-    private TribeCommander _tribe;
-    private RivalKeeper _rivals;
-    private BuildingEditor _buildingEditor;
-    private BuildingPlacer _placer;
-    private TribePanel _tribePanel;
-    private readonly System.Collections.Generic.List<CanvasLayer> _tribeHud = new();     // TribePanel and TribeHub
-    private TribeHub _hub;
+    private Society _society;
     private CutsceneDirector _cutscenes;
     private StartFlow _startFlow;
+    private PhaseStart _phaseStart;
 
     public override void _Ready()
     {
@@ -137,45 +132,21 @@ public partial class Main : Node2D
         _coast.Setup(_session, _followCamera);
         AddChild(_coast);
 
-        _pack = new PackKeeper();
-        _pack.Setup(_session, _followCamera);
-        AddChild(_pack);
+        // Pack, foreign packs, tribe, neighbors, builder and their HUD (Tribe/Society.cs)
+        _society = new Society();
+        _society.Setup(_session, _followCamera);
+        _society.BannerRequested  += (titleKey, textKey, args) => Hud.ShowBanner(titleKey, textKey, args);
+        _society.BuilderRequested += () => OpenBuildingEditor();
+        AddChild(_society);
+        _society.BuildingEditor.Closed += OnBuildingEditorClosed;
 
-        _tribe = new TribeCommander();
-        _tribe.Setup(_session, _pack, _followCamera);
-        AddChild(_tribe);
+        // The abilities of the creature parts, after the society in every physics frame
+        _creatureAbilities = new CreatureAbilityResolver();
+        _creatureAbilities.Setup(_session, _society.Pack, _society.Rivals, _society.Encounter);
+        AddChild(_creatureAbilities);
 
-        _rivals = new RivalKeeper();
-        _rivals.Setup(_session, _pack, _tribe);
-        _rivals.RaidStarted  += nameKey => Hud.ShowBanner("BANNER_RAID_TITLE", "BANNER_RAID_TEXT", Tr(nameKey));
-        _rivals.TradeArrived += (nameKey, food, wood) => Hud.ShowBanner("BANNER_TRADE_TITLE", "BANNER_TRADE_TEXT", Tr(nameKey), food, wood);
-        _rivals.TribeDefeated += (nameKey, food, wood) => Hud.ShowBanner("BANNER_DEFEAT_TITLE", "BANNER_DEFEAT_TEXT", Tr(nameKey), food, wood);
-        AddChild(_rivals);
-        _tribe.AttachRivals(_rivals);
-
-        _placer = new BuildingPlacer();
-        _placer.Setup(_session, _tribe);
-        AddChild(_placer);
-
-        _buildingEditor = new BuildingEditor();
-        _buildingEditor.Applied += session => _tribe.TakeDesigns(session.Result);
-        _buildingEditor.Closed  += OnBuildingEditorClosed;
-        AddChild(_buildingEditor);
-
-        var tribePanel = new TribePanel();
-        _tribePanel    = tribePanel;
-        _tribeHud.Add(tribePanel);
-        tribePanel.Watch(_pack, _tribe, _rivals);
-        tribePanel.ActionPressed   += () => _pack.Act();
-        tribePanel.BuildPressed    += kind => _placer.Begin(kind);
-        tribePanel.GiftPressed     += rival => _rivals.Gift(rival);
-        AddChild(tribePanel);
-
-        _hub = new TribeHub();
-        _tribeHud.Add(_hub);
-        _hub.Watch(_session, _pack, _tribe, _rivals, _followCamera);
-        _hub.BuilderPressed += () => OpenBuildingEditor();
-        AddChild(_hub);
+        // Clicks on the ability slots and their fans, the keys of the ways (Abilities/AbilityInput.cs)
+        AbilityInput.Wire(Hud, Player, _abilities, _creatureAbilities, _society.Encounter);
 
         _cutscenes = new CutsceneDirector();
         _cutscenes.Setup(_session, _followCamera.Camera);
@@ -189,6 +160,8 @@ public partial class Main : Node2D
         _startFlow.LanguagePressed += Hud.ToggleLanguage;
         _startFlow.Finished        += OnStartFinished;
         AddChild(_startFlow);
+        _phaseStart = new PhaseStart { Main = this };
+        AddChild(_phaseStart);
 
         // ---------------------------------------------------------------------------
         // Menu
@@ -233,6 +206,7 @@ public partial class Main : Node2D
     {
         Hud.Visible = true;
         _spawner.StartPopulating();
+        _phaseStart.Begin(_startFlow.Phase);
         Log.Verbose("Main", $"Populating: food patches outside the view, {Spawner.START_CRITTERS} cells over {Spawner.POPULATE_SECONDS} s.");
         // The game title already opened the RNA prelude, the protocell gets its own stage banner
         if (_startFlow.HasPlayedPrelude)
@@ -273,7 +247,7 @@ public partial class Main : Node2D
             GetViewport().SetInputAsHandled();
             return;
         }
-        if (_placer.HandleInput(@event) || _tribe.HandleInput(@event) || _pack.HandleInput(@event) || _followCamera.HandleInput(@event))
+        if (_society.HandleInput(@event) || _followCamera.HandleInput(@event))
         {
             GetViewport().SetInputAsHandled();
         }
@@ -284,15 +258,15 @@ public partial class Main : Node2D
     /// <example><code>main.OpenBuildingEditor();   // what B and the panel button do</code></example>
     public bool OpenBuildingEditor()
     {
-        bool isBusy = IsInMenu || IsEvolving || _cutscenes.IsShortPlaying || Editor.IsOpen || CreatureEditor.IsOpen || _buildingEditor.IsOpen;
-        if (isBusy || !_tribe.IsActive)
+        bool isBusy = IsInMenu || IsEvolving || _cutscenes.IsShortPlaying || Editor.IsOpen || CreatureEditor.IsOpen || BuildingEditor.IsOpen;
+        if (isBusy || !Tribe.IsActive)
         {
             return false;
         }
-        _placer.Cancel();
+        Placer.Cancel();
         GetTree().Paused = true;
         ShowHud(false);
-        _buildingEditor.Open(_tribe.DesignOf);
+        BuildingEditor.Open(Tribe.DesignOf);
         return true;
     }
 
@@ -306,7 +280,7 @@ public partial class Main : Node2D
     private void ShowHud(bool isShown)
     {
         Hud.Visible = isShown;
-        foreach (CanvasLayer layer in _tribeHud)
+        foreach (CanvasLayer layer in _society.HudLayers)
         {
             layer.Visible = isShown;
         }
@@ -319,8 +293,6 @@ public partial class Main : Node2D
     public float ThirdPerson => _followCamera.ThirdPerson;
 
     /// <summary>0 chase camera .. 1 strategy view of the tribe.</summary>
-    public float StrategyView => _followCamera.Strategy;
-
     /// <summary>Zooms out (positive steps) or in (negative steps), clamped to MIN_ZOOM..MAX_ZOOM.</summary>
     /// <param name="steps">(Required) Number of wheel steps.</param>
     /// <example><code>ZoomBy(-2)  // two steps closer</code></example>
@@ -342,7 +314,8 @@ public partial class Main : Node2D
                     then the neighbor tribes: traders, raids and fights (Tribe/Rivals/RivalKeeper.cs).
       4. Contacts   Food, engulfing, player vs. cells, cells vs. cells (World/ContactResolver.cs),
                     with the size and position of the player from before the coast moved it.
-      5. Abilities  Keys 1 to 4, auto abilities, zones and shoves of the cell parts (Game/Abilities/AbilityResolver.cs).
+      5. Abilities  Keys 1 to 4, auto abilities, zones and shoves of the cell parts (Game/Abilities/AbilityResolver.cs),
+                    the abilities of the creature parts right after the society (Game/Abilities/CreatureAbilityResolver.cs).
       6. Refill     Fills the soup after the start, then keeps it topped up, fruit from the trees (World/Spawner.cs).
     */
     public override void _PhysicsProcess(double delta)
@@ -352,11 +325,8 @@ public partial class Main : Node2D
         Vector2 playerPosition = Player.GlobalPosition;
         float   viewRadius     = _followCamera.ViewRadius();
         _coast.Update(isSpawnAllowed: !IsEvolving);
-        _pack.Update(dt);
-        _tribe.Update(dt);
-        _placer.Update();
-        _tribePanel.Placing = _placer.Pending;
-        _rivals.Update(dt);
+        _society.Update(dt);
+        _creatureAbilities.Resolve(dt);
         _contacts.Resolve(dt, playerSize, playerPosition, viewRadius);
         _abilities.Resolve(dt, viewRadius);
         _spawner.Refill(dt);
@@ -396,7 +366,7 @@ public partial class Main : Node2D
     /// <example><code>main.OpenEditor();   // what Z and the HUD button do</code></example>
     public bool OpenEditor()
     {
-        bool isBusy = IsInMenu || IsEvolving || _cutscenes.IsShortPlaying || Editor.IsOpen || CreatureEditor.IsOpen || _buildingEditor.IsOpen;
+        bool isBusy = IsInMenu || IsEvolving || _cutscenes.IsShortPlaying || Editor.IsOpen || CreatureEditor.IsOpen || BuildingEditor.IsOpen;
         if (isBusy || Player.Stage < Player.SINGLE_STAGE)
         {
             return false;
@@ -457,10 +427,9 @@ public partial class Main : Node2D
                 PlayStageCutscene(stage, "BANNER_PACK_TITLE", "BANNER_PACK_TEXT");
                 break;
             case Player.TRIBE_STAGE:
-                // The strategy view rises over the fire, the village is its reference point, the neighbors settle
-                _followCamera.StrategyAnchor = _pack.Nest?.Position;
-                _rivals.Settle();
-                PlayStageCutscene(stage, "BANNER_TRIBE_TITLE", "BANNER_TRIBE_TEXT");
+                // The path locks from the diet, the packs become tribes
+                TribePath path = _society.SettleTribe();
+                PlayStageCutscene(stage, "BANNER_TRIBE_TITLE", $"BANNER_TRIBE_TEXT_{path}".ToUpperInvariant());
                 break;
         }
     }
@@ -468,7 +437,7 @@ public partial class Main : Node2D
     private void OnPlayerDied()
     {
         // A pack leader lives on in the body of a member, the pack shrinks by one
-        if (_pack.TryTakeOver())
+        if (Pack.TryTakeOver())
         {
             Hud.ShowBanner("BANNER_TAKEOVER_TITLE", "BANNER_TAKEOVER_TEXT");
             Log.Verbose("Main", "The leader died, a pack member takes over.");
@@ -637,7 +606,9 @@ public partial class Main : Node2D
     //
     //   Coast        The coast of the organism stage, null until it showed up.
     //   SpawnCoast   An archipelago ahead of the player, its first shore far off or right in front.
+    //   Pack ... Hub The parts of the social stages, all owned by Tribe/Society.cs:
     //   Pack         The pack of the land animal: kin, nest, offer (Tribe/Pack/PackKeeper.cs).
+    //   Encounter    Court, display and hunt against foreign packs, keys 1 to 3 (Tribe/Pack/PackEncounter.cs).
     //   Tribe        The tribe: selection, stock, huts (Tribe/Village/TribeCommander.cs).
     //   Rivals       The neighbor tribes (Tribe/Rivals/RivalKeeper.cs).
     //   BuildingEditor   The village builder (Tribe/Building/Editor/BuildingEditor.cs).
@@ -651,17 +622,21 @@ public partial class Main : Node2D
 
     public Coast Coast => _session.Coast;
 
-    public PackKeeper Pack => _pack;
+    public PackKeeper Pack => _society.Pack;
 
-    public TribeCommander Tribe => _tribe;
+    public PackEncounter Encounter => _society.Encounter;
 
-    public RivalKeeper Rivals => _rivals;
+    public TribeCommander Tribe => _society.Tribe;
 
-    public BuildingEditor BuildingEditor => _buildingEditor;
+    public RivalKeeper Rivals => _society.Rivals;
 
-    public BuildingPlacer Placer => _placer;
+    public BuildingEditor BuildingEditor => _society.BuildingEditor;
 
-    public TribeHub Hub => _hub;
+    public BuildingPlacer Placer => _society.Placer;
+
+    public TribeHub Hub => _society.Hub;
+
+    public TribePanel TribePanel => _society.Panel;
 
     public FollowCamera FollowCamera => _followCamera;
 
@@ -710,8 +685,8 @@ public partial class Main : Node2D
                 Player.GrantPoints(10);
                 break;
             case CheatTarget.Resources:
-                _tribe.Economy.AddFood(20);
-                _tribe.Economy.AddWood(20);
+                Tribe.Economy.AddFood(20);
+                Tribe.Economy.AddWood(20);
                 break;
             case CheatTarget.SingleCell:
                 Player.AddBiomass(Mathf.Max(0f, Balance.Current.Player.SingleCellAt - Player.Biomass), BiomassSource.Raw);
@@ -749,11 +724,11 @@ public partial class Main : Node2D
                 break;
             case CheatTarget.Pack:
                 CheatToLandAnimal();
-                _pack.CheatFoundPack();
+                Pack.CheatFoundPack();
                 break;
             case CheatTarget.Tribe:
                 CheatToLandAnimal();
-                _pack.CheatFoundTribe();
+                Pack.CheatFoundTribe();
                 break;
         }
         CloseCheatEditors();

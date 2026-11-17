@@ -4,4 +4,5 @@ The abilities of the cell parts as pure logic (decision of the user 2026-11-17: 
 
 | File | Content |
 | --- | --- |
+| `AbilityClock.cs` | The shared clock of every ability set: part counts, key slots in placement order, cooldowns (faster with more parts) and running effects. Generic over the part kind. |
 | `AbilitySet.cs` | How each part fires (key, by itself, all the time, not at all), the key slots 1 to 4 in placement order, cooldowns (faster with more parts), running effects and the shield charges of the armor plates. Tested in `tests/unit/CellTests.cs`. |

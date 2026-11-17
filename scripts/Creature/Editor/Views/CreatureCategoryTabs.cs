@@ -28,6 +28,7 @@ public partial class CreatureCategoryTabs : VBoxContainer
     //   CategoryPressed  Raised when a tab is clicked.
     //   Setup            Tab row on a baseline, one tab per category.
     //   BuildTabs        One index card tab per part category.
+    //   AccentOf         The color of a tab: the ability tabs in the color of their diet.
     //   RefreshIcons     The 3D icon of every tab, rebuilt for a new type or color.
     //   Refresh          Tooltip and part count of every tab, the shown one pressed.
     //
@@ -82,11 +83,23 @@ public partial class CreatureCategoryTabs : VBoxContainer
             tab.SizeFlagsVertical = SizeFlags.ShrinkEnd;
             tab.ToggleMode        = true;
             tab.ButtonGroup       = group;
-            EditorStyle.ApplyTab(tab, EditorStyle.RIM_COLOR);
+            EditorStyle.ApplyTab(tab, AccentOf(category));
             tab.Pressed += () => CategoryPressed?.Invoke(category);
             _tabs.AddChild(tab);
             _tabButtons.Add((category, tab));
         }
+    }
+
+    /// <summary>The tabs of the ability parts carry the color of their diet (green, yellow, red), the others the rim color.</summary>
+    private static Color AccentOf(CreatureCategory category)
+    {
+        return category switch
+        {
+            CreatureCategory.Gentle => EditorStyle.DIET_COLORS[DietClass.Herbivore],
+            CreatureCategory.Clever => EditorStyle.DIET_COLORS[DietClass.Omnivore],
+            CreatureCategory.Wild   => EditorStyle.DIET_COLORS[DietClass.Carnivore],
+            _                       => EditorStyle.RIM_COLOR,
+        };
     }
 
     /// <summary>The 3D icons of the tabs: the first part of every category in the color of the draft, rebuilt when type or color change.</summary>

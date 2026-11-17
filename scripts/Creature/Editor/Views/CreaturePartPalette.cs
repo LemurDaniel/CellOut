@@ -33,7 +33,8 @@ public partial class CreaturePartPalette : ScrollContainer
     //   Setup          Scroll area with the tile grid.
     //   ClearHover     Forgets the hovered tile.
     //   Rebuild        One icon tile per part of the shown tab the body type may use, popping in.
-    //   RefreshTiles   Name, cost, weight, pressed and affordable state of every tile.
+    //   RefreshTiles   Name, cost, weight, pressed and affordable state of every tile, the lock of a locked part.
+    //   LockText       Why a part is still locked.
     //
 
     private const int TILE_ICON_PIXELS = 168;           // wider than the spot: the part reaches over its edges
@@ -166,13 +167,23 @@ public partial class CreaturePartPalette : ScrollContainer
         foreach (PaletteTile tile in _tiles)
         {
             int  cost        = _session.CostOf(tile.Info);
-            bool isAvailable = cost <= _session.Points;
+            bool isOpen      = _session.IsOpen(tile.Info.Kind);
+            bool isAvailable = isOpen && cost <= _session.Points;
             tile.Name.Text       = Tr(tile.Info.NameKey);
-            tile.Cost.Text       = $"{cost} EP ·{string.Format(Tr("CREATURE_UNIT_KG"), tile.Info.Weight.ToString("0.0"))}";
+            tile.Cost.Text       = isOpen ? $"{cost} EP ·{string.Format(Tr("CREATURE_UNIT_KG"), tile.Info.Weight.ToString("0.0"))}" : LockText(tile.Info.Kind);
             tile.Button.Disabled = !isAvailable;
             tile.Button.SetPressedNoSignal(tile.Info.Kind == _session.Selected);
             CreatureEditorUi.SetAlpha(tile.Icon, isAvailable ? 1f : 0.3f);
             CreatureEditorUi.SetAlpha(tile.Name, isAvailable ? 1f : 0.45f);
         }
+    }
+
+    /// <summary>Why a part is still locked: the stage it opens at in this game, or the phase to reach once (Creature/Design/PartUnlocks.cs).</summary>
+    private string LockText(CreaturePartKind kind)
+    {
+        StartPhase? phase = PartUnlocks.PhaseOf(kind);
+        return null != phase
+            ? string.Format(Tr("CREATURE_LOCK_REACHED"), Tr(StartPhases.NameKey(phase.Value)))
+            : string.Format(Tr("CREATURE_LOCK_STAGE"), Tr(Player.STAGE_KEYS[PartUnlocks.StageOf(kind)]));
     }
 }

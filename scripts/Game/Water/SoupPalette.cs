@@ -34,6 +34,7 @@ public readonly record struct SoupPalette(Color Background, Color FloorShallow, 
     //   SEA          Cluster and later: the turquoise sea, shared with the coast shaders.
     //   For          The palette of a stage.
     //   Lerp         Blend towards another palette.
+    //   Tinted       Every color times the water tint of a planet.
     //
 
     public static readonly SoupPalette PRIMORDIAL = new(
@@ -71,6 +72,13 @@ public readonly record struct SoupPalette(Color Background, Color FloorShallow, 
             Player.SINGLE_STAGE => POND,
             _                   => SEA,
         };
+    }
+
+    /// <summary>This palette with every color multiplied by the water tint of a planet (Core/Planets.cs).</summary>
+    /// <param name="tint">(Required) The multiplier, white keeps the palette.</param>
+    public SoupPalette Tinted(Color tint)
+    {
+        return new SoupPalette(Background * tint, FloorShallow * tint, FloorDeep * tint, Ambient * tint, Light * tint, Caustics * tint);
     }
 
     /// <summary>This palette blended towards another one.</summary>

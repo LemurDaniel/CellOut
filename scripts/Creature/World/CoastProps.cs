@@ -1,8 +1,10 @@
 // NOTE:
 //   The small props of the coast (Creature/Coast.cs), a component of it: seaweed and rocks
 //   under water, pebbles, shells and driftwood on the beach, grass, bushes and flowers on
-//   the meadow. Seeded per grid cell, so a cell shows the same props every time, drawn as
-//   three multimeshes (shaders/coast_plant.gdshader) that are refilled around the player.
+//   the meadow. Seeded per grid cell, so a cell shows the same props every time. Small ones
+//   are three primitive multimeshes (shaders/coast_plant.gdshader), shrubs, ferns, flowers
+//   and boulders are generated models (Core/PlantModels.cs), one multimesh per plant; all
+//   are refilled around the player.
 //
 //   var props = new CoastProps();
 //   props.Setup(terrain);
@@ -11,7 +13,7 @@
 
 //
 //   Chapters:
-//     BUILD    The three prop multimeshes.
+//     BUILD    The three prop multimeshes and one per plant model.
 //     FOLLOW   Refills the props when the player moved or grew.
 //     PROPS    Seeded props per grid cell, by band.
 //
@@ -27,8 +29,9 @@ public partial class CoastProps : Node3D
     // ===========================================================================
     //
     //   Setup      (Required) terrain: land depth, ground height and the unit of the coast.
-    //              Builds the three prop multimeshes in world space.
+    //              Builds the three prop multimeshes and the plant multimeshes in world space.
     //   AddProps   One prop multimesh with the plant shader.
+    //   AddPlants  One multimesh of a plant model, petals colored per instance (custom data).
     //
 
     private const int MAX_PROPS = 16000;
@@ -49,6 +52,38 @@ public partial class CoastProps : Node3D
         _blades = AddProps(this, CellVisual3D.ConeMesh(), 0.12f);
         _lumps  = AddProps(this, CellVisual3D.SphereMesh(true), 0f);
         _sticks = AddProps(this, CellVisual3D.RodMesh(), 0f);
+
+        // Plants: one multimesh per model, shrubs and boulders cast shadows, the flowers are too thin for it
+        for (int i = 0; i < PlantModels.COUNT; i++)
+        {
+            _plants[i] = AddPlants(this, (PlantKind)i);
+        }
+    }
+
+    private const int MAX_PLANTS = 3000;             // per plant model
+
+    private readonly MultiMesh[] _plants = new MultiMesh[PlantModels.COUNT];
+    private readonly int[] _plantCounts = new int[PlantModels.COUNT];
+
+    private static MultiMesh AddPlants(Node3D parent, PlantKind kind)
+    {
+        var multimesh = new MultiMesh
+        {
+            TransformFormat      = MultiMesh.TransformFormatEnum.Transform3D,
+            UseColors            = true,
+            UseCustomData        = PlantModels.HAS_BLOOM[(int)kind],
+            Mesh                 = PlantModels.MeshOf(kind),
+            InstanceCount        = MAX_PLANTS,
+            VisibleInstanceCount = 0,
+        };
+        bool isCasting = kind is PlantKind.Shrub or PlantKind.BerryBush or PlantKind.Boulder;
+        parent.AddChild(new MultiMeshInstance3D
+        {
+            Name       = kind.ToString(),
+            Multimesh  = multimesh,
+            CastShadow = isCasting ? GeometryInstance3D.ShadowCastingSetting.On : GeometryInstance3D.ShadowCastingSetting.Off,
+        });
+        return multimesh;
     }
 
     private static MultiMesh AddProps(Node3D parent, Mesh mesh, float sway)
@@ -72,6 +107,7 @@ public partial class CoastProps : Node3D
     // ===============================   FOLLOW   ================================
     // ===========================================================================
     //
+    //   Refresh  Refills on the next Follow (the ground was leveled).
     //   Follow   Refills the props when the player moved a few Units or grew noticeably.
     //
 
@@ -79,6 +115,12 @@ public partial class CoastProps : Node3D
 
     private Vector2 _propsCenter = new(float.NaN, float.NaN);
     private float _propsSize;
+
+    /// <summary>Refills on the next Follow, e.g. after the ground was leveled for a building.</summary>
+    public void Refresh()
+    {
+        _propsCenter = new Vector2(float.NaN, float.NaN);
+    }
 
     /// <summary>Keeps the props around the player, called every frame.</summary>
     /// <param name="playerPosition">(Required) Plane position of the player.</param>
@@ -107,13 +149,15 @@ public partial class CoastProps : Node3D
     //   AddTuft     A tuft of grass blades.
     //   Place       World transform of a prop at a plane point, on the ground.
     //   Add         One instance into a multimesh, ignored when it is full.
+    //   AddPlant    One plant model instance, a flower with its bloom color.
+    //   Leafy       A near-white tint, neighboring plants differ a little.
     //
     //   Bands (d = LandDepth in Unit), per cell of PROP_CELL Units, on land every size
     //   times NATURE_SCALE (under water they would reach out of the water):
     //     -16 .. -1.5   seaweed clumps, rocks
     //     -1.5 .. 2.5   pebbles, shells, driftwood
     //     2.5 .. 5      tall dune grass
-    //     5 ..          grass tufts, bushes, flowers, a few rocks
+    //     5 ..          grass tufts, shrubs and ferns, clumps of flowers, a few boulders (plant models)
     //
 
     private const float PROP_CELL = 2.5f;            // in Unit
@@ -129,6 +173,7 @@ public partial class CoastProps : Node3D
         _bladeCount = 0;
         _lumpCount  = 0;
         _stickCount = 0;
+        System.Array.Clear(_plantCounts);
         float cell = PROP_CELL * _terrain.Unit;
         int   x0   = Mathf.FloorToInt((center.X - reach) / cell);
         int   x1   = Mathf.CeilToInt((center.X + reach) / cell);
@@ -169,6 +214,12 @@ public partial class CoastProps : Node3D
                         Add(_lumps, ref _lumpCount, Place(point, new Vector3(rock, rock * 0.6f, rock * 0.8f) * size, 0f, size, tilt: 0f),
                             new Color(0.3f, 0.36f, 0.33f).Lightened(_rng.RandfRange(-0.1f, 0.15f)));
                     }
+                    continue;
+                }
+
+                // Foundations of buildings are trampled bare
+                if (_terrain.IsOnPad(point, _terrain.Unit))
+                {
                     continue;
                 }
 
@@ -220,32 +271,32 @@ public partial class CoastProps : Node3D
                 }
                 else if (roll < 0.76f)
                 {
-                    Color leaves = new Color(0.18f, 0.36f, 0.17f).Lightened(_rng.RandfRange(-0.05f, 0.12f));
-                    for (int k = 0; k < 3; k++)
-                    {
-                        float leaf = _rng.RandfRange(0.14f, 0.24f);
-                        Add(_lumps, ref _lumpCount, Place(Jitter(point, 0.15f * NATURE_SCALE), Vector3.One * leaf * big, leaf * 0.7f * big, size, tilt: 0f),
-                            leaves.Lightened(k * 0.06f));
-                    }
+                    // Undergrowth: mostly leafy shrubs, now and then berries or a ground fern
+                    float     pick  = _rng.Randf();
+                    PlantKind kind  = pick < 0.5f ? PlantKind.Shrub : pick < 0.72f ? PlantKind.BerryBush : PlantKind.FernBush;
+                    float     tall  = _rng.RandfRange(0.3f, 0.5f) * big;
+                    var       shape = new Vector3(tall * _rng.RandfRange(0.9f, 1.2f), tall, tall * _rng.RandfRange(0.9f, 1.2f));
+                    AddPlant(kind, Place(point, shape, -0.03f * tall, size, tilt: 0.08f), Leafy());
                 }
                 else if (roll < 0.9f)
                 {
-                    Color bloom = new[] { new Color(0.97f, 0.86f, 0.3f), new Color(0.93f, 0.48f, 0.68f), new Color(0.6f, 0.62f, 0.98f), Colors.White }[_rng.RandiRange(0, 3)];
-                    int   heads = _rng.RandiRange(2, 4);
-                    for (int k = 0; k < heads; k++)
+                    // Flowers: a clump of one kind, in a color of its own palette
+                    int       pick    = _rng.RandiRange(0, 2);
+                    PlantKind kind    = (PlantKind)((int)PlantKind.Daisy + pick);
+                    Color[]   palette = BLOOMS[pick];
+                    int       clumps  = _rng.RandiRange(1, 3);
+                    Color     bloom   = palette[_rng.RandiRange(0, palette.Length - 1)];
+                    for (int k = 0; k < clumps; k++)
                     {
-                        Vector2 spot = Jitter(point, 0.3f * NATURE_SCALE);
-                        float   stem = _rng.RandfRange(0.15f, 0.25f);
-                        Add(_blades, ref _bladeCount, Place(spot, new Vector3(0.08f, stem / 0.6f, 0.08f) * big * 0.25f, stem * 0.5f * big, size, tilt: 0.1f),
-                            new Color(0.3f, 0.5f, 0.22f));
-                        Add(_lumps, ref _lumpCount, Place(spot, Vector3.One * 0.035f * big, stem * big, size, tilt: 0f), bloom);
+                        float tall = _rng.RandfRange(0.2f, 0.32f) * big;
+                        AddPlant(kind, Place(Jitter(point, 0.25f * NATURE_SCALE), Vector3.One * tall, 0f, size, tilt: 0.12f), Leafy(), bloom);
                     }
                 }
                 else if (roll < 0.94f)
                 {
-                    float rock = _rng.RandfRange(0.12f, 0.3f);
-                    Add(_lumps, ref _lumpCount, Place(point, new Vector3(rock, rock * 0.65f, rock * 0.85f) * big, 0f, size, tilt: 0f),
-                        new Color(0.5f, 0.5f, 0.47f).Lightened(_rng.RandfRange(-0.1f, 0.1f)));
+                    float rock = _rng.RandfRange(0.15f, 0.35f) * big;
+                    AddPlant(PlantKind.Boulder, Place(point, new Vector3(rock, rock * _rng.RandfRange(0.6f, 1f), rock * _rng.RandfRange(0.8f, 1.1f)), -0.05f * rock, size, tilt: 0.15f),
+                        new Color(1f, 1f, 1f).Lightened(_rng.RandfRange(-0.12f, 0f)));
                 }
             }
         }
@@ -253,6 +304,43 @@ public partial class CoastProps : Node3D
         _blades.VisibleInstanceCount = _bladeCount;
         _lumps.VisibleInstanceCount  = _lumpCount;
         _sticks.VisibleInstanceCount = _stickCount;
+        for (int i = 0; i < PlantModels.COUNT; i++)
+        {
+            _plants[i].VisibleInstanceCount = _plantCounts[i];
+        }
+    }
+
+    // Bloom colors per flower (daisy, bell, lupine), sRGB
+    private static readonly Color[][] BLOOMS =
+    {
+        new[] { new Color(1f, 0.98f, 0.94f), new Color(1f, 0.86f, 0.3f), new Color(0.98f, 0.62f, 0.78f) },
+        new[] { new Color(0.55f, 0.6f, 1f), new Color(0.75f, 0.55f, 0.98f), new Color(1f, 0.98f, 0.96f) },
+        new[] { new Color(0.62f, 0.45f, 0.95f), new Color(0.98f, 0.5f, 0.72f), new Color(1f, 0.82f, 0.32f) },
+    };
+
+    /// <summary>A tint close to white, so neighboring plants differ a little in their green.</summary>
+    private Color Leafy()
+    {
+        float light = _rng.RandfRange(0.85f, 1.05f);
+        return new Color(light * _rng.RandfRange(0.95f, 1.08f), light, light * _rng.RandfRange(0.88f, 1f));
+    }
+
+    /// <summary>One plant model instance, ignored when its multimesh is full.</summary>
+    /// <param name="bloom">(Optional) Petal color (sRGB) of a flower. Defaults to none.</param>
+    private void AddPlant(PlantKind kind, Transform3D transform, Color tint, Color? bloom = null)
+    {
+        int i = (int)kind;
+        if (_plantCounts[i] >= MAX_PLANTS)
+        {
+            return;
+        }
+        _plants[i].SetInstanceTransform(_plantCounts[i], transform);
+        _plants[i].SetInstanceColor(_plantCounts[i], tint);
+        if (null != bloom)
+        {
+            _plants[i].SetInstanceCustomData(_plantCounts[i], bloom.Value);
+        }
+        _plantCounts[i]++;
     }
 
     /// <summary>A point moved randomly by up to spread Units on both axes.</summary>

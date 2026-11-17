@@ -622,6 +622,7 @@ public sealed class CreatureEditorSession
     // =============================   PLACE PARTS   =============================
     // ===========================================================================
     //
+    //   IsOpen       Whether a part may be built yet, locked parts are refused.
     //   CostOf       Points a part costs right now (a single half costs half).
     //   SideAt       The side a part dropped at a point takes.
     //   TryPlace     Places a part at a spine share if affordable and free.
@@ -633,6 +634,9 @@ public sealed class CreatureEditorSession
     //   The placing calls only pay and place. They raise no event: the CreaturePartPlacer
     //   picks the new part right after, and that pick raises Changed.
     //
+
+    /// <summary>Whether a part may be built yet (Creature/Design/PartUnlocks.cs), set by the editor; every part by default.</summary>
+    public System.Func<CreaturePartKind, bool> IsOpen { get; set; } = _ => true;
 
     /// <summary>Points a part costs with the current symmetry: a single half of a pair costs half, rounded up.</summary>
     public int CostOf(CreaturePartInfo info)
@@ -656,6 +660,11 @@ public sealed class CreatureEditorSession
     /// <example><code>session.TryPlace(CreaturePartKind.Hands, 0.6f, 1, out int cost)   // one right hand, half price</code></example>
     public bool TryPlace(CreaturePartKind kind, float t, int side, out int cost)
     {
+        cost = 0;
+        if (!IsOpen(kind))
+        {
+            return false;
+        }
         // Point symmetry: a ring of single halves around the spine, each at its price
         bool isRing = RadialCount >= 2 && CreatureDesign.CanBeRadial(kind);
         side = isRing && CreatureCatalog.Get(kind).IsPaired ? 1 : side;
@@ -706,7 +715,7 @@ public sealed class CreatureEditorSession
     public bool PlaceOnLimb(CreaturePartKind kind, int parentIndex, int joint, out int cost)
     {
         cost = -1;
-        if (parentIndex < 0 || parentIndex >= Draft.Parts.Count)
+        if (parentIndex < 0 || parentIndex >= Draft.Parts.Count || !IsOpen(kind))
         {
             return false;
         }

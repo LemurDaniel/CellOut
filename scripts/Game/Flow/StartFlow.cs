@@ -1,9 +1,10 @@
 // NOTE:
-//   The way into the game: the title menu over the paused soup, the RNA prelude
-//   (Prelude/RnaWorld.cs) that ends with the protocell forming around the strand, then
-//   the birth. Without the prelude (cutscene reel) the intro builds the protocell. Pauses
-//   the tree and hides the player while it runs, Main hides the HUD and reacts to
-//   Finished (HUD, populating, start banner).
+//   The way into the game: the title menu (the galaxy with its planets) over the paused
+//   soup, then by the chosen phase the RNA prelude (Prelude/RnaWorld.cs) that ends with the
+//   protocell forming around the strand, the intro that builds the protocell, or straight
+//   into the game (Phase tells Flow/PhaseStart.cs where to jump). Every start hands the
+//   colors of the planet to the shaders (Planets.Use). Pauses the tree and hides the player
+//   while it runs, Main hides the HUD and reacts to Finished (HUD, populating, start banner).
 //
 //   var startFlow = new StartFlow();
 //   startFlow.Setup(session, followCamera);
@@ -69,6 +70,9 @@ public partial class StartFlow : Node
     /// <summary>Whether the last start went through the RNA prelude, Main picks the start banner by it.</summary>
     public bool HasPlayedPrelude { get; private set; }
 
+    /// <summary>The phase the last start was chosen in, later ones jump there after the birth (Flow/PhaseStart.cs).</summary>
+    public StartPhase Phase { get; private set; }
+
     private TitleMenu _menu;
     private RnaWorld _prelude;
     private bool _isIntroRunning;
@@ -88,7 +92,7 @@ public partial class StartFlow : Node
 
         _menu = new TitleMenu();
         AddChild(_menu);
-        _menu.StartPressed    += () => Start();
+        _menu.StartPressed    += StartIn;
         _menu.LanguagePressed += () => EmitSignal(SignalName.LanguagePressed);
         Log.Verbose("StartFlow", "Title menu shown, game paused.");
     }
@@ -97,6 +101,16 @@ public partial class StartFlow : Node
     // Start
     //   Fades the menu, then the RNA prelude (also after a retry).
     // ---------------------------------------------------------------------------
+
+    /// <summary>Leaves the title menu in a phase: the RNA world plays the prelude, the protocell the intro, later phases start at once and jump.</summary>
+    /// <param name="phase">(Required) The phase chosen in the menu.</param>
+    public void StartIn(StartPhase phase)
+    {
+        _requested = phase;
+        Start(isInstant: phase > StartPhase.Protocell, isPreludeSkipped: StartPhase.Protocell == phase);
+    }
+
+    private StartPhase? _requested;
 
     /// <summary>Leaves the title menu: plays the RNA prelude and the intro, or skips them.</summary>
     /// <param name="isInstant">(Optional) Skips menu fade, prelude and intro, e.g. in the smoke test. Defaults to false.</param>
@@ -109,6 +123,10 @@ public partial class StartFlow : Node
             return;
         }
         HasPlayedPrelude = false;
+        Phase            = _requested ?? (isPreludeSkipped ? StartPhase.Protocell : StartPhase.RnaWorld);
+        _requested       = null;
+        Planets.Use();
+        PlanetProgress.CountGame();
         if (isInstant)
         {
             if (IsInstanceValid(_menu))
@@ -124,7 +142,7 @@ public partial class StartFlow : Node
         _isIntroRunning = true;
         if (IsInstanceValid(_menu))
         {
-            _menu.Start();
+            _menu.Start(isPreludeSkipped ? StartPhase.Protocell : StartPhase.RnaWorld);
         }
         if (isPreludeSkipped)
         {

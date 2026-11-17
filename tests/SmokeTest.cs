@@ -511,7 +511,7 @@ public partial class SmokeTest : Node
     //   Sprach-Button           ToggleLanguage switches from German to English.
     //   Stachel gerichtet       A forward spike hurts forward only.
     //   Fähigkeiten             Key slots in placement order, a front nematocyst, a back plate shields once.
-    //   Fähigkeiten im Spiel    In the running soup the player dashes and cloaks on its keys 1 and 2.
+    //   Fähigkeiten im Spiel    In the running soup the player dashes by a click on slot 1 and cloaks on key 2.
     //   Geißel hinten           A flagellum at the back is faster than one at the front.
     //   Ernährung links         Only molecules -> clearly herbivore.
     //   Ernährung rechts        Mostly meat afterwards -> carnivore side.
@@ -540,9 +540,10 @@ public partial class SmokeTest : Node
     //   Gewicht                 Blob about 10 kg, parts add weight, a heavy body walks slower, more legs carry more.
     //   Fliegen                 A blob with one feather pair is too heavy, a slim body with two pairs could fly.
     //   Hirn                    A big brain adds 2 EP per level (4 instead of 2).
-    //   Rudel                   Nest, three followers and two pups after the cheat (enough for the tribe offer), a deadly hit is survived in a member's body.
-    //   Stamm                   Fire lit, villagers commanded, the stock pays a dwelling, the village builder pauses and changes
-    //                           the watchtower blueprint, a chopper yields wood, rivals settle, a gift and a forced raid, warriors raze a rival village, the home button returns the camera, the camera rises.
+    //   Rudel                   Nest, three followers and two pups after the cheat, the tribe offer only after gathering biomass, two foreign packs of other species,
+    //                           court raises the relation (then cools down), display wins respect, hunt hurts, a deadly hit is survived in a member's body.
+    //   Stamm                   Fire lit, the chieftain calls and dismisses a retinue (F), the stock pays a dwelling, the village builder pauses and changes
+    //                           the watchtower blueprint, a chopper yields wood, rivals settle, a gift and a forced raid, warriors raze a rival village, the camera stays in third person.
     //   Teil-Modelle            Every Blender part model (creature and cell) loads with meshes and its looping animation.
     //   Grafikstufen            The tier cycles Low, Medium, High, owners hear the change, depth blur only above Low.
     //   Wasserfarben            The water follows the stage: primordial, pond, sea; the lens and the depth fog are set.
@@ -661,7 +662,7 @@ public partial class SmokeTest : Node
             ("Fliegen", ProbeFlight()),
             ("Hirn", ProbeBrain()),
             ("Rudel", _isPackOk),
-            ("Stamm", _isTribeOk && _main.StrategyView > 0f),
+            ("Stamm", _isTribeOk),
             ("Teil-Modelle", ProbeModels()),
             ("Grafikstufen", ProbeGraphicsTiers()),
             ("Wasserfarben", ProbeWater()),
@@ -711,7 +712,8 @@ public partial class SmokeTest : Node
     //   ProbeFlight           Flight ratio of a blob with one feather pair and a slim body with two.
     //   ProbeBrain            EP of one level up with and without a big brain.
     //   ProbePack             Cheat to the pack: stage 6, nest, members, pups, a takeover instead of game over.
-    //   ProbeTribe            Cheat to the tribe: stage 7, fire, commanded player, an order, a hut from a full stock.
+    //   ProbeEncounter        The foreign packs and the three ways court, display and hunt on one of their animals.
+    //   ProbeTribe            Cheat to the tribe: stage 7, fire, the retinue, a hut from a full stock, the packs became tribes on the path of the diet.
     //   ProbeModels           Every entry of CreatureVisual3D.MODELS and CellVisual3D.CELL_MODELS: meshes and
     //                         the named animation, every editor part has a cell model.
     //   ProbeShapeAndColor    Stretched front 1.4, squashed back 0.8, clamp at 1.5, heights 1.6 / clamp 0.5, copied, color reaches the player.
@@ -727,7 +729,13 @@ public partial class SmokeTest : Node
         int        pups   = Balance.Current.Tribe.Pack.PupsAtNest;
         bool       isPack = Player.PACK_STAGE == player.Stage && Player.LAND_STAGE == stageBefore
             && null != pack.Nest && 3 + pups == pack.Members && player.IsPackLeader && !player.IsTribal
-            && PackOffer.FoundTribe == pack.Offer;
+            && PackOffer.None == pack.Offer && "PACK_HINT_MORE" == pack.OfferHint;
+
+        // The tribe comes from biomass gathered since the nest, not from a head count
+        player.AddBiomass(pack.TribeGrowth.Needed, BiomassSource.Raw);
+        pack.Update(0.016f);
+        isPack = isPack && PackOffer.FoundTribe == pack.Offer;
+        bool isMet = ProbeEncounter(player, pack);
 
         // A deadly hit: the leader lives on in a grown member, the pack shrinks by one
         bool hasDied = false;
@@ -737,7 +745,83 @@ public partial class SmokeTest : Node
         player.TakeDamage(99999f, player.Position + Vector2.Right);
         player.Died -= OnDied;
         bool isTakenOver = hasDied && !player.IsDead && player.Hp > 0f && !GetTree().Paused && 2 + pups == pack.Members;
-        return isPack && isTakenOver;
+        if (!(isPack && isMet && isTakenOver))
+        {
+            GD.Print($"  pack: nest {isPack}, encounter {isMet}, takeover {isTakenOver}");
+        }
+        return isPack && isMet && isTakenOver;
+    }
+
+    /*
+      The foreign packs of the nest and the three ways:
+      - PacksOnIsland packs of other species live around the nest, PackSize animals each, not yet tribes.
+      - Court next to an animal: the relation rises, at once again: refused (cooldown).
+      - Display with the whole pack next to the player: the bigger side wins, respect rises.
+      - Hunt: the relation falls, the animal is hurt or dead.
+      - Ability parts: a scent gland and a roar sac on slots 4 and 5, a click on each fires it, the strangers flee.
+    */
+    private bool ProbeEncounter(Player player, PackKeeper pack)
+    {
+        RivalKeeper   rivals    = _main.Rivals;
+        PackEncounter encounter = _main.Encounter;
+        WaysBalance   ways      = Balance.Current.Tribe.Ways;
+        bool hasPacks = ways.PacksOnIsland == rivals.Rivals.Count
+            && rivals.Rivals.All(rival => !rival.IsSettled && ways.PackSize == rival.Kin.Count && !string.IsNullOrEmpty(rival.Species));
+        if (!hasPacks)
+        {
+            GD.Print($"  encounter: {rivals.Rivals.Count} pack(s)");
+            return false;
+        }
+
+        // The player and every grown member right next to an animal of the first pack (the facing comes back afterwards,
+        // the third person probe expects the creature to look along the camera)
+        float facing = player.Facing;
+        RivalTribe stranger = rivals.Rivals[0];
+        Kin        animal   = stranger.Kin[0];
+        float      size     = player.BodySize();
+        player.Position = animal.Position + Vector2.Left * (size + animal.Radius + size * 0.5f);
+        foreach (Kin member in pack.Kin)
+        {
+            member.Position = player.Position + Vector2.Left * size * 2.5f;
+        }
+        encounter.Update(0.016f);
+        bool hasTarget = encounter.IsActive && null != encounter.Target;
+
+        float relation  = stranger.Relation;
+        bool  isCourted = encounter.Use(PackWay.Court) && stranger.Relation > relation && !encounter.Use(PackWay.Court);
+        bool  isShown   = encounter.Use(PackWay.Display) && stranger.Respect > 0f;
+        relation        = stranger.Relation;
+        Kin   prey      = encounter.Target;     // the closest animal, not always the one the player was put next to
+        bool  isHunted  = encounter.Use(PackWay.Hunt) && stranger.Relation < relation && (prey.IsQueuedForDeletion() || prey.Hp < prey.MaxHp);
+
+        // Ability parts: a scent gland and a roar sac sit in the fans of court and hunt (wish of the user 2026-11-17),
+        // a click on the scent gland in the fan of court calms, the roar sac in the fan of hunt makes the
+        // strangers nearby run off; the own body plan comes back afterwards
+        var own   = new CreatureDesign();
+        var draft = new CreatureDesign();
+        own.CopyFrom(player.Creature);
+        draft.CopyFrom(player.Creature);
+        bool hasParts = draft.TryPlace(CreaturePartKind.ScentGland, 0.5f, paidCost: 0) && draft.TryPlace(CreaturePartKind.RoarSac, 0.6f, paidCost: 0);
+        player.CommitCreature(draft, player.EvolutionPoints);
+        _main.Hud.EmitSignal(Hud.SignalName.AbilityFanPressed, 0, (int)CreaturePartKind.ScentGland);
+        _main.Hud.EmitSignal(Hud.SignalName.AbilityFanPressed, 2, (int)CreaturePartKind.RoarSac);
+        bool isFled   = stranger.Kin.Any(other => null != other.OrderTarget);
+        bool isGifted = hasParts && 2 == player.CreatureAbilities.Slots.Count
+            && !player.CreatureAbilities.IsReady(CreaturePartKind.ScentGland) && !player.CreatureAbilities.IsReady(CreaturePartKind.RoarSac) && isFled;
+        player.CommitCreature(own, player.EvolutionPoints);
+
+        // The hunted pack calms down again, the probes after this one need a quiet island
+        foreach (Kin other in stranger.Kin)
+        {
+            other.OrderMove(stranger.Fire);
+        }
+        player.Facing = facing;
+        player.Push   = Vector2.Zero;
+        if (!(hasTarget && isCourted && isShown && isHunted && isGifted))
+        {
+            GD.Print($"  encounter: target {hasTarget}, court {isCourted}, display {isShown}, hunt {isHunted}, ability parts {isGifted}");
+        }
+        return hasTarget && isCourted && isShown && isHunted && isGifted;
     }
 
     private bool ProbeTribe(Player player)
@@ -745,27 +829,17 @@ public partial class SmokeTest : Node
         _main.CheatTo(CheatTarget.Tribe);
         PackKeeper      pack  = _main.Pack;
         TribeCommander  tribe = _main.Tribe;
-        bool isTribe = Player.TRIBE_STAGE == player.Stage && player.IsTribal && player.IsCommanded
-            && null != pack.Nest && pack.Nest.IsLit && tribe.IsActive
-            && pack.Members >= Balance.Current.Tribe.Pack.FoundTribeAt
-            && tribe.Units().Count == pack.Members + 1;
+        bool isTribe = Player.TRIBE_STAGE == player.Stage && player.IsTribal
+            && null != pack.Nest && pack.Nest.IsLit && tribe.IsActive && _main.Encounter.IsActive
+            && player.Biomass >= pack.TribeBiomass
+            && tribe.Villagers().Count == pack.Members;
 
-        // Select the player by a click on it and order it two sizes away: the order sticks until it arrives.
-        // A trunk may stand right there (the click would mean chopping), so the next direction is tried then
-        tribe.SelectAt(player.GlobalPosition, isAdding: false);
-        bool isOrdered = false;
-        foreach (Vector2 direction in new[] { Vector2.Right, Vector2.Up, Vector2.Left, Vector2.Down })
-        {
-            Vector2 target = player.GlobalPosition + direction * player.BodySize() * 2f;
-            player.OrderTarget = null;
-            tribe.Order(target);
-            isOrdered = 1 == tribe.Selected.Count && tribe.Selected[0] == player && target == player.OrderTarget
-                && player.OrderDirection().IsEqualApprox(direction);
-            if (isOrdered)
-            {
-                break;
-            }
-        }
+        // The chieftain calls a retinue with F (the closest grown villagers follow), F again sends it back to work
+        pack.ToggleRetinue();
+        int  called    = pack.Retinue;
+        bool isFollowed = called > 0 && pack.Kin.Count(kin => KinMode.Following == kin.Mode) == called;
+        pack.ToggleRetinue();
+        bool isOrdered = isFollowed && 0 == pack.Retinue && tribe.Villagers().Count == pack.Members;
 
         // A full stock pays a dwelling of the blueprint, an empty one does not
         BuildingDesign dwelling = tribe.DesignOf(BuildingKind.Dwelling);
@@ -836,9 +910,17 @@ public partial class SmokeTest : Node
             isChopped = isChopped && tribe.Economy.Wood == woodBefore;   // the tick above was consumed by the probe, the next needs ChopSeconds
         }
 
-        // Rivals: settled with the tribe, the first friendly, the second hostile; a gift costs food and raises the relation; a raid sends raiders
+        // Rivals: the foreign packs of the nest became tribes (fire lit, path locked from the diet); the first is made
+        // friendly, the second hostile; a gift costs food and raises the relation; a raid sends raiders
         RivalKeeper rivals = _main.Rivals;
-        bool hasRivals = rivals.Rivals.Count >= 2 && rivals.Rivals[0].IsFriendly && rivals.Rivals[1].IsHostile;
+        bool isSettled = rivals.Rivals.Count >= 2 && rivals.Rivals[0].IsSettled && rivals.Rivals[0].Nest.IsLit
+            && TribeWays.PathOf(player.Diet) == tribe.Path;
+        if (rivals.Rivals.Count >= 2)
+        {
+            rivals.Rivals[0].Shift(0.5f - rivals.Rivals[0].Relation);
+            rivals.Rivals[1].Shift(-0.5f - rivals.Rivals[1].Relation);
+        }
+        bool hasRivals = isSettled && rivals.Rivals[0].IsFriendly && rivals.Rivals[1].IsHostile;
         bool isGifted  = false;
         bool isRaided  = false;
         if (hasRivals)
@@ -898,20 +980,16 @@ public partial class SmokeTest : Node
             }
             isConquered = isTrained && isPicked && 0 == enemy.Huts.Count && enemy.IsDefeated
                 && enemy.Relation < relationBefore
-                && tribe.Economy.Food == foodBefore + war.DefeatFood;
+                && tribe.Economy.Food >= foodBefore + war.DefeatFood;     // a warlike tribe also gets food for every fallen defender
         }
 
-        // Home: the strategy view panned far off returns over the own fire, its footprint has four corners for the map
-        FollowCamera camera = _main.FollowCamera;
-        Vector2      away   = fire + Vector2.Right * unit * 500f;
-        camera.FocusOn(away);
-        bool isAway = camera.StrategyFocus == away;
-        bool isHome = isAway && _main.Hub.GoHome() && camera.StrategyFocus == fire && 4 == camera.ViewFootprint().Length;
+        // No strategy view: the camera stays behind the chieftain in third person
+        bool isHome = _main.ThirdPerson > 0.99f;
 
         bool isOk = isTribe && isOrdered && isPoor && isBuilt && isDesigned && isChopped && hasRivals && isGifted && isRaided && isConquered && isHome;
         if (!isOk)
         {
-            GD.Print($"  tribe {isTribe}, ordered {isOrdered}, poor {isPoor}, built {isBuilt}, designed {isDesigned}, chopped {isChopped}, rivals {hasRivals}, gifted {isGifted}, raided {isRaided}, conquered {isConquered}, home {isHome}");
+            GD.Print($"  tribe {isTribe}, retinue {isOrdered}, poor {isPoor}, built {isBuilt}, designed {isDesigned}, chopped {isChopped}, rivals {hasRivals}, gifted {isGifted}, raided {isRaided}, conquered {isConquered}, home {isHome}");
         }
         return isOk;
     }
@@ -924,14 +1002,13 @@ public partial class SmokeTest : Node
         {
             _main._UnhandledInput(wheelDown);
         }
-        // The probe runs in the tribe stage: once the camera has risen into the strategy view its own, lower cap applies
         float zoomedOut = _main.ZoomFactor;
-        bool  isCapped  = Mathf.IsEqualApprox(zoomedOut, Main.MAX_ZOOM) || Mathf.IsEqualApprox(zoomedOut, FollowCamera.RTS_MAX_ZOOM);
+        bool  isCapped  = Mathf.IsEqualApprox(zoomedOut, Main.MAX_ZOOM);
         _main._UnhandledInput(wheelUp);
         bool isOk = isCapped && _main.ZoomFactor < zoomedOut;
         if (!isOk)
         {
-            GD.Print($"  zoom after 20 notches out {zoomedOut} (caps {Main.MAX_ZOOM} and {FollowCamera.RTS_MAX_ZOOM}), one notch in {_main.ZoomFactor}");
+            GD.Print($"  zoom after 20 notches out {zoomedOut} (cap {Main.MAX_ZOOM}), one notch in {_main.ZoomFactor}");
         }
         return isOk;
     }
@@ -984,7 +1061,8 @@ public partial class SmokeTest : Node
         design.TryPlace(PartKind.Chromatophore, Vector2.Up, paidCost: 0);
         player.CommitDesign(design, points);
         player.Push = Vector2.Zero;
-        bool isDashed  = _main.Abilities.UseSlot(0) && player.Push.Length() > 0f;
+        _main.Hud.EmitSignal(Hud.SignalName.AbilityPressed, 0);     // a click on slot 1, like the key
+        bool isDashed  = player.Push.Length() > 0f && !player.Abilities.IsReady(PartKind.Flagellum);
         bool isCloaked = _main.Abilities.UseSlot(1) && player.Abilities.IsRunning(PartKind.Chromatophore);
         bool isCharged = !_main.Abilities.UseSlot(0);     // the dash recharges first
 

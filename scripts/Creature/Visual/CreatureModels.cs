@@ -143,6 +143,13 @@ public static class CreatureModels
             [CreaturePartKind.JellyBell]     = ("creature.jellybell.glb", "Pulse"),
             [CreaturePartKind.OralArms]      = ("creature.oralarms.glb", "Sway"),
             [CreaturePartKind.FeatherGills]  = ("creature.feathergills.glb", "Sway"),
+            // Ability parts (tabs Gentle, Clever, Wild)
+            [CreaturePartKind.ScentGland]    = ("creature.scentgland.glb", "Sway"),
+            [CreaturePartKind.HealingMoss]   = ("creature.healingmoss.glb", null),
+            [CreaturePartKind.GlowCrest]     = ("creature.glowcrest.glb", null),
+            [CreaturePartKind.InkSac]        = ("creature.inksac.glb", null),
+            [CreaturePartKind.RoarSac]       = ("creature.roarsac.glb", "Puff"),
+            [CreaturePartKind.RamBrow]       = ("creature.rambrow.glb", null),
             [CreaturePartKind.Siphon]        = ("creature.siphon.glb", "Puff"),
             // Round 3 (eyes, mouths, fins): no fixed animation name, a rigged one plays its only loop (CreatureParts3D.BuildPlaced)
             [CreaturePartKind.SickleFin]     = ("creature.sicklefin.glb", "Flutter"),

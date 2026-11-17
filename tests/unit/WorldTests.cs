@@ -1,6 +1,7 @@
 // NOTE:
 //   Unit tests for the pure world logic: the RNA template and chain of the prelude
-//   (Prelude/Chain/) and the island outline of the coast (Creature/World/IslandShape.cs).
+//   (Prelude/Chain/) and the island outline of the coast (Creature/World/IslandShape.cs) with the
+//   foundations of buildings (GroundProfile.Flatten, BuildingDesign.FootprintRadius).
 //
 //   dotnet test tests/unit/CellOut.Tests.csproj --filter WorldTests
 
@@ -10,6 +11,7 @@
 //     PULL THE CHAIN      Adding, following, counting and breaking links.
 //     BREAK ON ERRORS     The error catastrophe: too many mutations break the chain.
 //     OUTLINE ISLANDS     Shore radius, land depth, the way to the sea and placement.
+//     FOUNDATIONS         Flat ground under buildings and the footprint of a blueprint.
 //
 
 using System.Collections.Generic;
@@ -240,5 +242,36 @@ public class WorldTests
         Assert.True(IslandShape.IsFree(new[] { ISLAND }, center, 6f, player: new Vector2(0f, 200f), minGap: 5f));
         Assert.False(IslandShape.IsFree(new[] { ISLAND }, center - new Vector2(1f, 0f), 6f, player: new Vector2(0f, 200f), minGap: 5f));
         Assert.False(IslandShape.IsFree(new[] { ISLAND }, center, 6f, player: center, minGap: 5f));
+    }
+
+    // ===========================================================================
+    // =============================   FOUNDATIONS   =============================
+    // ===========================================================================
+    //
+    //   FoundationIsFlatThenEases   Pad height inside the radius, the land beyond the blend, a smooth slope between.
+    //   FootprintHoldsEveryBlock    Empty blueprint 0, a centered room reaches its corners, an outer crate reaches farther.
+    //
+
+    [Fact]
+    public void FoundationIsFlatThenEases()
+    {
+        Assert.Equal(1f, GroundProfile.Flatten(3f, 0f, 5f, 4f, 1f), PRECISION);
+        Assert.Equal(1f, GroundProfile.Flatten(3f, 5f, 5f, 4f, 1f), PRECISION);
+        Assert.Equal(2f, GroundProfile.Flatten(3f, 7f, 5f, 4f, 1f), PRECISION);
+        Assert.Equal(3f, GroundProfile.Flatten(3f, 9f, 5f, 4f, 1f), PRECISION);
+        Assert.Equal(3f, GroundProfile.Flatten(3f, 50f, 5f, 4f, 1f), PRECISION);
+    }
+
+    [Fact]
+    public void FootprintHoldsEveryBlock()
+    {
+        var design = new BuildingDesign(BuildingKind.Dwelling);
+        Assert.Equal(0f, design.FootprintRadius, PRECISION);
+
+        Assert.True(design.TryPlace(BlockKind.SquareRoom, 4, 4));
+        Assert.Equal(Mathf.Sqrt(8f), design.FootprintRadius, PRECISION);
+
+        Assert.True(design.TryPlace(BlockKind.Crate, 0, 0));
+        Assert.Equal(Mathf.Sqrt(72f), design.FootprintRadius, PRECISION);
     }
 }

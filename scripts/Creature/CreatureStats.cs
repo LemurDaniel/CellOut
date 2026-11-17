@@ -374,6 +374,13 @@ public sealed class CreatureStats
                     stats.SwimSpeed *= Scaled(effects.LimbDrag);
                     wingPairs       += share;
                     break;
+                // Ability parts: no values, their ability on a key slot is all they bring (CreatureAbilitySet)
+                case CreaturePartKind.ScentGland:
+                case CreaturePartKind.HealingMoss:
+                case CreaturePartKind.GlowCrest:
+                case CreaturePartKind.InkSac:
+                case CreaturePartKind.RoarSac:
+                case CreaturePartKind.RamBrow:
                 // Head models: looks only, the parts plugged onto them bring the effects
                 case CreaturePartKind.CustomPart:
                 case CreaturePartKind.ElephantHead:

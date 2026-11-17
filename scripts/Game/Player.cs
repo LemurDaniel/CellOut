@@ -25,7 +25,7 @@
 //     DIVISION           When the cells may divide and the division itself.
 //     ORGANISM           Evolving the full cluster into a creature and committing its body plan.
 //     LAND               Crawling and walking on land, the step to the land animal.
-//     SOCIETY            Pack and tribe: the stages the PackKeeper founds, orders and the takeover of a kin.
+//     SOCIETY            Pack and tribe: the stages the PackKeeper founds and the takeover of a kin.
 //     STATS              Speed, goal progress and the directional combat values.
 //     GAMEPLAY           Biomass, damage and committing a new design.
 //     GROWTH             Stage advance, traits from the design and the cell radius.
@@ -112,6 +112,9 @@ public partial class Player : CellBody
     /// <summary>Traits only a cell has (thrust, light, vortex, plates, stings, suckers), neutral for an organism.</summary>
     public CellStats CellTraits => _traits.Cell;
 
+    /// <summary>The abilities of the ability parts of the creature (tabs Gentle, Clever, Wild), empty for a cell.</summary>
+    public CreatureAbilitySet CreatureAbilities { get; private set; } = new();
+
     // ===========================================================================
     // ================================   MOVE   =================================
     // ===========================================================================
@@ -143,8 +146,8 @@ public partial class Player : CellBody
             return;
         }
 
-        // Keys and the held mouse button, or the order of the tribe (SOCIETY)
-        Vector2 input = (IsCommanded ? OrderDirection() : SteeringInput()).LimitLength(1f);
+        // Keys and the held mouse button, the chieftain of the tribe walks the same way
+        Vector2 input = SteeringInput().LimitLength(1f);
 
         Velocity  = Velocity.Lerp(input * CurrentSpeed(), Mathf.Clamp(_traits.Acceleration * dt, 0f, 1f));
         Position += Velocity * dt;
@@ -171,7 +174,7 @@ public partial class Player : CellBody
         if (Input.IsPhysicalKeyPressed(Key.A) || Input.IsPhysicalKeyPressed(Key.Left))  input.X -= 1f;
         if (Input.IsPhysicalKeyPressed(Key.D) || Input.IsPhysicalKeyPressed(Key.Right)) input.X += 1f;
         input = input.Rotated(InputTurn);
-        if (Input.IsMouseButtonPressed(MouseButton.Left))
+        if (Input.IsMouseButtonPressed(MouseButton.Left) && null == GetViewport().GuiGetHoveredControl())     // a click on a button (ability slots) does not steer
         {
             Vector2 toMouse = Plane3D.MouseOnPlane(GetViewport(), GlobalPosition) - GlobalPosition;
             if (toMouse.Length() > BodySize() * 0.3f)
@@ -376,8 +379,7 @@ public partial class Player : CellBody
     // ===========================================================================
     //
     //   IsPackLeader   From stage 6 on: a nest with conspecifics that follow.
-    //   IsTribal       Stage 7: the pack settled around a fire, the player is one commanded unit.
-    //   IsCommanded    The tribe steers the body by orders (OrderTarget), keys and mouse are ignored.
+    //   IsTribal       Stage 7: the pack settled around a fire, the player is its chieftain and walks like the land animal.
     //   FoundSociety   The PackKeeper advances to the pack or the tribe, one stage at a time.
     //   Revive         A dead leader lives on in the body of a pack member (PackKeeper.TryTakeOver).
     //
@@ -385,9 +387,6 @@ public partial class Player : CellBody
     public bool IsPackLeader => Stage >= PACK_STAGE;
 
     public bool IsTribal => Stage >= TRIBE_STAGE;
-
-    /// <summary>(Optional) True from the tribe on: the body follows OrderTarget instead of the keys. Defaults to false.</summary>
-    public bool IsCommanded { get; set; }
 
     /// <summary>Advances to the pack (from the land animal) or the tribe (from the pack), with the stage bonus.</summary>
     /// <param name="stage">(Required) PACK_STAGE or TRIBE_STAGE, the one right after the current stage.</param>
@@ -401,7 +400,6 @@ public partial class Player : CellBody
         }
         Stage            = stage;
         EvolutionPoints += Tune.EpPerStage;
-        IsCommanded      = TRIBE_STAGE == stage;
         Log.Verbose("Player", $"Society founded -> stage {Stage} ({STAGE_KEYS[Stage]}).");
         EmitSignal(SignalName.StageChanged, Stage);
         EmitSignal(SignalName.StatsChanged);
@@ -733,6 +731,7 @@ public partial class Player : CellBody
         float hpRatio = MaxHp > 0f ? Hp / MaxHp : 1f;
         _traits   = IsOrganism ? PlayerTraits.OfCreature(Creature) : PlayerTraits.OfCell(Design, _mutations);
         Abilities = IsOrganism ? new AbilitySet() : AbilitySet.From(Design);
+        CreatureAbilities = CreatureAbilitySet.From(IsOrganism ? Creature : null);
 
         float hpMultiplier = _traits.Health * (1f + Tune.HpPerDivision * Divisions);
         BodyColor = IsOrganism ? Creature.Color ?? ORGANISM_COLOR : Design.Color ?? _stageColor;

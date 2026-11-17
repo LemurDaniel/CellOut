@@ -291,6 +291,7 @@ public sealed record CreatureBalance
     public required CreatureBodyBalance Body { get; init; }
     public required CreatureLandBalance Land { get; init; }
     public required CreatureEffectsBalance Effects { get; init; }
+    public required IReadOnlyDictionary<CreaturePartKind, AbilityBalance> Abilities { get; init; }   // the ability parts (Game/Abilities/CreatureAbilityResolver.cs)
 }
 
 public sealed record CreaturePartBalance
@@ -300,6 +301,8 @@ public sealed record CreaturePartBalance
     public float Carry { get; init; }                            // weight a pair of legs carries on land
     public float Stride { get; init; }                           // walking speed of a leg kind, 1 = normal legs
     public float Lift { get; init; }                             // weight a pair of wings lifts
+    public int UnlockStage { get; init; }                        // Player.Stage this game must reach before the part can be built (Creature/Design/PartUnlocks.cs)
+    public string UnlockReached { get; init; }                   // StartPhase reached once on any planet before the part can be built
 }
 
 public sealed record CreatureBodyBalance
@@ -381,6 +384,7 @@ public sealed record CreatureEffectsBalance
 //   VillageBalance   Villagers, gathering, chopping and fighting of the tribe (Tribe/Village/TribeCommander.cs).
 //   BuildingBalance  Costs and effects of one building function (Tribe/Building/BuildingDesign.cs).
 //   RivalsBalance    Neighbor tribes, their trades, raids and relations (Tribe/Rivals/RivalKeeper.cs).
+//   WaysBalance      Court, display and hunt of the pack, the paths of the tribe (Tribe/TribeWays.cs).
 //
 
 public sealed record TribeBalance
@@ -390,6 +394,41 @@ public sealed record TribeBalance
     public required VillageBalance Village { get; init; }
     public required IReadOnlyDictionary<BuildingKind, BuildingBalance> Buildings { get; init; }
     public required RivalsBalance Rivals { get; init; }
+    public required WaysBalance Ways { get; init; }
+}
+
+/// <summary>The three ways of pack and tribe: court, display, hunt and the paths they lock into (Tribe/TribeWays.cs, Tribe/Pack/PackEncounter.cs).</summary>
+public sealed record WaysBalance
+{
+    public required float WayBonus { get; init; }                // a way that fits the diet works up to 1 + this times better
+    public required float PathThreshold { get; init; }           // diet beyond +-this locks the warlike or pacifist path
+    public required int PacksOnIsland { get; init; }             // foreign packs around the player's nest
+    public required int PackSize { get; init; }                  // animals of one foreign pack
+    public required float PackSizeSpread { get; init; }          // their size against the player, +-share
+    public required float EncounterRange { get; init; }          // body sizes from the player to the stranger it turns to
+    public required float CourtRange { get; init; }              // body sizes between the membranes for a courtship
+    public required float CourtCooldown { get; init; }           // seconds
+    public required float CourtRelation { get; init; }           // relation per courtship at strength 1
+    public required float CourtSnap { get; init; }               // damage of a hostile stranger that snaps back
+    public required float DisplayRange { get; init; }            // body sizes around the player and the stranger that count for a display
+    public required float DisplayCooldown { get; init; }
+    public required float DisplayWin { get; init; }              // respect per won display at strength 1
+    public required float DisplayLose { get; init; }             // respect lost per lost display
+    public required float DisplaySeconds { get; init; }          // how long both sides hold the pose
+    public required float HuntRange { get; init; }               // body sizes between the membranes for a lunge
+    public required float HuntCooldown { get; init; }
+    public required float HuntLunge { get; init; }               // lunge in walking speeds
+    public required float HuntDamage { get; init; }              // bite at strength 1
+    public required float HuntRelation { get; init; }            // relation lost per hunt
+    public required float RespectAt { get; init; }               // respect from which a pack pays tribute and a tribe never raids
+    public required float RespectDrift { get; init; }            // respect lost per second
+    public required float AdoptAt { get; init; }                 // relation from which a foreign animal joins the pack
+    public required float AllyAt { get; init; }                  // relation of an ally, the goal of the pacifist path
+    public required float GiftInterval { get; init; }            // seconds between two fruits a friendly pack brings to the nest
+    public required float TributeInterval { get; init; }         // seconds between two tributes of a respectful pack or tribe
+    public required int KillFood { get; init; }                  // food for the stock per enemy killed on the warlike path
+    public required float CourtPerSecond { get; init; }          // relation per second and villager courting a tribe
+    public required float StartShift { get; init; }              // start relation of new tribes: + pacifist, - warlike
 }
 
 public sealed record PackBalance
@@ -404,7 +443,7 @@ public sealed record PackBalance
     public required float PupGrowSeconds { get; init; }          // seconds a pup needs to grow up
     public required float FollowDistance { get; init; }          // body sizes a follower keeps behind the leader
     public required float WanderRadius { get; init; }            // body sizes a kin roams around its home
-    public required int FoundTribeAt { get; init; }              // pack members (without the leader) needed for the tribe
+    public required float FoundTribeGrowth { get; init; }        // share more biomass than at the nest that founds the tribe
     public required float NestRegen { get; init; }               // share of the maximum health the leader heals per second at the nest
 }
 

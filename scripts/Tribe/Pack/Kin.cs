@@ -160,6 +160,7 @@ public partial class Kin : CellBody
     //   GoHome         Walks home and leaves (traders, raiders).
     //   Hp / MaxHp     Hit points, a grown kin has KinHealth.
     //   Hurt           Takes damage, true when it died (and is freed).
+    //   Heal           Health back up to the maximum.
     //
 
     private Vector2? _chopTrunk;
@@ -168,6 +169,9 @@ public partial class Kin : CellBody
     public CellBody AttackTarget { get; private set; }
 
     public bool IsChopping => null != _chopTrunk && null == OrderTarget;
+
+    /// <summary>Ordered to a trunk: on its way or chopping there.</summary>
+    public bool HasChopOrder => null != _chopTrunk;
 
     public Hut RazeTarget { get; private set; }
 
@@ -245,6 +249,13 @@ public partial class Kin : CellBody
     {
         OrderMove(Home);
         IsLeaving = true;
+    }
+
+    /// <summary>Heals up to its maximum health (healing moss of the leader).</summary>
+    /// <param name="amount">(Required) Hit points, below 0 counts as 0.</param>
+    public void Heal(float amount)
+    {
+        Hp = Mathf.Min(MaxHp, Hp + Mathf.Max(amount, 0f));
     }
 
     /// <summary>Takes damage, pops out of the world at zero health.</summary>

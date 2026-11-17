@@ -29,7 +29,7 @@ public partial class CoastForest : Node3D
     //   Setup    (Required) terrain: ground height and the unit of the coast.
     //            (Required) trees: the seeded trees per grid cell.
     //   Follow   Chunks around the player come and go, all rebuild when the player grew.
-    //   HideSpecies   Hides or shows one species in every chunk (the strategy view hides the giants over the camera).
+    //   Refresh  Every chunk rebuilds on the next Follow (the ground was leveled).
     //
 
     private const int TREE_CHUNK = 6;                // cells per chunk side
@@ -41,30 +41,6 @@ public partial class CoastForest : Node3D
     private TreeGrid _trees;
     private Vector2 _treesCenter = new(float.NaN, float.NaN);
     private float _treesSize;
-    private readonly HashSet<TreeSpecies> _hiddenSpecies = new();
-
-    /// <summary>Hides or shows a species in every chunk, also in chunks built later.</summary>
-    /// <param name="species">(Required) The species.</param>
-    /// <param name="isHidden">(Required) True hides it.</param>
-    /// <example><code>forest.HideSpecies(TreeSpecies.Giant, isHidden: true);   // the strategy view flies below their crowns</code></example>
-    public void HideSpecies(TreeSpecies species, bool isHidden)
-    {
-        if (isHidden ? !_hiddenSpecies.Add(species) : !_hiddenSpecies.Remove(species))
-        {
-            return;
-        }
-        foreach (Node3D chunk in _treeChunks.Values)
-        {
-            foreach (Node child in chunk.GetChildren())
-            {
-                if (child is MultiMeshInstance3D instance && instance.Name == species.ToString())
-                {
-                    instance.Visible = !isHidden;
-                }
-            }
-        }
-    }
-
     /// <summary>Hands over the terrain and its trees, called once before AddChild.</summary>
     /// <param name="terrain">(Required) The terrain of the coast.</param>
     /// <param name="trees">(Required) The seeded trees of that terrain.</param>
@@ -72,6 +48,12 @@ public partial class CoastForest : Node3D
     {
         _terrain = terrain;
         _trees   = trees;
+    }
+
+    /// <summary>Rebuilds every chunk on the next Follow, e.g. after the ground was leveled for a building.</summary>
+    public void Refresh()
+    {
+        _treesSize = 0f;
     }
 
     /*
@@ -190,7 +172,6 @@ public partial class CoastForest : Node3D
                 Name               = species.ToString(),
                 Multimesh          = multimesh,
                 VisibilityRangeEnd = TREE_VISIBLE[i] * _terrain.Unit,
-                Visible            = !_hiddenSpecies.Contains(species),
             });
         }
         AddChild(node);

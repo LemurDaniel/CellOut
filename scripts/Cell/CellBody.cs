@@ -94,6 +94,21 @@ public partial class CellBody : Node2D
 
     private const float CLOAK_SENSE = 0.08f;
 
+    /// <summary>Body language of a creature on top of its posture, radians: up rears up (display), down bows (court) or ducks.</summary>
+    public float Pose { get; private set; }
+
+    private float _poseLeft;
+
+    /// <summary>Holds a body language for a while, the creature eases into it and back (CreatureVisual3D).</summary>
+    /// <param name="pitch">(Required) Radians on top of the posture, positive rears up, negative bows.</param>
+    /// <param name="seconds">(Required) How long it holds it.</param>
+    /// <example><code>kin.Strike(0.6f, 1.5f);   // rears up to display</code></example>
+    public void Strike(float pitch, float seconds)
+    {
+        Pose      = pitch;
+        _poseLeft = seconds;
+    }
+
     public bool IsHidden { get; set; }        // not rendered at all, e.g. the player during the title menu
     public bool IsPartsOnly { get; set; }     // renders only the placed parts, no core cell (editor drag icon and ghost)
     public bool IsOnLand { get; set; }        // set by Main at the coast, creatures walk or crawl there
@@ -204,6 +219,8 @@ public partial class CellBody : Node2D
         float dt = (float)delta;
         HurtFlash = Mathf.Max(0f, HurtFlash - dt * HURT_FLASH_DECAY);
         Stunned   = Mathf.Max(0f, Stunned - dt);
+        _poseLeft = Mathf.Max(0f, _poseLeft - dt);
+        Pose      = _poseLeft > 0f ? Pose : 0f;
         if (_fadeInRate > 0f)
         {
             Fade        = Mathf.Max(0f, Fade - dt * _fadeInRate);

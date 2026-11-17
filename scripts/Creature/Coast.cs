@@ -73,12 +73,13 @@ public partial class Coast : Node3D
 
     public readonly record struct Island(Vector2 Center, float Radius, float Seed);
 
-    private const int ISLAND_COUNT = 7;
-    private const float START_RADIUS = 130f;         // landing island, in Unit: room for a tribe
-    private const float MIN_RADIUS = 50f;            // the others, in Unit
-    private const float MAX_RADIUS = 110f;
-    private const float MIN_GAP = 30f;               // sea between two shores at least, in Unit
-    private const float MAX_GAP = 90f;
+    // How many islands and how big they are comes from the planet (Core/Planets.cs: islands besides the landing island, landScale)
+    private const float START_RADIUS = 190f;         // landing island, in Unit: room for a tribe and its neighbors
+    private const float MIN_START_SCALE = 0.75f;     // the landing island of a water world still holds a tribe
+    private const float MIN_RADIUS = 90f;            // the others, in Unit
+    private const float MAX_RADIUS = 170f;
+    private const float MIN_GAP = 25f;               // sea between two shores at least, in Unit
+    private const float MAX_GAP = 70f;
 
     public IReadOnlyList<Island> Islands => _terrain.Islands;
 
@@ -124,15 +125,16 @@ public partial class Coast : Node3D
         var rng   = new RandomNumberGenerator { Seed = seed };
 
         // Landing island
-        var   start      = new Island(Vector2.Zero, START_RADIUS * unit, rng.Randf() * 100f);
+        Planet planet    = Planets.Current;
+        var   start      = new Island(Vector2.Zero, START_RADIUS * Mathf.Max(planet.LandScale, MIN_START_SCALE) * unit, rng.Randf() * 100f);
         float startReach = IslandShape.Radius(start, (-direction).Angle());
         coast.AddIsland(start with { Center = player + direction * (shoreDistance + startReach) }, player);
 
         // Neighbors
-        for (int attempt = 0; attempt < 200 && coast.Islands.Count < ISLAND_COUNT; attempt++)
+        for (int attempt = 0; attempt < 200 && coast.Islands.Count < 1 + planet.Islands; attempt++)
         {
             Island  anchor = coast.Islands[rng.RandiRange(0, coast.Islands.Count - 1)];
-            float   radius = rng.RandfRange(MIN_RADIUS, MAX_RADIUS) * unit;
+            float   radius = rng.RandfRange(MIN_RADIUS, MAX_RADIUS) * planet.LandScale * unit;
             float   gap    = rng.RandfRange(MIN_GAP, MAX_GAP) * unit;
             Vector2 center = IslandShape.NeighborCenter(anchor, radius, gap, rng.Randf() * Mathf.Tau);
             if (IslandShape.IsFree(coast.Islands, center, radius, player, MIN_GAP * unit))
@@ -153,6 +155,7 @@ public partial class Coast : Node3D
     //   ToSea          A plane point pushed back into the sea, at least a margin from every shore.
     //   GroundHeight   Ground height in player sizes: profile, rocky relief, dunes and the hill.
     //   SurfaceLift    How far the ground at a point lies above GROUND_HEIGHT, in world units.
+    //   AddPad         Levels a flat foundation for a building.
     //
     //   All of them delegate to World/CoastTerrain.cs.
     //
@@ -192,6 +195,16 @@ public partial class Coast : Node3D
         return _terrain.SurfaceLift(point, size);
     }
 
+    /// <summary>Levels a flat round foundation at the height of its middle, ground, props and trees follow on the next frame.</summary>
+    /// <param name="center">(Required) Plane point of the middle, on land.</param>
+    /// <param name="radius">(Required) Radius of the flat part in world units.</param>
+    /// <returns>False when the coast holds the most foundations already or the point is not on land.</returns>
+    /// <example><code>coast.AddPad(hut.Position, hut.FoundationRadius);</code></example>
+    public bool AddPad(Vector2 center, float radius)
+    {
+        return _terrain.AddPad(center, radius);
+    }
+
     // ===========================================================================
     // ================================   TREES   ================================
     // ===========================================================================
@@ -200,7 +213,6 @@ public partial class Coast : Node3D
     //   Coast            Creates the tree grid on the terrain, so the trees answer before _Ready.
     //   TreesIn        The trees of one grid cell, the same every time (seeded by the cell).
     //   PushOutOfTrees   A point moved out of every trunk it overlaps.
-    //   HideGiants       The strategy view flies below the giant crowns, so they go.
     //
     //   Both delegate to World/TreeGrid.cs, heights and bands of the trees are described there.
     //
@@ -233,13 +245,6 @@ public partial class Coast : Node3D
         return _trees.PushOutOfTrees(point, radius);
     }
 
-    /// <summary>Hides or shows the scale tree giants (World/CoastForest.cs), the strategy view flies below their crowns.</summary>
-    /// <param name="isHidden">(Required) True hides them.</param>
-    public void HideGiants(bool isHidden)
-    {
-        _forest?.HideSpecies(TreeSpecies.Giant, isHidden);
-    }
-
     // ===========================================================================
     // ================================   BUILD   ================================
     // ===========================================================================
@@ -250,6 +255,7 @@ public partial class Coast : Node3D
     private CoastSurface _surface;
     private CoastProps _props;
     private CoastForest _forest;
+    private int _levelRevision;
 
     public override void _Ready()
     {
@@ -297,6 +303,14 @@ public partial class Coast : Node3D
         //   player as far as the camera draws, open sea in third person.
         // ---------------------------------------------------------------------------
 
+        // A building leveled the ground: the islands below rebuild, props and trees settle on it
+        if (_terrain.Revision != _levelRevision)
+        {
+            _levelRevision = _terrain.Revision;
+            _surface.Level();
+            _props.Refresh();
+            _forest.Refresh();
+        }
         _surface.Follow(playerPosition, playerSize, viewRadius, drawReach, openSea);
 
         // ---------------------------------------------------------------------------

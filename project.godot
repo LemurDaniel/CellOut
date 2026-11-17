@@ -60,3 +60,19 @@ sky_unit={
 "type": "float",
 "value": 14.0
 }
+planet_foliage={
+"type": "color",
+"value": Color(0.27, 0.56, 0.24, 1)
+}
+planet_foliage_amount={
+"type": "float",
+"value": 0.0
+}
+planet_water={
+"type": "color",
+"value": Color(1, 1, 1, 1)
+}
+planet_sand={
+"type": "color",
+"value": Color(1, 1, 1, 1)
+}

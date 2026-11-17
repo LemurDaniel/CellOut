@@ -33,11 +33,15 @@ public partial class CoastSurface : Node3D
     //   Setup         (Required) terrain: the islands, their unit and the ground height.
     //                 Builds one ground mesh per island and the water.
     //   BuildGround   Rings around one island from the deep in to its middle.
+    //   Level         Rebuilds the islands new foundations lie on (FOLLOW).
     //
 
     public const float OPEN_SEA_HEIGHT = -0.58f;     // third person: the sea meets the beach (ground -0.6 at the shore)
     private const float WATER_HEIGHT = 0.7f;         // water surface above the body center, in player sizes
-    private const int SEGMENTS = 256;                // ground mesh columns around an island
+    private const float SEGMENT_LENGTH = 1.4f;       // ground mesh columns at most this far apart along the shore, in Unit
+    private const float MEADOW_ROW = 1f;             // ring rows inland this far apart, in Unit: the bumps of the meadow (~8 Unit) stay round
+    private const int MIN_SEGMENTS = 256;
+    private const int MAX_SEGMENTS = 768;            // the biggest islands: building the mesh stays quick
     private static readonly Shader GROUND_SHADER = GD.Load<Shader>("res://shaders/coast_ground.gdshader");
     private static readonly Shader WATER_SHADER = GD.Load<Shader>("res://shaders/coast_water.gdshader");
 
@@ -107,28 +111,30 @@ public partial class CoastSurface : Node3D
         var   rows  = new List<float>();
         for (float d = -30f; d < -16f; d += 2f) rows.Add(d);
         for (float d = -16f; d < Mathf.Min(16f, inner); d += 0.5f) rows.Add(d);
-        for (float d = 16f; d < inner; d += 2f) rows.Add(d);
+        for (float d = 16f; d < inner; d += MEADOW_ROW) rows.Add(d);
 
+        // Columns by the circumference of the bulging outline, so the shore and the hills stay smooth on big islands
+        int segments = Mathf.Clamp(Mathf.CeilToInt(Mathf.Tau * island.Radius * IslandShape.MAX_BULGE / (SEGMENT_LENGTH * unit) / 64f) * 64, MIN_SEGMENTS, MAX_SEGMENTS);
         var surface = new SurfaceTool();
         surface.Begin(Mesh.PrimitiveType.Triangles);
         foreach (float d in rows)
         {
-            for (int j = 0; j < SEGMENTS; j++)
+            for (int j = 0; j < segments; j++)
             {
-                float   angle  = j * Mathf.Tau / SEGMENTS;
+                float   angle  = j * Mathf.Tau / segments;
                 Vector2 local  = Vector2.FromAngle(angle) * (IslandShape.Radius(island, angle) - d * unit);
                 surface.AddVertex(Plane3D.To3D(local, _terrain.GroundHeight(island.Center + local)));
             }
         }
-        int center = rows.Count * SEGMENTS;
+        int center = rows.Count * segments;
         surface.AddVertex(Plane3D.To3D(Vector2.Zero, _terrain.GroundHeight(island.Center)));
 
         for (int i = 0; i < rows.Count; i++)
         {
-            for (int j = 0; j < SEGMENTS; j++)
+            for (int j = 0; j < segments; j++)
             {
-                int a = i * SEGMENTS + j;
-                int b = i * SEGMENTS + (j + 1) % SEGMENTS;
+                int a = i * segments + j;
+                int b = i * segments + (j + 1) % segments;
                 if (i == rows.Count - 1)
                 {
                     surface.AddIndex(a);
@@ -136,8 +142,8 @@ public partial class CoastSurface : Node3D
                     surface.AddIndex(center);
                     continue;
                 }
-                int c = a + SEGMENTS;
-                int e = b + SEGMENTS;
+                int c = a + segments;
+                int e = b + segments;
                 surface.AddIndex(a);
                 surface.AddIndex(b);
                 surface.AddIndex(c);
@@ -158,6 +164,39 @@ public partial class CoastSurface : Node3D
     //   2. Water    Centered on the player, as far as the camera draws, open sea in third person
     //               (low, on the beach height: from the side a high surface looked like a raised plate).
     //
+
+    private int _padsBuilt;
+
+    /// <summary>Rebuilds the ground of every island a new foundation lies on and hands all foundations to the shader.</summary>
+    /// <example><code>surface.Level();   // after CoastTerrain.AddPad</code></example>
+    public void Level()
+    {
+        IReadOnlyList<CoastTerrain.Pad> pads = _terrain.Pads;
+        float blend = CoastTerrain.PAD_BLEND * _terrain.Unit;
+        for (int i = 0; i < _grounds.Count; i++)
+        {
+            Coast.Island island = _terrain.Islands[i];
+            bool isTouched = false;
+            for (int p = _padsBuilt; p < pads.Count; p++)
+            {
+                isTouched |= pads[p].Center.DistanceTo(island.Center) < island.Radius * IslandShape.MAX_BULGE + pads[p].Radius + blend;
+            }
+            if (isTouched)
+            {
+                _grounds[i].Mesh = BuildGround(island);
+            }
+        }
+        _padsBuilt = pads.Count;
+
+        // The shader draws trampled earth on them: xy center, z radius
+        var packed = new Vector4[CoastTerrain.MAX_PADS];
+        for (int p = 0; p < pads.Count; p++)
+        {
+            packed[p] = new Vector4(pads[p].Center.X, pads[p].Center.Y, pads[p].Radius, 0f);
+        }
+        _groundMaterial.SetShaderParameter("pads", packed);
+        _groundMaterial.SetShaderParameter("pad_count", pads.Count);
+    }
 
     /// <summary>Keeps ground and water around the player, called every frame.</summary>
     /// <param name="playerPosition">(Required) Plane position of the player.</param>

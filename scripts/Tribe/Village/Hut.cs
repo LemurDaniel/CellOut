@@ -36,6 +36,7 @@ public partial class Hut : Node2D
     //   Hp / MaxHp      Hit points, from the function of the design.
     //   VillagersLeft   Villagers (or warriors, in a warrior hut) this building still raises.
     //   Progress        0..1 of the next villager, 0 once the hut raised them all.
+    //   FoundationRadius   World units of flat ground it needs (Coast.AddPad).
     //   Destroyed       Zero health: the hut is gone, its keeper forgets it.
     //   Setup           Blueprint and faction, before AddChild.
     //   Raise           Counts down to the next villager, true when one is born.
@@ -61,6 +62,12 @@ public partial class Hut : Node2D
     public int VillagersLeft { get; private set; }
 
     public float Progress => VillagersLeft > 0 ? 1f - _raiseTimer / Tune.VillagerSeconds : 0f;
+
+    /// <summary>World units around the middle the ground is leveled for it (Coast.AddPad): every block plus a little yard.</summary>
+    public float FoundationRadius => (Mathf.Max(Design.FootprintRadius, MIN_FOOTPRINT) * BuildingVisual3D.CELL + FOUNDATION_YARD) * Size;
+
+    private const float MIN_FOOTPRINT = 2f;          // cells, an empty blueprint still gets a small yard
+    private const float FOUNDATION_YARD = 0.3f;      // model units of flat ground around the outermost block
 
     private const int PUFFS = 3;
     private const float PUFF_RISE = 0.9f;            // in model units, how high a puff climbs over the roof

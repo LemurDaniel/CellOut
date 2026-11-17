@@ -2,7 +2,8 @@
 //   Unit tests for the tribe: the stock (Tribe/Village/TribeEconomy.cs), the blueprint of
 //   a building with its blocks and the effects of its function, the templates
 //   (Tribe/Building/) and a sitting in the village builder
-//   (Tribe/Building/Editor/BuildingEditorSession.cs). The expected values belong to
+//   (Tribe/Building/Editor/BuildingEditorSession.cs) and the ways and paths (Tribe/TribeWays.cs).
+//   The expected values belong to
 //   tests/unit/balance.fixture.json (tribe.buildings).
 //
 //   dotnet test tests/unit/CellOut.Tests.csproj --filter TribeTests
@@ -12,6 +13,7 @@
 //     KEEP THE STOCK        Gathering, chopping and the refusal of an empty stock.
 //     DESIGN THE BUILDING   Effects of the function, dropping, stacking and removing blocks, templates.
 //     SIT IN THE BUILDER    Picking, centering, dropping and the result of a sitting.
+//     WALK A PATH           The three ways of the pack and the paths of the tribe (Tribe/TribeWays.cs).
 //
 
 using Xunit;
@@ -310,5 +312,70 @@ public class TribeTests
 
         Assert.Empty(session.Draft.Blocks);
         Assert.Equal(BuildingTemplates.Default(BuildingKind.Totem).Blocks, session.Result(BuildingKind.Totem).Blocks);
+    }
+
+    // ===========================================================================
+    // =============================   WALK A PATH   =============================
+    // ===========================================================================
+    //
+    //   DietLocksThePath          Herbivore pacifist, balanced territorial, carnivore warlike, the edges at +-0.33.
+    //   EachPathGrewFromAWay      Pacifist courts, territorial displays, warlike hunts.
+    //   TheFittingWayIsStronger   Court 2 for a pure herbivore, hunt 1 for it, display 2 when balanced.
+    //   DisplayNeedsMoreBody      More body wins, a tie does not.
+    //   EachPathHasItsGoal        Allies, respect or defeat count, a defeated rival never counts for peace.
+    //   NoRivalsIsNoVictory       Without rivals no path is won.
+    //
+
+    [Fact]
+    public void DietLocksThePath()
+    {
+        Assert.Equal(TribePath.Pacifist, TribeWays.PathOf(-0.5f));
+        Assert.Equal(TribePath.Territorial, TribeWays.PathOf(0f));
+        Assert.Equal(TribePath.Territorial, TribeWays.PathOf(0.33f));
+        Assert.Equal(TribePath.Warlike, TribeWays.PathOf(0.34f));
+    }
+
+    [Fact]
+    public void EachPathGrewFromAWay()
+    {
+        Assert.Equal(PackWay.Court, TribeWays.WayOf(TribePath.Pacifist));
+        Assert.Equal(PackWay.Display, TribeWays.WayOf(TribePath.Territorial));
+        Assert.Equal(PackWay.Hunt, TribeWays.WayOf(TribePath.Warlike));
+    }
+
+    [Fact]
+    public void TheFittingWayIsStronger()
+    {
+        Assert.Equal(2f, TribeWays.Strength(PackWay.Court, -1f), 4);
+        Assert.Equal(1f, TribeWays.Strength(PackWay.Hunt, -1f), 4);
+        Assert.Equal(2f, TribeWays.Strength(PackWay.Display, 0f), 4);
+        Assert.Equal(1.5f, TribeWays.Strength(PackWay.Display, 0.5f), 4);
+    }
+
+    [Fact]
+    public void DisplayNeedsMoreBody()
+    {
+        Assert.True(TribeWays.DisplayWins(4f, 3f));
+        Assert.False(TribeWays.DisplayWins(3f, 3f));
+    }
+
+    [Fact]
+    public void EachPathHasItsGoal()
+    {
+        var ally      = new RivalStanding(0.9f, 0f, IsDefeated: false);
+        var respected = new RivalStanding(0f, 0.7f, IsDefeated: false);
+        var defeated  = new RivalStanding(0.9f, 0.7f, IsDefeated: true);
+
+        Assert.True(TribeWays.IsWon(TribePath.Pacifist, new[] { ally, ally }));
+        Assert.False(TribeWays.IsWon(TribePath.Pacifist, new[] { ally, defeated }));
+        Assert.Equal((1, 2), TribeWays.Progress(TribePath.Territorial, new[] { respected, ally }));
+        Assert.True(TribeWays.IsWon(TribePath.Warlike, new[] { defeated }));
+        Assert.False(TribeWays.IsWon(TribePath.Warlike, new[] { defeated, respected }));
+    }
+
+    [Fact]
+    public void NoRivalsIsNoVictory()
+    {
+        Assert.False(TribeWays.IsWon(TribePath.Warlike, System.Array.Empty<RivalStanding>()));
     }
 }

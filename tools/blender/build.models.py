@@ -3,6 +3,7 @@
 #   - assets/models/creature/  feet, hands, pincer, squid club, wings, fins, mouths, spines, shell, gills, brain, stalk eyes, lantern of the organism stage
 #   - assets/models/cell/      the sixteen cell editor parts (flagellum, cilium, jaw, electrocyte, ...)
 #   - assets/models/tree/      primeval trees of the islands (fern, cycad, horsetail, broadleaf, giant)
+#   - assets/models/plant/     undergrowth of the meadows (shrub, berry bush, ground fern, daisy, bell, lupine, boulder)
 #   - assets/models/village/   the nest of the pack and the fire pit of the tribe
 #   - assets/models/building/  the eighteen blocks of the building designer (walls, roofs, frames, ...)
 #   Everything is generated: skin modifier tubes, displaced spheres, an armature per
@@ -10,7 +11,7 @@
 #   Materials only carry names (Skin, Claw, Pad, Feather, Membrane, Fin, FinRay, Brain, EyeWhite,
 #   Pupil, Glint, Chitin, Armor, Chloro, Grana, Vacuole, Droplet, Toxin, Venom, Iris, Dark, Beak, Shell, ShellRim, Gill, Lantern, Bark,
 #   Leaf, LeafDark, Frond, Horsetail, Needle, Cone, Twig, Moss, Earth, Down, Stone, Log, Ember,
-#   Paint, PaintDark, Wood, Bone, Door, Flame, Rope, FruitRed, FruitGold, FruitGreen), the
+#   Paint, PaintDark, Wood, Bone, Door, Flame, Rope, FruitRed, FruitGold, FruitGreen, Petal, Pollen, Stem, Berry), the
 #   game recolors them (Core/PartModels.cs, Core/TreeModels.cs).
 #   The builders live in models/ (one module per family, see README.md), this file
 #   registers them and exports. Requires: Blender 5.2. Usually run through Build-Models.ps1.
@@ -42,6 +43,7 @@ import models.fins
 import models.mouths
 import models.defense
 import models.cells
+import models.new_abilities
 import models.new_angler
 import models.new_bird
 import models.new_crab
@@ -66,11 +68,12 @@ import models.new_squid
 import models.new_turtle
 import models.new_whale
 import models.trees
+import models.plants
 import models.village
 import models.buildings
 
 # Inside a running Blender the modules stay loaded between runs: reload, helpers first
-for module in (models.helpers, models.limbs, models.organs, models.fins, models.mouths, models.defense, models.cells, models.trees, models.village, models.buildings):
+for module in (models.helpers, models.limbs, models.organs, models.fins, models.mouths, models.defense, models.cells, models.new_abilities, models.trees, models.plants, models.village, models.buildings):
     importlib.reload(module)
 
 from models.buildings import (
@@ -123,6 +126,15 @@ from models.trees import (
     build_tree_fern,
     build_tree_giant,
     build_tree_horsetail,
+)
+from models.plants import (
+    build_plant_bell,
+    build_plant_berrybush,
+    build_plant_boulder,
+    build_plant_daisy,
+    build_plant_fernbush,
+    build_plant_lupine,
+    build_plant_shrub,
 )
 from models.village import build_fire, build_nest
 
@@ -263,6 +275,12 @@ PARTS = {
     'creature/creature.lideye.glb':        models.new_turtle.build_lideye,
     'creature/creature.turreteye.glb':     models.new_seahorse.build_turreteye,
     'creature/creature.frogeye.glb':       models.new_newt.build_frogeye,
+    'creature/creature.scentgland.glb':    models.new_abilities.build_scent_gland,
+    'creature/creature.healingmoss.glb':   models.new_abilities.build_healing_moss,
+    'creature/creature.glowcrest.glb':     models.new_abilities.build_glow_crest,
+    'creature/creature.inksac.glb':        models.new_abilities.build_ink_sac,
+    'creature/creature.roarsac.glb':       models.new_abilities.build_roar_sac,
+    'creature/creature.rambrow.glb':       models.new_abilities.build_ram_brow,
     'cell/cell.flagellum.glb':             build_flagellum,
     'cell/cell.cilium.glb':                build_cilium,
     'cell/cell.jaw.glb':                   build_cell_jaw,
@@ -284,6 +302,13 @@ PARTS = {
     'tree/tree.horsetail.glb':             build_tree_horsetail,
     'tree/tree.broadleaf.glb':             build_tree_broadleaf,
     'tree/tree.giant.glb':                 build_tree_giant,
+    'plant/plant.shrub.glb':               build_plant_shrub,
+    'plant/plant.berrybush.glb':           build_plant_berrybush,
+    'plant/plant.fernbush.glb':            build_plant_fernbush,
+    'plant/plant.daisy.glb':               build_plant_daisy,
+    'plant/plant.bell.glb':                build_plant_bell,
+    'plant/plant.lupine.glb':              build_plant_lupine,
+    'plant/plant.boulder.glb':             build_plant_boulder,
     'village/village.nest.glb':            build_nest,
     'village/village.fire.glb':            build_fire,
     'building/building.roundroom.glb':     build_round_room,

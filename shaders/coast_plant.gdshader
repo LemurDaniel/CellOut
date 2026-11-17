@@ -35,7 +35,7 @@ void fragment() {
 	vec3 across = world_pos / max(sky_unit, 0.001);
 	float mottle = planet_noise(across.xz * 5.0 + across.y * 3.0);
 	// Instance colors arrive as sRGB values, unconverted they look washed out
-	vec3 tint = pow(COLOR.rgb, vec3(2.2));
+	vec3 tint = planet_green(pow(COLOR.rgb, vec3(2.2)));
 	vec3 col = tint * mix(0.7, 1.25, tip) * (0.88 + 0.24 * mottle);
 	ALBEDO = col * cloud_shadow(world_pos.xz, TIME);
 	ROUGHNESS = 0.85;

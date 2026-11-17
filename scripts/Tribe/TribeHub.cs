@@ -1,23 +1,22 @@
 // NOTE:
 //   The hub bar bottom left that bundles what the player steers from the land animal on:
-//   it holds the round button of the village builder, the map of
-//   the archipelago (a click or M opens it
-//   large as the world map, with the names of the tribes), the round home button (a click
-//   or H brings the strategy view back over the own fire) and the counters of the
-//   population, the food and the wood. It grows with the stages: the map from the land
-//   animal on, the population with the pack, builder, home, food and wood with the tribe.
-//   The bar is a raised slab (light upper edge, shadow below), the map and the counters
-//   lie in wells sunk into it.
-//   Created by Main, which opens the builder on BuilderPressed.
+//   it holds the round build button (it opens the build menu of the TribePanel), the map
+//   of the archipelago (a click or M opens it large as the world map, with the names of
+//   the tribes and the neighbors beside it: mood, relation, a gift button), the counters
+//   of the population, the food and the wood (the goal of the stage is the progress ring
+//   of the dial, Game/Ui/VitalsDial.cs). It grows with the stages: the map from the land
+//   animal on, the population with the pack, build button, food and wood with the tribe. The bar is a raised slab (light upper edge, shadow
+//   below), the map and the counters lie in wells sunk into it. Created by Society.
 //
 //   var hub = new TribeHub();
-//   hub.Watch(session, pack, tribe, rivals, followCamera);
-//   hub.BuilderPressed += () => OpenBuildingEditor();
+//   hub.Watch(session, pack, tribe, rivals);
+//   hub.BuilderPressed += () => panel.ToggleBuildMenu();
+//   hub.GiftPressed    += rival => rivals.Gift(rival);
 //   AddChild(hub);
 
 //
 //   Chapters:
-//     HUB         The bar: builder button, small map, home button and counters.
+//     HUB         The bar: builder button, small map and counters.
 //     WORLD MAP   The large map over the game.
 //
 
@@ -31,16 +30,14 @@ public partial class TribeHub : CanvasLayer
     // =================================   HUB   =================================
     // ===========================================================================
     //
-    //   BuilderPressed   The builder button was pressed, Main opens the village builder.
-    //   Watch            The world, the pack, the tribe, the rivals and the camera the hub shows.
+    //   BuilderPressed   The build button was pressed, Society opens the build menu.
+    //   Watch            The world, the pack, the tribe and the rivals the hub shows.
     //   _Ready           The bar in the bottom left corner.
     //   NewRoundButton   A round button of the bar with a drawn glyph.
     //   Slab / Well      The raised look of the bar and the sunk look of what lies in it.
     //   _Process         Visibility by stage and the numbers of the counters.
-    //   GoHome           Brings the strategy view back over the own fire.
     //   NewCounter       A drawn glyph and a number.
     //   DrawBuilder      The hut on the builder button.
-    //   DrawHome         The campfire on the home button.
     //
 
     [Signal] public delegate void BuilderPressedEventHandler();
@@ -53,7 +50,6 @@ public partial class TribeHub : CanvasLayer
     private static readonly Color BAR_EDGE = new(0.55f, 0.72f, 0.8f);
     private static readonly Color WELL_COLOR = new(0.03f, 0.06f, 0.08f);
     private static readonly Color BUILDER_ACCENT = new(0.8f, 0.6f, 0.4f);
-    private static readonly Color HOME_ACCENT = new(1f, 0.72f, 0.3f);     // the color of the own fire on the map
     private static readonly Color PEOPLE_COLOR = new(0.98f, 0.5f, 0.45f);
     private static readonly Color FOOD_COLOR = new(0.9f, 0.35f, 0.3f);
     private static readonly Color WOOD_COLOR = new(0.62f, 0.42f, 0.22f);
@@ -64,11 +60,9 @@ public partial class TribeHub : CanvasLayer
     private PackKeeper _pack;
     private TribeCommander _tribe;
     private RivalKeeper _rivals;
-    private FollowCamera _camera;
     private PanelContainer _bar;
     private Button _builder;
     private Button _mapButton;
-    private Button _home;
     private Control _people;
     private Control _food;
     private Control _wood;
@@ -80,15 +74,13 @@ public partial class TribeHub : CanvasLayer
     /// <param name="session">(Required) Player and coast.</param>
     /// <param name="pack">(Required) The pack: nest and members.</param>
     /// <param name="tribe">(Required) The tribe: units and stock.</param>
-    /// <param name="rivals">(Required) The rival tribes for the map.</param>
-    /// <param name="camera">(Required) The camera: its view on the map, the home button moves it.</param>
-    public void Watch(WorldSession session, PackKeeper pack, TribeCommander tribe, RivalKeeper rivals, FollowCamera camera)
+    /// <param name="rivals">(Required) The rival tribes for the map and the neighbors beside it.</param>
+    public void Watch(WorldSession session, PackKeeper pack, TribeCommander tribe, RivalKeeper rivals)
     {
-        _session = session;
-        _pack    = pack;
-        _tribe   = tribe;
-        _rivals  = rivals;
-        _camera  = camera;
+        _session   = session;
+        _pack      = pack;
+        _tribe     = tribe;
+        _rivals    = rivals;
     }
 
     public override void _Ready()
@@ -125,19 +117,13 @@ public partial class TribeHub : CanvasLayer
         _mapButton.AddThemeStyleboxOverride("pressed", new StyleBoxEmpty());
         _mapButton.AddThemeStyleboxOverride("hover", EditorStyle.Pill(new Color(1f, 1f, 1f, 0.12f), Colors.White));
         var map = new WorldMap { Size = MAP_SIZE, ShowBehindParent = true, FrameColor = WELL_COLOR };
-        map.Watch(_session, _pack, _rivals, _camera);
+        map.Watch(_session, _pack, _rivals);
         _mapButton.AddChild(map);
         _mapButton.Pressed += ToggleWorldMap;
         var mapWell = new PanelContainer { SizeFlagsVertical = Control.SizeFlags.ShrinkCenter };
         mapWell.AddThemeStyleboxOverride("panel", Well(18, 4));
         mapWell.AddChild(_mapButton);
         row.AddChild(mapWell);
-
-        // Home: a round button with a drawn campfire, right of the map it acts on
-        _home = NewRoundButton(HOME_ACCENT);
-        _home.Pressed += () => GoHome();
-        _home.Draw    += DrawHome;
-        row.AddChild(_home);
 
         var counters = new VBoxContainer { SizeFlagsVertical = Control.SizeFlags.ShrinkCenter };
         counters.AddThemeConstantOverride("separation", 4);
@@ -207,7 +193,7 @@ public partial class TribeHub : CanvasLayer
       > Before the land animal: hidden
       > Land animal: the map
       > Pack: the population joins
-      > Tribe: the builder button, the home button, food and wood join
+      > Tribe: the builder button, food and wood join
     */
     public override void _Process(double delta)
     {
@@ -227,30 +213,19 @@ public partial class TribeHub : CanvasLayer
         _builder.Visible     = isTribe;
         _builder.TooltipText = Tr("TRIBE_DESIGN");
         _mapButton.TooltipText = Tr("HUB_MAP");
-        _home.Visible        = isTribe && null != _pack.Nest;
-        _home.TooltipText    = Tr("HUB_HOME");
         _people.Visible      = hasPack || isTribe;
         _food.Visible        = isTribe;
         _wood.Visible        = isTribe;
         _people.TooltipText  = Tr("HUB_PEOPLE");
         _food.TooltipText    = Tr("HUB_FOOD");
         _wood.TooltipText    = Tr("HUB_WOOD");
-        _peopleCount.Text    = (isTribe ? _tribe.Units().Count : _pack.Members + 1).ToString();
+        _peopleCount.Text    = (_pack.Members + 1).ToString();
         _foodCount.Text      = _tribe.Economy.Food.ToString();
         _woodCount.Text      = _tribe.Economy.Wood.ToString();
-    }
-
-    /// <summary>Brings the strategy view back over the own fire, from wherever the player panned to.</summary>
-    /// <returns>True when there is a fire to return to.</returns>
-    public bool GoHome()
-    {
-        if (null == _pack.Nest)
+        if (_worldMap.Visible)
         {
-            return false;
+            RefreshNeighbors();
         }
-        _camera.FocusOn(_pack.Nest.Position);
-        Log.Verbose("TribeHub", "Camera returns to the village.");
-        return true;
     }
 
     /// <summary>A row of a drawn glyph and a number.</summary>
@@ -297,6 +272,7 @@ public partial class TribeHub : CanvasLayer
                 icon.DrawCircle(new Vector2(22, 7), 4f, WOOD_COLOR.Lightened(0.35f));
                 icon.DrawCircle(new Vector2(22, 17), 4f, WOOD_COLOR.Lightened(0.2f));
                 break;
+
         }
     }
 
@@ -309,30 +285,6 @@ public partial class TribeHub : CanvasLayer
         _builder.DrawColoredPolygon(new[] { center + new Vector2(-19, -1), center + new Vector2(0, -19), center + new Vector2(19, -1) }, Colors.White);
     }
 
-    /// <summary>A campfire: a flame with a dark core over two crossed logs.</summary>
-    private void DrawHome()
-    {
-        Vector2 center = Vector2.One * BUTTON_SIZE * 0.5f;
-        var flame = new[]
-        {
-            new Vector2(0, -20), new Vector2(7, -9), new Vector2(11, 1), new Vector2(8, 8),
-            new Vector2(0, 11), new Vector2(-8, 8), new Vector2(-11, 1), new Vector2(-7, -9),
-        };
-        var core = new[] { new Vector2(0, -7), new Vector2(5, 2), new Vector2(3, 8), new Vector2(-3, 8), new Vector2(-5, 2) };
-        for (int i = 0; i < flame.Length; i++)
-        {
-            flame[i] += center;
-        }
-        for (int i = 0; i < core.Length; i++)
-        {
-            core[i] += center;
-        }
-        _home.DrawLine(center + new Vector2(-15, 10), center + new Vector2(15, 18), Colors.White, 5f, true);
-        _home.DrawLine(center + new Vector2(-15, 18), center + new Vector2(15, 10), Colors.White, 5f, true);
-        _home.DrawColoredPolygon(flame, Colors.White);
-        _home.DrawColoredPolygon(core, HOME_ACCENT.Darkened(0.5f));
-    }
-
     // ===========================================================================
     // ==============================   WORLD MAP   ==============================
     // ===========================================================================
@@ -340,10 +292,21 @@ public partial class TribeHub : CanvasLayer
     //   IsWorldMapOpen    Whether the large map shows.
     //   BuildWorldMap     The large map in the middle of the screen, hidden.
     //   ToggleWorldMap    Opens or closes it.
-    //   _UnhandledInput   M toggles it, Escape closes it, H goes home.
+    //   GiftPressed       A gift button beside the map was pressed, Society lets the rivals take it.
+    //   BuildNeighbors    The column beside the map: one row per neighbor, mood, relation and a gift.
+    //   RefreshNeighbors  Texts and the gift buttons, grey without food, only for settled tribes.
+    //   _UnhandledInput   M toggles it, Escape closes it.
     //
 
-    private static readonly Vector2 WORLD_MAP_SIZE = new(760f, 380f);
+    private static readonly Vector2 WORLD_MAP_SIZE = new(720f, 380f);
+    private const float NEIGHBOR_WIDTH = 290f;
+    private const int MAX_NEIGHBORS = 4;
+    private static readonly Color GIFT_ACCENT = new(0.6f, 0.85f, 0.55f);
+
+    [Signal] public delegate void GiftPressedEventHandler(RivalTribe rival);
+
+    private readonly System.Collections.Generic.List<(Control Row, Label Name, Label Mood, Button Gift)> _neighbors = new();
+    private Label _neighborTitle;
 
     private Button _worldMap;
     private Label _worldMapTitle;
@@ -356,7 +319,7 @@ public partial class TribeHub : CanvasLayer
         _worldMap = new Button
         {
             Visible           = false,
-            CustomMinimumSize = WORLD_MAP_SIZE + new Vector2(24, 64),
+            CustomMinimumSize = WORLD_MAP_SIZE + new Vector2(36 + NEIGHBOR_WIDTH, 64),
             FocusMode         = Control.FocusModeEnum.None,
             AutoTranslateMode = AutoTranslateModeEnum.Disabled,
         };
@@ -378,8 +341,83 @@ public partial class TribeHub : CanvasLayer
         _worldMap.AddChild(_worldMapTitle);
 
         var map = new WorldMap { Position = new Vector2(12, 52), Size = WORLD_MAP_SIZE, HasNames = true, FrameColor = BAR_COLOR };
-        map.Watch(_session, _pack, _rivals, _camera);
+        map.Watch(_session, _pack, _rivals);
         _worldMap.AddChild(map);
+        BuildNeighbors();
+    }
+
+    private void BuildNeighbors()
+    {
+        var column = new VBoxContainer { Position = new Vector2(WORLD_MAP_SIZE.X + 24, 52), CustomMinimumSize = new Vector2(NEIGHBOR_WIDTH, 0) };
+        column.AddThemeConstantOverride("separation", 10);
+        _worldMap.AddChild(column);
+        _neighborTitle = new Label { AutoTranslateMode = AutoTranslateModeEnum.Disabled, MouseFilter = Control.MouseFilterEnum.Ignore };
+        _neighborTitle.AddThemeFontSizeOverride("font_size", 20);
+        column.AddChild(_neighborTitle);
+
+        for (int i = 0; i < MAX_NEIGHBORS; i++)
+        {
+            var well = new PanelContainer { Visible = false, MouseFilter = Control.MouseFilterEnum.Ignore };
+            well.AddThemeStyleboxOverride("panel", Well(14, 8));
+            column.AddChild(well);
+            var row = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
+            row.AddThemeConstantOverride("separation", 8);
+            well.AddChild(row);
+            var texts = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, MouseFilter = Control.MouseFilterEnum.Ignore };
+            texts.AddThemeConstantOverride("separation", 0);
+            row.AddChild(texts);
+            var name = new Label { AutoTranslateMode = AutoTranslateModeEnum.Disabled, MouseFilter = Control.MouseFilterEnum.Ignore };
+            name.AddThemeFontSizeOverride("font_size", 16);
+            var mood = new Label { AutoTranslateMode = AutoTranslateModeEnum.Disabled, MouseFilter = Control.MouseFilterEnum.Ignore };
+            mood.AddThemeFontSizeOverride("font_size", 13);
+            mood.AddThemeColorOverride("font_color", new Color(1f, 1f, 1f, 0.7f));
+            texts.AddChild(name);
+            texts.AddChild(mood);
+            var gift = new Button
+            {
+                FocusMode         = Control.FocusModeEnum.None,
+                AutoTranslateMode = AutoTranslateModeEnum.Disabled,
+                CustomMinimumSize = new Vector2(96, 34),
+                SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
+            };
+            gift.AddThemeFontSizeOverride("font_size", 13);
+            EditorStyle.ApplyButton(gift, GIFT_ACCENT);
+            int index = i;
+            gift.Pressed += () =>
+            {
+                if (index < _rivals.Rivals.Count)
+                {
+                    EmitSignal(SignalName.GiftPressed, _rivals.Rivals[index]);
+                }
+            };
+            row.AddChild(gift);
+            _neighbors.Add((well, name, mood, gift));
+        }
+    }
+
+    /// <summary>Name, mood, relation and respect per neighbor, a gift button for settled tribes that are still standing.</summary>
+    private void RefreshNeighbors()
+    {
+        _neighborTitle.Text = Tr("HUB_NEIGHBORS");
+        var rivals   = _rivals.Rivals;
+        int giftFood = Balance.Current.Tribe.Village.GiftFood;
+        for (int i = 0; i < _neighbors.Count; i++)
+        {
+            (Control row, Label name, Label mood, Button gift) = _neighbors[i];
+            row.Visible = i < rivals.Count;
+            if (!row.Visible)
+            {
+                continue;
+            }
+            RivalTribe rival = rivals[i];
+            name.Text = rival.IsSettled ? Tr(rival.NameKey) : Tr(PackEncounter.NameOf(rival));
+            mood.Text = rival.Respect > 0.005f
+                ? string.Format(Tr("HUB_NEIGHBOR_RESPECT"), TribePanel.MoodOf(rival, key => Tr(key)), (int)Mathf.Round(rival.Relation * 100f), (int)Mathf.Round(rival.Respect * 100f))
+                : string.Format(Tr("HUB_NEIGHBOR_MOOD"), TribePanel.MoodOf(rival, key => Tr(key)), (int)Mathf.Round(rival.Relation * 100f));
+            gift.Text     = string.Format(Tr("RIVAL_GIFT"), giftFood);
+            gift.Visible  = _tribe.IsActive && rival.IsSettled && !rival.IsDefeated;
+            gift.Disabled = _tribe.Economy.Food < giftFood;
+        }
     }
 
     /// <summary>Opens or closes the large map.</summary>
@@ -401,11 +439,6 @@ public partial class TribeHub : CanvasLayer
         if (isToggle || isClose)
         {
             ToggleWorldMap();
-            GetViewport().SetInputAsHandled();
-            return;
-        }
-        if (Key.H == key.Keycode && _home.IsVisibleInTree() && GoHome())
-        {
             GetViewport().SetInputAsHandled();
         }
     }

@@ -50,8 +50,8 @@ public static class TreeModels
     // ===========================================================================
     //
     //   MeshOf        The merged mesh of a species, loaded once.
-    //   Merge         Every mesh of a model in one ArrayMesh, transformed into the model root.
-    //   MaterialFor   Wind shader material of a Blender material name, cached.
+    //   Merge         Every mesh of a model in one ArrayMesh, transformed into the model root (also the plants).
+    //   MaterialFor   Wind shader material of a Blender material name, cached (also the plants, Core/PlantModels.cs).
     //
 
     private static readonly Shader TREE_SHADER = GD.Load<Shader>("res://shaders/tree.gdshader");
@@ -75,7 +75,7 @@ public static class TreeModels
     }
 
     /// <summary>Every surface of every mesh below root, vertices and normals moved into root space.</summary>
-    private static ArrayMesh Merge(Node3D root)
+    public static ArrayMesh Merge(Node3D root)
     {
         var merged = new ArrayMesh();
         foreach (MeshInstance3D instance in root.FindChildren("*", nameof(MeshInstance3D), true, false).OfType<MeshInstance3D>())
@@ -116,12 +116,13 @@ public static class TreeModels
     }
 
     /// <summary>Material names of the generator to the wind shader: color, roughness, sway and shiver.</summary>
-    private static ShaderMaterial MaterialFor(string name)
+    public static ShaderMaterial MaterialFor(string name)
     {
         if (_materials.TryGetValue(name, out ShaderMaterial cached))
         {
             return cached;
         }
+        bool isBloom = "Petal" == name;
         (Color color, float roughness, float flutter) = name switch
         {
             "Leaf"      => (new Color(0.3f, 0.55f, 0.2f), 0.8f, 1f),
@@ -130,12 +131,19 @@ public static class TreeModels
             "Horsetail" => (new Color(0.42f, 0.52f, 0.26f), 0.6f, 0f),
             "Needle"    => (new Color(0.3f, 0.52f, 0.2f), 0.75f, 1.2f),
             "Cone"      => (new Color(0.85f, 0.48f, 0.18f), 0.5f, 0f),
+            "Petal"     => (new Color(1f, 1f, 1f), 0.6f, 1f),          // colored per instance (INSTANCE_CUSTOM), Core/PlantModels.cs
+            "Pollen"    => (new Color(0.95f, 0.72f, 0.16f), 0.6f, 1f),
+            "Stem"      => (new Color(0.28f, 0.48f, 0.18f), 0.8f, 1f),
+            "Berry"     => (new Color(0.72f, 0.1f, 0.18f), 0.35f, 0f),
+            "Stone"     => (new Color(0.5f, 0.5f, 0.48f), 0.95f, 0f),
+            "Moss"      => (new Color(0.3f, 0.48f, 0.16f), 0.95f, 1f),
             _           => (new Color(0.36f, 0.26f, 0.19f), 0.95f, 0f),   // Bark
         };
         var material = new ShaderMaterial { Shader = TREE_SHADER };
         material.SetShaderParameter("albedo", color);
         material.SetShaderParameter("roughness", roughness);
         material.SetShaderParameter("flutter", flutter);
+        material.SetShaderParameter("bloom", isBloom);
         _materials[name] = material;
         return material;
     }

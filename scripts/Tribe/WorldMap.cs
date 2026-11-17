@@ -4,14 +4,14 @@
 //   relief: the land is lit from the upper left, rises towards the middle of an island
 //   and throws a shadow onto the sea. The map sits in its frame like in a well: rounded
 //   corners in the color of the frame and a shadow along the upper edge. On top
-//   the own fire, the own people, the player, the fires of the rival tribes in their
-//   color and, in the strategy view, the ground the camera shows as a white outline.
+//   the own fire, the own people, the player and the fires of the rival tribes in their
+//   color.
 //   Used twice by the TribeHub: small in the bar and large as the world map, where
 //   the tribes also carry their names. It only reads the world, a click is reported by
 //   its owner.
 //
 //   var map = new WorldMap { CustomMinimumSize = new Vector2(190, 96), FrameColor = barColor };
-//   map.Watch(session, pack, rivals, followCamera);
+//   map.Watch(session, pack, rivals);
 //   AddChild(map);
 
 //
@@ -56,7 +56,6 @@ public partial class WorldMap : Control
     private WorldSession _session;
     private PackKeeper _pack;
     private RivalKeeper _rivals;
-    private FollowCamera _camera;
     private Coast _sampled;
     private ImageTexture _terrain;
     private Rect2 _area;
@@ -66,13 +65,11 @@ public partial class WorldMap : Control
     /// <param name="session">(Required) Player and coast.</param>
     /// <param name="pack">(Required) The pack: nest and kin.</param>
     /// <param name="rivals">(Required) The rival tribes.</param>
-    /// <param name="camera">(Required) The camera whose strategy view the map outlines.</param>
-    public void Watch(WorldSession session, PackKeeper pack, RivalKeeper rivals, FollowCamera camera)
+    public void Watch(WorldSession session, PackKeeper pack, RivalKeeper rivals)
     {
         _session     = session;
         _pack        = pack;
         _rivals      = rivals;
-        _camera      = camera;
         MouseFilter  = MouseFilterEnum.Ignore;
         ClipContents = true;
     }
@@ -169,7 +166,6 @@ public partial class WorldMap : Control
     //
     //   _Draw       Terrain, the rival fires, the own fire, the own people, the player, the camera view and the frame on top.
     //   DrawMarker  A dot with a dark rim and a soft halo.
-    //   DrawView    The ground the strategy camera shows, as a white outline.
     //   DrawFrame   The shadow along the upper and left edge and the rounded corners.
     //   ToMap       A plane point as a pixel of the control.
     //
@@ -178,7 +174,6 @@ public partial class WorldMap : Control
     private static readonly Color DEFEATED_COLOR = new(0.45f, 0.45f, 0.45f);
     private static readonly Color RIM_COLOR = new(0.05f, 0.08f, 0.1f);
     private const float CORNER_RADIUS = 16f;
-    private const float MIN_VIEW_PIXELS = 18f;       // the outline of the camera view is at least this far across
 
     private float _clock;
 
@@ -223,41 +218,7 @@ public partial class WorldMap : Control
         }
         Vector2 player = ToMap(_session.Player.GlobalPosition);
         DrawMarker(player, dot * 0.8f, Colors.White);
-        DrawView(dot);
         DrawFrame();
-    }
-
-    /// <summary>
-    /// The strategy view pans freely, so the map outlines the ground the screen shows.
-    /// Before the tribe the camera follows the player, whose dot already says where it is.
-    /// </summary>
-    private void DrawView(float dot)
-    {
-        if (_camera.Strategy < 0.5f)
-        {
-            return;
-        }
-        Vector2[] footprint = _camera.ViewFootprint();
-        var       outline   = new Vector2[footprint.Length + 1];
-        Vector2   center    = Vector2.Zero;
-        for (int i = 0; i < outline.Length; i++)
-        {
-            outline[i] = ToMap(footprint[i % footprint.Length]);
-            center    += i < footprint.Length ? outline[i] / footprint.Length : Vector2.Zero;
-        }
-
-        // On the small map the true outline shrinks to a speck: it grows around its middle until it reads
-        float span = Mathf.Max(outline[0].DistanceTo(outline[2]), outline[1].DistanceTo(outline[3]));
-        if (span > 0f && span < MIN_VIEW_PIXELS)
-        {
-            for (int i = 0; i < outline.Length; i++)
-            {
-                outline[i] = center + (outline[i] - center) * MIN_VIEW_PIXELS / span;
-            }
-        }
-        float width = Mathf.Max(1.5f, dot * 0.2f);
-        DrawPolyline(outline, RIM_COLOR, width + 2f, true);
-        DrawPolyline(outline, Colors.White, width, true);
     }
 
     private void DrawMarker(Vector2 at, float radius, Color color)

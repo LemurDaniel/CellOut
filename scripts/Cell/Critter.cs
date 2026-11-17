@@ -163,6 +163,7 @@ public partial class Critter : CellBody
     //   StingToward           Nematocyst damage of one shot towards a world direction, StingReload between shots.
     //   SuckerDrainToward     Damage per second of its suckers towards a world direction.
     //   Stats                 Its traits from the parts (spikes, jaws, plates, stings, suckers).
+    //   Calm / Scare          A scent gland calms it, a roar makes it flee (creature abilities).
     //
 
     /// <summary>Whether this critter can eat something of the given radius. Bacteria never eat.</summary>
@@ -214,6 +215,26 @@ public partial class Critter : CellBody
 
     /// <summary>Its traits from the parts, the abilities read the directions of jaws and plates.</summary>
     public CellStats Stats => _stats;
+
+    private float _calmLeft;
+    private float _fearLeft;
+    private Vector2 _fearFrom;
+
+    /// <summary>Calmed (a scent gland of the player): it leaves the player alone for a while.</summary>
+    /// <param name="seconds">(Required) How long, a running calm is only extended.</param>
+    public void Calm(float seconds)
+    {
+        _calmLeft = Mathf.Max(_calmLeft, seconds);
+    }
+
+    /// <summary>Scared (a roar of the player): it flees from a spot for a while, whatever else it wanted.</summary>
+    /// <param name="from">(Required) Plane point it runs from.</param>
+    /// <param name="seconds">(Required) How long it flees.</param>
+    public void Scare(Vector2 from, float seconds)
+    {
+        _fearFrom = from;
+        _fearLeft = Mathf.Max(_fearLeft, seconds);
+    }
 
     /// <summary>Heals up to a fresh body of its size, e.g. from what its suckers drain.</summary>
     /// <param name="amount">(Required) Hit points, below 0 counts as 0.</param>
@@ -353,6 +374,8 @@ public partial class Critter : CellBody
         StingCooldown = Mathf.Max(0f, StingCooldown - dt);
         StingReload   = Mathf.Max(0f, StingReload - dt);
         _sated        = Mathf.Max(0f, _sated - dt);
+        _calmLeft     = Mathf.Max(0f, _calmLeft - dt);
+        _fearLeft     = Mathf.Max(0f, _fearLeft - dt);
 
         // Being swallowed: Main moves the cell (ENGULF), it does not steer any more
         if (IsEngulfed)
@@ -389,7 +412,7 @@ public partial class Critter : CellBody
             {
                 flee -= toPlayer / Mathf.Max(distance, 1f);
             }
-            else if (isInSense && CanEat(playerSize) && Target.Invulnerable <= 0f)
+            else if (isInSense && CanEat(playerSize) && Target.Invulnerable <= 0f && _calmLeft <= 0f)     // a calmed cell leaves the player alone
             {
                 preyDir  = toPlayer;
                 preyDist = distance;
@@ -455,6 +478,11 @@ public partial class Critter : CellBody
         // ---------------------------------------------------------------------------
 
         Vector2 desired;
+        // A roar beats everything: it runs from the spot it came from
+        if (_fearLeft > 0f)
+        {
+            flee = (GlobalPosition - _fearFrom).Normalized();
+        }
         if (Vector2.Zero != flee)
         {
             desired = flee.Normalized();

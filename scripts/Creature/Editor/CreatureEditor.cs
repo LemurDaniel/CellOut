@@ -142,6 +142,7 @@ public partial class CreatureEditor : CanvasLayer
         _palette.ClearHover();
         _handles.CancelGizmoDrag();
         _spray.Reset();
+        _session.IsOpen = kind => PartUnlocks.IsOpen(kind, player.Stage, PlanetProgress.FurthestAnywhere);
         _session.Begin(isFirstShaping ? CreatureDesign.Blob() : player.Creature, isFirstShaping, () => player.EvolutionPoints + bonus);
 
         _stage.ShowDraft();
