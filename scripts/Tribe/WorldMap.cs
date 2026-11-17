@@ -188,11 +188,20 @@ public partial class WorldMap : Control
         float dot = Mathf.Max(2.5f, Size.Y * 0.035f);
         _clock += REDRAW_SECONDS;
 
-        // Rival tribes: their fire in their color, grey once defeated, the name on the large map
-        foreach (RivalTribe rival in _rivals.Rivals)
+        // Rival tribes: their fire in their color, grey once defeated, the name on the large map.
+        // The lair of the lone beast is a dark fang instead of a fire, gone once the beast is
+        foreach (RivalTribe rival in _rivals.Everyone)
         {
             Vector2 at    = ToMap(rival.Fire);
             Color   color = rival.IsDefeated ? DEFEATED_COLOR : rival.Tint;
+            if (rival.IsLoner)
+            {
+                if (!rival.IsDefeated)
+                {
+                    DrawFang(at, dot * 1.5f);
+                }
+                continue;
+            }
             DrawMarker(at, dot * 1.1f, color);
             if (HasNames)
             {
@@ -223,6 +232,19 @@ public partial class WorldMap : Control
         Vector2 player = ToMap(_session.Player.GlobalPosition);
         DrawMarker(player, dot * 0.8f, Colors.White);
         DrawFrame();
+    }
+
+    private static readonly Color FANG_COLOR = new(0.55f, 0.12f, 0.12f);
+
+    /// <summary>The lair of the lone beast: a dark red fang with a rim.</summary>
+    private void DrawFang(Vector2 at, float size)
+    {
+        Vector2[] Shape(float grow) => new[]
+        {
+            at + new Vector2(-size * 0.7f - grow, -size * 0.6f - grow), at + new Vector2(size * 0.7f + grow, -size * 0.6f - grow), at + new Vector2(0f, size + grow * 1.6f),
+        };
+        DrawColoredPolygon(Shape(1.6f), RIM_COLOR);
+        DrawColoredPolygon(Shape(0f), FANG_COLOR);
     }
 
     private void DrawMarker(Vector2 at, float radius, Color color)

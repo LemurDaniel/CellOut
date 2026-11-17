@@ -4,9 +4,10 @@ The components of the running world. `Main` creates them, hands them the `WorldS
 
 | File | Content |
 | --- | --- |
-| `WorldSession.cs` | Shared state: the player, the food and critter layer, the coast once it showed up. |
+| `WorldSession.cs` | Shared state: the player, the food and critter layer, the coast once it showed up, the orchard of the tribe. |
 | `FollowCamera.cs` | Chase camera with environment, sun, sky (`shaders/sky.gdshader`: clouds, sun, haze), the haze over the land and the water (`Water/`): wheel zoom, orbit, third person over the islands, planet curve, view radius, graphics tier, water colors, depth fog and depth of field. |
 | `LandPollen.cs` | Pollen drifting in the wind and a few butterflies over the meadow, around the camera focus from the land animal on. |
 | `ContactResolver.cs` | Contacts per physics frame: eating food, engulfing with pseudopods (player and cells), pushing apart, the kill reward. |
-| `Spawner.cs` | Fills the starting soup and the new sea, refills food and cells outside the view, meat of popped cells. |
+| `Spawner.cs` | Fills the starting soup and the new sea, refills food and cells outside the view, meat of popped cells, fruit from the trees (rare before the tribe, around the chieftain and the orchard of a tribe). |
+| `Wildlife.cs` | Herds of small prey on the islands from the land animal on (owned by `Tribe/Society.cs`): they appear outside the view, roam, run from the leader and its pack and leave meat when the hunt or a member gets them. |
 | `CoastKeeper.cs` | Spawns the coast of the organism stage, keeps it around the player and tells the player where land is. |

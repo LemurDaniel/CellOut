@@ -138,8 +138,10 @@ public partial class Main : Node2D
         _society.Setup(_session, _followCamera);
         _society.BannerRequested  += (titleKey, textKey, args) => Hud.ShowBanner(titleKey, textKey, args);
         _society.BuilderRequested += () => OpenBuildingEditor();
+        Hud.SocietyGoal            = () => _society.Goal();
         AddChild(_society);
         _society.BuildingEditor.Closed += OnBuildingEditorClosed;
+        _contacts.PlayerAteOnLand      += isMeat => _society.Tribe.TakeMeal(isMeat);     // the chieftain shares its meals with the stock
 
         // The abilities of the creature parts, after the society in every physics frame
         _creatureAbilities = new CreatureAbilityResolver();
@@ -649,6 +651,14 @@ public partial class Main : Node2D
     public CityScenery Scenery => _society.Scenery;
 
     public RivalKeeper Rivals => _society.Rivals;
+
+    public LonerKeeper Loners => _society.Loners;
+
+    public RivalDiplomacy Diplomacy => _society.Diplomacy;
+
+    public PackManners Manners => _society.Manners;
+
+    public Wildlife Wildlife => _society.Wildlife;
 
     public BuildingEditor BuildingEditor => _society.BuildingEditor;
 

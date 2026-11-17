@@ -320,11 +320,29 @@
       "followDistance": 2.2,
       "wanderRadius": 4,
       "foundTribeGrowth": 0.3,
-      "nestRegen": 0.04
+      "nestRegen": 0.04,
+      "packFoodShare": 0.5,
+      "forageRange": 5,
+      "maxMembers": 8,
+      "litterShare": 0.34
     },
     "fruit": {
       "interval": 2.5,
-      "maxOnGround": 24
+      "maxOnGround": 24,
+      "wildInterval": 5,
+      "wildMaxOnGround": 14,
+      "sizeMin": 0.1,
+      "sizeMax": 0.19
+    },
+    "wildlife": {
+      "herds": 3,
+      "herdSize": 4,
+      "herdSeconds": 12,
+      "preySize": 0.42,
+      "preyPace": 0.92,
+      "preyHealth": 0.4,
+      "fleeRange": 4.5,
+      "preyMeat": 0.6
     },
     "village": {
       "hutDistance": 9,
@@ -333,6 +351,7 @@
       "villagerSeconds": 20,
       "gatherRange": 12,
       "foodPerFruit": 1,
+      "foodPerMeat": 2,
       "chopSeconds": 4,
       "woodPerChop": 1,
       "kinHealth": 30,
@@ -404,7 +423,21 @@
       "tributeInterval": 30,
       "killFood": 3,
       "courtPerSecond": 0.03,
-      "startShift": 0.2
+      "startShift": 0.2,
+      "adoptPerPack": 1,
+      "territoryRange": 7,
+      "leashRange": 16,
+      "greetCooldown": 14,
+      "meatShare": 0.4,
+      "lonerSize": 1.6,
+      "lonerHealth": 4,
+      "lonerDamage": 2.5,
+      "lonerPresence": 3,
+      "lonerDistance": 0.85,
+      "lonerRelation": -0.7,
+      "lonerProwlInterval": 100,
+      "lonerProwlSeconds": 30,
+      "courtCalm": 3.5
     }
   },
 

@@ -33,6 +33,7 @@ public partial class RivalDiplomacy : Node
     //   Setup             The rivals and the tribe, before AddChild.
     //   IsWon             The path reached its goal, the banner showed.
     //   Progress          Rivals done and in total for the path, for the panel.
+    //   Share             0..1: how far the goal of the path is, for the progress ring.
     //   Update            Checks the goal once per physics frame from the tribe on.
     //   Standings         Relation, respect and defeat of every rival.
     //
@@ -55,6 +56,9 @@ public partial class RivalDiplomacy : Node
 
     /// <summary>Rivals done and in total for the path of the tribe.</summary>
     public (int Done, int Total) Progress => TribeWays.Progress(_tribe.Path, Standings());
+
+    /// <summary>0..1: how far the goal of the path is (TribeWays.GoalShare), for the progress ring.</summary>
+    public float Share => TribeWays.GoalShare(_tribe.Path, Standings());
 
     /// <summary>Shows the banner of the path once its goal is reached.</summary>
     public void Update()

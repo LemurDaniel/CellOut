@@ -164,6 +164,15 @@ public partial class FollowCamera : Node
     /// <summary>Wheel zoom on top of the automatic distance, 1 = default, bigger = farther away.</summary>
     public float ZoomFactor { get; private set; } = 1f;
 
+    private const float COMPANY_DISTANCE = 0.55f;    // third person: with company the camera pulls back by this share
+    private const float COMPANY_TILT = 0.22f;        // and rises by this many radians, so a pack and a tall stranger fit into the view
+    private const float COMPANY_SPEED = 1.2f;        // how fast it eases there, per second
+
+    private float _company;
+
+    /// <summary>(Optional) 0 alone .. 1 a stranger close by or a big pack around: the third person camera pulls back and rises (Tribe/Society.cs sets it every frame). Defaults to 0.</summary>
+    public float Company { get; set; }
+
     /// <summary>0 top view .. 1 third person, eased with SmoothStep when used.</summary>
     public float ThirdPerson { get; private set; }
 
@@ -315,7 +324,9 @@ public partial class FollowCamera : Node
         {
             _camFocus = focus;
         }
-        float distance = playerSize * Mathf.Lerp(CAM_DISTANCE, TP_DISTANCE, _view) * ZoomFactor;
+        _company       = Mathf.Lerp(_company, Mathf.Clamp(Company, 0f, 1f), Mathf.Clamp(dt * COMPANY_SPEED, 0f, 1f));
+        tilt          -= COMPANY_TILT * _company * _view;
+        float distance = playerSize * Mathf.Lerp(CAM_DISTANCE, TP_DISTANCE * (1f + COMPANY_DISTANCE * _company), _view) * ZoomFactor;
         _camDistance = Mathf.Lerp(_camDistance, distance, Mathf.Clamp(dt * 1.5f, 0f, 1f));
         _camFocus    = _camFocus.Lerp(focus, Mathf.Clamp(dt * 5f, 0f, 1f));
 

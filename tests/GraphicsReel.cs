@@ -31,6 +31,7 @@
 //   $env:CELLOUT_REEL_FAN = '1'       # optional: the tribe gets a roar sac and a ram brow, key 3 opens the fan of hunt (rushing: still 198)
 //   $env:CELLOUT_REEL_ABILITIES = '1' # optional: the single cell gets every ability and fires them (stills: frames 76, 86, 96, 104), end with --quit-after 118
 //   $env:CELLOUT_REEL_ENCOUNTER = '1' # optional, with CELLOUT_REEL_TRIBE: the pack meets a foreign pack, courts (still 80) and displays (still 104)
+//   $env:CELLOUT_REEL_WILD = '1'      # optional, with CELLOUT_REEL_TRIBE: the pack stands at a herd of prey (still 62) and in front of the lone beast (still 110)
 
 //
 //   Chapters:
@@ -92,6 +93,7 @@ public partial class GraphicsReel : Node
     private static readonly string TEMPLATE_KEY = OS.GetEnvironment("CELLOUT_REEL_TEMPLATE");
     private static readonly bool IS_SHOWING_ABILITIES = "1" == OS.GetEnvironment("CELLOUT_REEL_ABILITIES");
     private static readonly bool IS_SHOWING_ENCOUNTER = "1" == OS.GetEnvironment("CELLOUT_REEL_ENCOUNTER");
+    private static readonly bool IS_SHOWING_WILD = "1" == OS.GetEnvironment("CELLOUT_REEL_WILD");
     private static readonly CreatureEditorMode EDITOR_MODE = System.Enum.TryParse(OS.GetEnvironment("CELLOUT_REEL_MODE"), true, out CreatureEditorMode mode) ? mode : CreatureEditorMode.Build;
 
     private Main _main;
@@ -221,6 +223,10 @@ public partial class GraphicsReel : Node
         if (IS_SHOWING_ENCOUNTER && IS_RUSHING_TRIBE)
         {
             ShowEncounter(player);
+        }
+        if (IS_SHOWING_WILD && IS_RUSHING_TRIBE)
+        {
+            ShowWild(player);
         }
         switch (frame)
         {
@@ -356,6 +362,31 @@ public partial class GraphicsReel : Node
             case 95:
                 _main.Encounter.Use(PackWay.Display);
                 break;
+        }
+    }
+
+    /*
+      The wildlife of the pack stage, only with CELLOUT_REEL_WILD while rushing to the tribe:
+      - 40: the player and its members stand next to the first herd of prey (it runs)
+      - 70: they stand in front of the lone beast at its lair, it attacks
+    */
+    private void ShowWild(Player player)
+    {
+        Kin stranger = _frame switch
+        {
+            40 => _main.Wildlife.Prey.FirstOrDefault(),
+            70 => _main.Loners.Loners.FirstOrDefault()?.Kin.FirstOrDefault(),
+            _  => null,
+        };
+        if (null == stranger)
+        {
+            return;
+        }
+        player.Position = stranger.Position + Vector2.Left * player.BodySize() * 4f;
+        player.Facing   = 0f;
+        foreach (Kin member in _main.Pack.Kin)
+        {
+            member.Position = player.Position + new Vector2(-1.5f, (float)GD.RandRange(-2.0, 2.0)) * player.BodySize();
         }
     }
 

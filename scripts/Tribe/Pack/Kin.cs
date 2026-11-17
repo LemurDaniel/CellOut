@@ -45,6 +45,10 @@ public partial class Kin : CellBody
     //   Follow       Follows a leader.
     //   Stay         Roams around a home point.
     //   JoinTribe    A villager of a tribe: roams around the fire until ordered.
+    //   Toughen      Another build: the lone beast, a small prey animal.
+    //   Pace         Its pace instead of the pace of its body plan.
+    //   Watch        Stands and looks at a point for a while.
+    //   Calm         Calmed by a courtship, it starts no fight for a while.
     //
 
     /// <summary>Follow distance, roaming radius and pup growth from data/balance.json (tribe.pack).</summary>
@@ -98,7 +102,54 @@ public partial class Kin : CellBody
     public bool IsWarrior { get; private set; }
 
     /// <summary>Multiplier of the damage it deals in a fight or to a building.</summary>
-    public float DamageScale => IsWarrior ? Village.WarriorDamage : 1f;
+    public float DamageScale => IsWarrior ? Village.WarriorDamage : _damageScale;
+
+    private float _damageScale = 1f;
+
+    /// <summary>Another build than a common kin: a lone beast with many times the health and the bite, a small prey animal with a fraction.</summary>
+    /// <param name="healthScale">(Required) Its health in healths of a kin (KinHealth), above 0.</param>
+    /// <param name="damageScale">(Required) Its damage in damages of a kin, 0 for an animal that never bites.</param>
+    /// <example><code>beast.Toughen(4f, 2.5f);   // the lone beast</code></example>
+    public void Toughen(float healthScale, float damageScale)
+    {
+        if (healthScale <= 0f || damageScale < 0f)
+        {
+            throw new System.ArgumentOutOfRangeException(nameof(healthScale), $"healthScale must be above 0 and damageScale 0 or more, got '{healthScale}' and '{damageScale}'.");
+        }
+        MaxHp        = Village.KinHealth * healthScale;
+        Hp           = MaxHp;
+        _damageScale = damageScale;
+    }
+
+    /// <summary>(Optional) Its pace in plane units per second instead of the pace of its body plan, e.g. prey that runs nearly as fast as the player. Defaults to none.</summary>
+    public float? Pace { get; set; }
+
+    private Vector2 _watchPoint;
+    private float _watchLeft;
+
+    /// <summary>Stands still and looks at a point for a while instead of roaming, e.g. at the leader of another pack that comes close.</summary>
+    /// <param name="point">(Required) Plane point to look at.</param>
+    /// <param name="seconds">(Required) How long, a running watch is replaced.</param>
+    public void Watch(Vector2 point, float seconds)
+    {
+        _watchPoint = point;
+        _watchLeft  = seconds;
+    }
+
+    private float _calmLeft;
+
+    /// <summary>Calmed by a courtship: it does not start a fight until the time ran out (Tribe/Rivals/PackManners.cs).</summary>
+    public bool IsCalm => _calmLeft > 0f;
+
+    /// <summary>Calms the animal for a while: it lets go of whom it attacks and looks at who calmed it.</summary>
+    /// <param name="by">(Required) Plane point of who calmed it.</param>
+    /// <param name="seconds">(Required) How long, a running calm is only extended.</param>
+    public void Calm(Vector2 by, float seconds)
+    {
+        _calmLeft    = Mathf.Max(_calmLeft, seconds);
+        AttackTarget = null;
+        Watch(by, seconds);
+    }
 
     /// <summary>Turns the kin into a warrior: WarriorHealth times the health, WarriorDamage times the damage, bigger and darker.</summary>
     public void MakeWarrior()
@@ -120,6 +171,9 @@ public partial class Kin : CellBody
     }
 
     private bool _isCatchingUp;                      // just called: runs at full pace until it reached the leader
+
+    /// <summary>(Optional) Its place in the formation of the pack while it follows, set every frame by the PackKeeper. Defaults to none: it trails behind the leader.</summary>
+    public Vector2? FollowSpot { get; set; }
 
     /// <summary>Follows the leader from now on, running to catch up first.</summary>
     public void Follow()
@@ -258,7 +312,7 @@ public partial class Kin : CellBody
         Hp = Mathf.Min(MaxHp, Hp + Mathf.Max(amount, 0f));
     }
 
-    /// <summary>Takes damage, pops out of the world at zero health.</summary>
+    /// <summary>Takes damage, at zero health it is freed and leaves its fallen body behind (Fallen.cs).</summary>
     /// <param name="amount">(Required) Damage in hit points.</param>
     /// <returns>True when it died.</returns>
     public bool Hurt(float amount)
@@ -274,6 +328,8 @@ public partial class Kin : CellBody
             return false;
         }
         Log.Verbose("Kin", $"A kin of faction {Faction} ({Role}) died.");
+        // Its body stays for a moment: it tips over and sinks together (a look only, no list knows it)
+        AddSibling(Fallen.Of(this));
         QueueFree();
         return true;
     }
@@ -294,6 +350,7 @@ public partial class Kin : CellBody
     private const float TRUNK_CONTACT = 0.5f;        // the body touches a trunk this many sizes from its center
     private const float CONTACT_SHARE = 1.05f;       // in a fight the bodies stop this close, in sums of their sizes
     private const float EASE = 3f;
+    private const float SPOT_REACH = 0.5f;           // share of its size: this close to its place in the formation it stands
 
     private Vector2 _roamTarget;
     private float _roamTimer;
@@ -329,6 +386,7 @@ public partial class Kin : CellBody
         //   kin in call range turns to the leader and waits, else roaming around home.
         // ---------------------------------------------------------------------------
 
+        _calmLeft = Mathf.Max(0f, _calmLeft - dt);
         float   size      = Radius;
         Vector2 desired   = Vector2.Zero;
         bool    hasLeader = IsInstanceValid(leader);
@@ -366,18 +424,19 @@ public partial class Kin : CellBody
         }
         else if (isFree && KinMode.Following == Mode && hasLeader)
         {
-            Vector2 toLeader = leader.GlobalPosition - GlobalPosition;
-            float   gap      = toLeader.Length() - Tune.FollowDistance * leader.BodySize();
+            // Its place in the formation of the pack (FollowSpot), without one it trails behind the leader
+            Vector2 toLeader = (FollowSpot ?? leader.GlobalPosition) - GlobalPosition;
+            float   gap      = toLeader.Length() - (FollowSpot.HasValue ? size * SPOT_REACH : Tune.FollowDistance * leader.BodySize());
             if (gap > 0f)
             {
-                // Just called it runs at full pace, settled in it eases up behind the leader
+                // Just called it runs at full pace, settled in it eases up to its place
                 desired = toLeader.Normalized() * (_isCatchingUp ? 1f : Mathf.Clamp(gap / size, 0.3f, 1f));
             }
             else
             {
-                // Waiting in place: looks at the leader instead of into the woods
+                // Waiting in place: in the formation it looks where the leader looks, else at the leader instead of into the woods
                 _isCatchingUp = false;
-                Facing = Mathf.LerpAngle(Facing, toLeader.Angle(), Mathf.Clamp(dt * 3f, 0f, 1f));
+                Facing = Mathf.LerpAngle(Facing, FollowSpot.HasValue ? leader.Facing : toLeader.Angle(), Mathf.Clamp(dt * 3f, 0f, 1f));
             }
         }
         else if (isFree && KinMode.Wild == Mode && hasLeader
@@ -385,6 +444,12 @@ public partial class Kin : CellBody
         {
             // In call range: stands still and turns to the leader, the player sees it is close enough
             Facing = Mathf.LerpAngle(Facing, (leader.GlobalPosition - GlobalPosition).Angle(), Mathf.Clamp(dt * 4f, 0f, 1f));
+        }
+        else if (isFree && _watchLeft > 0f)
+        {
+            // Watching: stands and looks at what caught its eye (Watch)
+            _watchLeft -= dt;
+            Facing = Mathf.LerpAngle(Facing, (_watchPoint - GlobalPosition).Angle(), Mathf.Clamp(dt * 4f, 0f, 1f));
         }
         else if (isFree && KinMode.Following != Mode && !IsLeaving)
         {
@@ -415,7 +480,7 @@ public partial class Kin : CellBody
         //   Eases the velocity, never steps into the sea or into a trunk, reads the ground.
         // ---------------------------------------------------------------------------
 
-        float speed = SwimSpeed(size) * _landSpeed * StunFactor;
+        float speed = (Pace ?? SwimSpeed(size) * _landSpeed) * StunFactor;
         Velocity = Velocity.Lerp(desired * speed, Mathf.Clamp(dt * EASE * _acceleration, 0f, 1f));
         Vector2 next = Position + Velocity * dt;
         if (coast.IsOnLand(next))

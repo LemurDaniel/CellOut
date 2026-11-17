@@ -719,6 +719,7 @@ public partial class SmokeTest : Node
     //   ProbeBrain            EP of one level up with and without a big brain.
     //   ProbePack             Cheat to the pack: stage 6, nest, members, pups, a takeover instead of game over.
     //   ProbeEncounter        The foreign packs and the three ways court, display and hunt on one of their animals.
+    //   ProbeWildlife         Prey leaves meat, the lone beast attacks, a courtship calms it.
     //   ProbeSave             The tribe saved and its JSON read back: world, society and creature complete, the player restored unchanged.
     //   ProbeCity             The city founded at the fire: the headquarters stands and blocks the way, the chieftain outside, research with and without
     //                         knowledge, a closed tech refused, the bonus reaches the tribe, knowledge grows, tree view, save.
@@ -740,11 +741,13 @@ public partial class SmokeTest : Node
             && null != pack.Nest && 3 + pups == pack.Members && player.IsPackLeader && !player.IsTribal
             && PackOffer.None == pack.Offer && "PACK_HINT_MORE" == pack.OfferHint;
 
-        // The tribe comes from biomass gathered since the nest, not from a head count
+        // The tribe comes from biomass gathered since the nest, not from a head count; the growth brings a pup at the nest
         player.AddBiomass(pack.TribeGrowth.Needed, BiomassSource.Raw);
         pack.Update(0.016f);
-        isPack = isPack && PackOffer.FoundTribe == pack.Offer;
-        bool isMet = ProbeEncounter(player, pack);
+        isPack = isPack && PackOffer.FoundTribe == pack.Offer && 4 + pups == pack.Members;
+        bool isMet  = ProbeEncounter(player, pack);
+        bool isWild = ProbeWildlife(player);
+        int  members = pack.Members;
 
         // A deadly hit: the leader lives on in a grown member, the pack shrinks by one
         bool hasDied = false;
@@ -753,12 +756,55 @@ public partial class SmokeTest : Node
         player.Invulnerable = 0f;
         player.TakeDamage(99999f, player.Position + Vector2.Right);
         player.Died -= OnDied;
-        bool isTakenOver = hasDied && !player.IsDead && player.Hp > 0f && !GetTree().Paused && 2 + pups == pack.Members;
-        if (!(isPack && isMet && isTakenOver))
+        bool isTakenOver = hasDied && !player.IsDead && player.Hp > 0f && !GetTree().Paused && members - 1 == pack.Members;
+        if (!(isPack && isMet && isWild && isTakenOver))
         {
-            GD.Print($"  pack: nest {isPack}, encounter {isMet}, takeover {isTakenOver}");
+            GD.Print($"  pack: nest {isPack}, encounter {isMet}, wildlife {isWild}, takeover {isTakenOver}");
         }
-        return isPack && isMet && isTakenOver;
+        return isPack && isMet && isWild && isTakenOver;
+    }
+
+    /*
+      The wild animals of the pack stage:
+      - Prey: a herd grazes on the island, a deadly bite leaves a piece of meat where it stood.
+      - The lone beast: one hostile animal at its lair, no neighbor. It attacks the leader that
+        comes close (PackManners), a courtship calms it for a moment, its presence counts for
+        several bodies in a display.
+      The player stands where it stood afterwards.
+    */
+    private bool ProbeWildlife(Player player)
+    {
+        Wildlife wildlife = _main.Wildlife;
+        Vector2  spot     = player.Position;
+        Kin      prey     = wildlife.Prey.FirstOrDefault();
+        int      meat     = _main.FoodLayer.GetChildren().OfType<Food>().Count(food => food.IsMeat);
+        bool     isPrey   = null != prey && Wildlife.PREY_FACTION == prey.Faction && prey.Radius < player.BodySize()
+            && wildlife.Bite(prey, 99999f) && prey.IsQueuedForDeletion()
+            && meat + 1 == _main.FoodLayer.GetChildren().OfType<Food>().Count(food => food.IsMeat);
+
+        RivalTribe loner = _main.Loners.Loners.FirstOrDefault();
+        bool hasLoner = null != loner && loner.IsLoner && !loner.IsSettled && loner.IsHostile && 1 == loner.Kin.Count
+            && !_main.Rivals.Rivals.Contains(loner) && _main.Rivals.Everyone.Contains(loner);
+        bool isBeast = false;
+        if (hasLoner)
+        {
+            Kin beast = loner.Kin[0];
+            player.Position = beast.Position + Vector2.Left * (player.BodySize() + beast.Radius + player.BodySize() * 0.5f);
+            _main.Manners.Update(0.016f);
+            bool isAttacked = beast.AttackTarget == player && beast.Radius > player.BodySize() && beast.MaxHp > Balance.Current.Tribe.Village.KinHealth;
+            _main.Encounter.Update(10f);       // the cooldown of the courtship in ProbeEncounter runs out
+            float relation  = loner.Relation;
+            bool  isCalmed  = _main.Encounter.Target == beast && _main.Encounter.Use(PackWay.Court) && beast.IsCalm && null == beast.AttackTarget && loner.Relation > relation;
+            _main.Manners.Update(0.016f);
+            isBeast = isAttacked && isCalmed && null == beast.AttackTarget && loner.Presence > 1f;
+            beast.OrderMove(loner.Fire);
+            player.Position = spot;
+        }
+        if (!(isPrey && hasLoner && isBeast))
+        {
+            GD.Print($"  wildlife: prey {isPrey} ({wildlife.Prey.Count}), loner {hasLoner}, beast {isBeast}");
+        }
+        return isPrey && hasLoner && isBeast;
     }
 
     /*

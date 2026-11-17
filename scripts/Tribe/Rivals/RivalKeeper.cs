@@ -43,6 +43,7 @@ public partial class RivalKeeper : Node2D
     //   PackGave       A foreign pack brings fruit (friendly) or fruit and meat (tribute) to the nest.
     //   KinKilled      An enemy died in a fight: meat in the pack stage, food for a warlike tribe.
     //   Rivals         The neighbor tribes, empty before the player's tribe.
+    //   Loners         The lone beasts of the island, kept by the LonerKeeper, Everyone both.
     //   Setup          The session, the pack and the tribe, before AddChild.
     //
 
@@ -69,6 +70,12 @@ public partial class RivalKeeper : Node2D
     private Coast Coast => _session.Coast;
 
     public IReadOnlyList<RivalTribe> Rivals => _rivals;
+
+    /// <summary>(Optional) The lone beasts of the island (Tribe/Rivals/LonerKeeper.cs): no neighbors, but they fight like the animals of a pack. Defaults to none.</summary>
+    public IReadOnlyList<RivalTribe> Loners { get; set; } = System.Array.Empty<RivalTribe>();
+
+    /// <summary>Every foreign group the player can meet: the neighbors, then the lone beasts.</summary>
+    public IEnumerable<RivalTribe> Everyone => _rivals.Concat(Loners);
 
     /// <summary>Hands in the shared state, call before AddChild.</summary>
     /// <param name="session">(Required) Player and coast.</param>
@@ -167,7 +174,7 @@ public partial class RivalKeeper : Node2D
         float   size = Player.BodySize();
         Vector2 fire = _pack.Nest.Position;
         var     kinds = new List<string>(SPECIES);
-        kinds.RemoveAll(kind => _rivals.Exists(rival => rival.Species == kind));
+        kinds.RemoveAll(kind => _rivals.Exists(rival => rival.Species == kind) || Loners.Any(loner => loner.Species == kind));
         for (int island = 1; _rivals.Count < Tune.Count && island < Coast.Islands.Count; island++)
         {
             Vector2? home = HomeOf(island, fire);
@@ -285,10 +292,19 @@ public partial class RivalKeeper : Node2D
                 continue;
             }
 
-            // Relations drift towards neutral and respect fades, so nothing lasts without deeds
-            float drift = Mathf.Min(Mathf.Abs(rival.Relation), Tune.RelationDrift * dt);
-            rival.Shift(rival.Relation > 0f ? -drift : drift);
-            rival.ShiftRespect(-Balance.Current.Tribe.Ways.RespectDrift * dt);
+            // Relations drift towards neutral and respect fades, so nothing lasts without deeds. What is won
+            // for good stays (only deeds undo it): an ally stays an ally, a tribe that respects the player
+            // keeps doing so. Else the goals of the paths, all neighbors at once, could never be held.
+            WaysBalance ways = Balance.Current.Tribe.Ways;
+            if (rival.Relation < ways.AllyAt)
+            {
+                float drift = Mathf.Min(Mathf.Abs(rival.Relation), Tune.RelationDrift * dt);
+                rival.Shift(rival.Relation > 0f ? -drift : drift);
+            }
+            if (!(rival.IsSettled && rival.IsRespectful))
+            {
+                rival.ShiftRespect(-ways.RespectDrift * dt);
+            }
 
             // Friendly packs bring fruit, respectful ones (packs and tribes) pay tribute
             _giftTimer[rival]    = _giftTimer.GetValueOrDefault(rival, Balance.Current.Tribe.Ways.GiftInterval) - dt;
@@ -450,7 +466,7 @@ public partial class RivalKeeper : Node2D
     private void ResolveFights(float dt, float size)
     {
         var enemies = new List<Kin>();
-        foreach (RivalTribe rival in _rivals)
+        foreach (RivalTribe rival in Everyone)
         {
             enemies.AddRange(rival.Kin);
         }
@@ -520,7 +536,7 @@ public partial class RivalKeeper : Node2D
             bool isPlayerFight = enemy.AttackTarget == Player || KinRole.Raider == enemy.Role && !Player.IsDead;
             if (isPlayerFight && Player.GlobalPosition.DistanceTo(enemy.Position) <= (size + enemy.Radius) * CONTACT_SHARE)
             {
-                Player.Digest(damage, enemy.Position);
+                Player.Digest(damage * enemy.DamageScale, enemy.Position);
                 if (enemy.Hurt(damage * PLAYER_DAMAGE * _tribe.Bonuses.Damage))
                 {
                     OnEnemyKilled(enemy);
@@ -633,7 +649,7 @@ public partial class RivalKeeper : Node2D
     /// <param name="enemy">(Required) The kin that died, already freed.</param>
     public void ReportKill(Kin enemy)
     {
-        foreach (RivalTribe rival in _rivals)
+        foreach (RivalTribe rival in Everyone)
         {
             if (rival.Faction == enemy.Faction)
             {

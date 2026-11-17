@@ -122,6 +122,9 @@ public partial class RivalTribe : Node2D
     //   BuildHall    The headquarters on its fire once the player founded the city.
     //   PutUp        One building from a random template.
     //   Release      Hands one animal over to the player's pack (courted until it joined).
+    //   IsLoner      A lone beast instead of a pack, it never settles.
+    //   Presence     Bodies one of its animals counts for in a display.
+    //   Released     Animals that left for the player's pack.
     //
 
     public Nest Nest { get; private set; }
@@ -166,19 +169,33 @@ public partial class RivalTribe : Node2D
             return;
         }
 
-        // A foreign pack: its animals roam around the den
-        for (int i = 0; i < Balance.Current.Tribe.Ways.PackSize; i++)
+        // A foreign pack: its animals roam around the den, a loner is one beast with the health and bite of several
+        WaysBalance ways = Balance.Current.Tribe.Ways;
+        for (int i = 0; i < (IsLoner ? 1 : ways.PackSize); i++)
         {
             Kin animal = SpawnKin(Fire + Vector2.FromAngle(Rand.Angle()) * _size * 3f, KinRole.Villager);
             animal.JoinTribe(Fire);
+            if (IsLoner)
+            {
+                animal.Toughen(ways.LonerHealth, ways.LonerDamage);
+            }
         }
-        Log.Verbose("RivalTribe", $"Foreign pack {Faction} lives at its den {Fire} with {_kin.Count} animal(s).");
+        Log.Verbose("RivalTribe", $"Foreign pack {Faction} lives at its den {Fire} with {_kin.Count} animal(s) (loner: {IsLoner}).");
     }
 
-    /// <summary>The foreign pack becomes a tribe: its den turns into a fire with huts, villagers up to Villagers.</summary>
+    /// <summary>(Optional) A lone beast instead of a pack: one big animal at its lair that never settles (Tribe/Rivals/RivalKeeper.cs, LONERS). Defaults to false.</summary>
+    public bool IsLoner { get; init; }
+
+    /// <summary>Bodies of its own size one of its animals counts for in a display: a lone beast impresses like several.</summary>
+    public float Presence => IsLoner ? Balance.Current.Tribe.Ways.LonerPresence : 1f;
+
+    /// <summary>Animals that left this pack for the player's (Release), a pack lets only AdoptPerPack go.</summary>
+    public int Released { get; private set; }
+
+    /// <summary>The foreign pack becomes a tribe: its den turns into a fire with huts, villagers up to Villagers. A loner stays what it is.</summary>
     public void Settle()
     {
-        if (IsSettled || IsDefeated)
+        if (IsSettled || IsDefeated || IsLoner)
         {
             return;
         }
@@ -247,6 +264,7 @@ public partial class RivalTribe : Node2D
             return false;
         }
         RemoveChild(animal);
+        Released++;
         return true;
     }
 
@@ -260,6 +278,7 @@ public partial class RivalTribe : Node2D
     //   SendRaiders   Raiders walk from the entry point towards the player's village.
     //   ForgetGone    Drops animals freed since the last frame from Kin.
     //   Update        Steers every kin, frees the ones that left, keeps fire, huts and a landed ship in place.
+    //   HomeReach     How close a leaving kin must come to a home that lies inside a building.
     //   HasShips      The tribe sails (from the player's city on): its people land by ship.
     //   LandShip      A ship off the entry while traders or raiders from over the sea are ashore.
     //   UpdateLanding The landed ship rocks, it is gone with its people.
@@ -326,8 +345,9 @@ public partial class RivalTribe : Node2D
         foreach (Kin kin in _kin)
         {
             kin.Steer(dt, _coast, _kin, null, playerSize, isPackFollowing: false);
-            // A trader or raider that walked home leaves the world
-            if (kin.IsLeaving && null == kin.OrderTarget)
+            // A trader or raider that walked home leaves the world. Home may lie inside a building (the
+            // headquarters stands on the fire), then the wall is as far as it gets
+            if (kin.IsLeaving && (null == kin.OrderTarget || kin.Position.DistanceTo(kin.Home) <= HomeReach(kin)))
             {
                 kin.QueueFree();
             }
@@ -339,6 +359,21 @@ public partial class RivalTribe : Node2D
             hut.GroundHeight = _coast.GroundHeight(hut.Position) * playerSize;
         }
         UpdateLanding(dt, playerSize);
+    }
+
+    private const float WALL_REACH = 1.5f;           // radii of a kin from the wall of a building that stands on its home
+
+    /// <summary>How close a kin must come to its home to count as arrived: the wall of a building that stands on it, else 0 (the order ends on its own).</summary>
+    private float HomeReach(Kin kin)
+    {
+        foreach (Hut hut in _huts)
+        {
+            if (IsInstanceValid(hut) && hut.Position.DistanceTo(kin.Home) < hut.BlockRadius)
+            {
+                return hut.ContactRadius + kin.Radius * WALL_REACH;
+            }
+        }
+        return 0f;
     }
 
     /// <summary>(Optional) The tribe sails like the player's city: traders and raiders from over the sea land with a ship. Defaults to false.</summary>

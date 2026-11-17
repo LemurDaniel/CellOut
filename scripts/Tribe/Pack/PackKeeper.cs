@@ -48,9 +48,10 @@ public partial class PackKeeper : Node2D
     //   KinAte       A kin ate a piece of land food, the tribe counts it as gathered.
     //   NestBuilt    The nest stands, Main shows the stage.
     //   Setup        The session and the camera (view radius), before AddChild.
+    //   _Ready       Creates the formation of the followers (PackFormation.cs).
     //
 
-    [Signal] public delegate void KinAteEventHandler(Vector2 position, float size, Color color);
+    [Signal] public delegate void KinAteEventHandler(Vector2 position, float size, bool isMeat);
     [Signal] public delegate void NestBuiltEventHandler();
 
     /// <summary>Every tunable number of the pack from data/balance.json (tribe.pack).</summary>
@@ -72,6 +73,16 @@ public partial class PackKeeper : Node2D
         _camera  = camera;
     }
 
+    private PackFormation _formation;
+
+    public override void _Ready()
+    {
+        // The places of the followers around the leader and their walk to food
+        _formation = new PackFormation();
+        _formation.Setup(_session);
+        AddChild(_formation);
+    }
+
     // ===========================================================================
     // ==============================   KEEP PACK   ==============================
     // ===========================================================================
@@ -85,6 +96,7 @@ public partial class PackKeeper : Node2D
     //   NestBiomass  Biomass at the nest, TribeBiomass the biomass that founds the tribe, TribeGrowth both since the nest.
     //   IsStaying    Whether the pack waits at the nest (F toggles).
     //   Update       Spawns wild kin, steers all, lets them eat, keeps the nest on the ground, computes the offer.
+    //   RaiseLitter  A pup is born at the nest for every LitterShare the pack grew towards the tribe.
     //   SpawnWild    A wild kin on grass just outside the view.
     //   SpawnKin     One kin of the player's body plan at a spot.
     //
@@ -136,10 +148,13 @@ public partial class PackKeeper : Node2D
 
     /*
       One physics frame of the pack, the coast must exist:
-      1. Wild kin      Up to KinOnIsland roam the island of the land animal, one every KinSpawnInterval.
-      2. Steer         Every kin walks: orders, following, roaming (Kin.Steer).
-      3. Eat           A kin that touches land food eats it (KinAte), pups grow faster.
-      4. Nest          The nest stays on the ground that scales with the player, the leader heals there (NestRegen).
+      1. Wild kin      Up to KinOnIsland roam the island of the land animal, one every KinSpawnInterval,
+                       while the pack has room (MaxMembers).
+      2. Steer         Members forage (pack stage) and get their place beside the leader (PackFormation.cs),
+                       then every kin walks: orders, following, roaming (Kin.Steer).
+      3. Eat           A member that touches land food eats it (KinAte), in the pack stage the leader gets its share.
+      4. Nest          The nest stays on the ground that scales with the player, the leader heals there (NestRegen),
+                       pups are born as the pack grows (RaiseLitter).
       5. Offer         Call a kin nearby, build the nest, found the tribe, or nothing.
     */
     /// <summary>One physics frame of the pack.</summary>
@@ -154,7 +169,8 @@ public partial class PackKeeper : Node2D
 
         // Wild kin
         _kin.RemoveAll(kin => !IsInstanceValid(kin) || kin.IsQueuedForDeletion());
-        bool isWildWanted = Player.IsLandAnimal && !Player.IsTribal && _kin.Count - Members < Tune.KinOnIsland;
+        int  members      = Members;
+        bool isWildWanted = Player.IsLandAnimal && !Player.IsTribal && members < Tune.MaxMembers && _kin.Count - members < Tune.KinOnIsland;
         _spawnCooldown -= dt;
         if (isWildWanted && _spawnCooldown <= 0f)
         {
@@ -162,13 +178,18 @@ public partial class PackKeeper : Node2D
             SpawnWild(size);
         }
 
-        // Steer
+        // Forage, form up and steer
+        if (!Player.IsTribal)
+        {
+            _formation.Forage(_kin);
+        }
+        _formation.FormUp(dt, _kin);
         foreach (Kin kin in _kin)
         {
             kin.Steer(dt, Coast, _kin, Player, size, isPackFollowing: !IsStaying);
         }
 
-        // Eat
+        // Eat: wild kin leave the food to the pack, a meal of a member feeds the leader too
         foreach (Node node in FoodLayer.GetChildren())
         {
             if (node is not Food { Habitat: FoodHabitat.Land } food || food.IsEngulfed || food.IsQueuedForDeletion())
@@ -177,10 +198,14 @@ public partial class PackKeeper : Node2D
             }
             foreach (Kin kin in _kin)
             {
-                if (kin.Position.DistanceTo(food.Position) < kin.Radius + food.Size * 0.5f)
+                if (KinMode.Wild != kin.Mode && kin.Position.DistanceTo(food.Position) < kin.Radius + food.Size * 0.5f)
                 {
                     food.QueueFree();
-                    EmitSignal(SignalName.KinAte, food.Position, food.Size, food.ColorOf());
+                    if (!Player.IsTribal)
+                    {
+                        Player.AddBiomass(food.Value * Tune.PackFoodShare, food.IsMeat ? BiomassSource.Meat : BiomassSource.Plant);
+                    }
+                    EmitSignal(SignalName.KinAte, food.Position, food.Size, food.IsMeat);
                     break;
                 }
             }
@@ -195,10 +220,41 @@ public partial class PackKeeper : Node2D
             {
                 Player.Heal(Tune.NestRegen * dt);
             }
+            RaiseLitter(size, members);
         }
 
         // Offer
         Offer = ComputeOffer(size);
+    }
+
+    private int _litters;                            // pups born since the nest by the growth of the pack
+
+    /// <summary>Pups born so far for a share of the growth towards the tribe: one per LitterShare.</summary>
+    private static int LittersAt(float gathered, float needed)
+    {
+        return needed > 0f ? Mathf.FloorToInt(gathered / needed / Tune.LitterShare) : 0;
+    }
+
+    /// <summary>The pack grows with what it eats: every LitterShare of the growth towards the tribe a pup is born at the nest, while the pack has room.</summary>
+    private void RaiseLitter(float size, int members)
+    {
+        if (Player.IsTribal || !Player.IsPackLeader)
+        {
+            return;
+        }
+        (float gathered, float needed) = TribeGrowth;
+        if (LittersAt(gathered, needed) <= _litters)
+        {
+            return;
+        }
+        _litters++;
+        if (members >= Tune.MaxMembers)
+        {
+            return;
+        }
+        Kin pup = SpawnKin(Nest.Position + Vector2.FromAngle(Rand.Angle()) * size * 2.5f, size, KinMode.Staying, isPup: true);
+        pup.FadeIn(1.5f);
+        Log.Verbose("PackKeeper", $"A pup is born at the nest (litter {_litters}), {Members} member(s).");
     }
 
     /// <summary>Biomass of the player when the nest was built, 0 before.</summary>
@@ -236,7 +292,7 @@ public partial class PackKeeper : Node2D
         }
         if (null == Nest)
         {
-            if (null != NearestWild(size * Tune.CallRange))
+            if (Members < Tune.MaxMembers && null != NearestWild(size * Tune.CallRange))
             {
                 return PackOffer.Call;
             }
@@ -253,6 +309,10 @@ public partial class PackKeeper : Node2D
         if (isAtNest && isGrown)
         {
             return PackOffer.FoundTribe;
+        }
+        if (Members < Tune.MaxMembers && null != NearestWild(size * Tune.CallRange))
+        {
+            return PackOffer.Call;
         }
         OfferHint = isGrown ? "PACK_HINT_RETURN" : "PACK_HINT_MORE";
         return PackOffer.None;
@@ -540,6 +600,7 @@ public partial class PackKeeper : Node2D
     {
         animal.Faction = 0;
         animal.Role    = KinRole.Villager;
+        animal.Pace    = null;      // a lone beast walked at the pace of its keeper
         animal.Follow();
         _kin.Add(animal);
         AddChild(animal);
@@ -646,6 +707,8 @@ public partial class PackKeeper : Node2D
             SpawnKin(SaveData.ToVector2(kin.Position), size, hasHome || KinMode.Following == mode ? mode : KinMode.Following, kin.IsPup);
         }
         IsStaying = save.IsStaying;
+        (float gathered, float needed) = TribeGrowth;
+        _litters  = LittersAt(gathered, needed);      // the pups of the growth so far are among the saved members
         Offer     = ComputeOffer(size);
         Log.Verbose("PackKeeper", $"Pack restored: nest {null != Nest}, {Members} member(s).");
     }

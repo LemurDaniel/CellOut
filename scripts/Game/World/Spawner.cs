@@ -376,11 +376,13 @@ public partial class Spawner : Node
     private static readonly TreeSpecies[] FRUIT_SPECIES = { TreeSpecies.Broadleaf, TreeSpecies.Cycad };
     private const float CANOPY_RADIUS = 0.3f;        // share of the tree height the fruit lands from the trunk
     private const float CANOPY_HEIGHT = 0.65f;       // share of the tree height the fruit drops from
+    private const float FRUIT_LOOK = 3.8f;           // a fruit is worth little (Fruit.SizeMin..SizeMax) but must not look lost under its tree
 
     /// <summary>Fruit of the trees from data/balance.json (tribe.fruit).</summary>
     private static FruitBalance Fruit => Balance.Current.Tribe.Fruit;
 
     private float _fruitCooldown;
+    private bool _isOrchardTurn;
 
     /// <summary>One fruit per Fruit.Interval from a random fruit tree in view, while fewer than Fruit.MaxOnGround lie around.</summary>
     private void DropFruit(float dt)
@@ -390,13 +392,19 @@ public partial class Spawner : Node
             return;
         }
         _fruitCooldown -= dt;
-        if (_fruitCooldown > 0f || LandFood() >= Fruit.MaxOnGround)
+        // Before the tribe fruit is rare: a pack lives on its deeds. A tribe gathers it for its stock
+        bool isTribe = Player.IsTribal;
+        if (_fruitCooldown > 0f || LandFood() >= (isTribe ? Fruit.MaxOnGround : Fruit.WildMaxOnGround))
         {
             return;
         }
-        _fruitCooldown = Fruit.Interval;
+        _fruitCooldown = isTribe ? Fruit.Interval : Fruit.WildInterval;
 
-        List<Coast.Tree> trees = FruitTrees(Player.GlobalPosition, _camera.ViewRadius());
+        // A tribe has its orchard: every other fruit falls around the fire, also while the chieftain is away
+        _isOrchardTurn = !_isOrchardTurn;
+        List<Coast.Tree> trees = isTribe && _isOrchardTurn && _session.Orchard is (Vector2 fire, float radius)
+            ? FruitTrees(fire, radius)
+            : FruitTrees(Player.GlobalPosition, _camera.ViewRadius());
         if (0 == trees.Count)
         {
             return;
@@ -412,10 +420,10 @@ public partial class Spawner : Node
         {
             Habitat      = FoodHabitat.Land,
             GroundHeight = Coast.GroundHeight(position) * size,
-            LookScale    = LAND_FOOD_LOOK,
+            LookScale    = FRUIT_LOOK,
             Position     = position,
         };
-        fruit.Setup(size * Rand.Range(0.15f, 0.28f), Rand.Chance(0.7f) ? FoodKind.Sugar : FoodKind.Lipid);
+        fruit.Setup(size * Rand.Range(Fruit.SizeMin, Fruit.SizeMax), Rand.Chance(0.7f) ? FoodKind.Sugar : FoodKind.Lipid);
         fruit.Value *= Balance.Current.Diet.PlantFoodValue;
         fruit.DropFrom(tree.Height * CANOPY_HEIGHT);
         FoodLayer.AddChild(fruit);

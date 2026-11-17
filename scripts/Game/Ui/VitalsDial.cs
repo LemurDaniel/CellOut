@@ -44,7 +44,8 @@ public partial class VitalsDial : Control
     /// <param name="HealthTip">(Required) Translated tooltip of the health ring.</param>
     /// <param name="ProgressTip">(Required) Translated tooltip of the progress ring.</param>
     /// <param name="EditorTip">(Required) Translated tooltip of the editor icon.</param>
-    public readonly record struct State(float Health, float Progress, float Diet, bool HasDiet, int Points, string HealthTip, string ProgressTip, string EditorTip);
+    /// <param name="IsSocietyGoal">(Optional) The progress ring shows the goal of pack or tribe instead of the next evolution, in gold. Defaults to false.</param>
+    public readonly record struct State(float Health, float Progress, float Diet, bool HasDiet, int Points, string HealthTip, string ProgressTip, string EditorTip, bool IsSocietyGoal = false);
 
     // ===========================================================================
     // ================================   STATE   ================================
@@ -282,6 +283,7 @@ public partial class VitalsDial : Control
     private static readonly Color TRACK_COLOR = new(0f, 0f, 0f, 0.45f);
     private static readonly Color HEALTH_COLOR = new(0.95f, 0.4f, 0.4f);
     private static readonly Color PROGRESS_COLOR = new(0.45f, 0.9f, 0.6f);
+    private static readonly Color SOCIETY_COLOR = new(1f, 0.82f, 0.35f);      // the goal of pack and tribe, the gold of the action button
     private static readonly Color AIR_COLOR = new(0.55f, 0.85f, 1f);
 
     public override void _Draw()
@@ -296,7 +298,7 @@ public partial class VitalsDial : Control
             health = health.Lightened(0.25f + 0.25f * Mathf.Sin(_time * 8f));
         }
         DrawRing(HEALTH_RADIUS, _state.Health, health);
-        DrawRing(PROGRESS_RADIUS, _state.Progress, PROGRESS_COLOR);
+        DrawRing(PROGRESS_RADIUS, _state.Progress, _state.IsSocietyGoal ? SOCIETY_COLOR : PROGRESS_COLOR);
         DrawGauge();
         DrawAir();
     }

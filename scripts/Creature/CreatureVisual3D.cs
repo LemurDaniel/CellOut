@@ -145,6 +145,8 @@ public partial class CreatureVisual3D : Node3D
     private ShaderMaterial _clay;
     private int _signature;
     private float _time;
+    private const float MIN_GROW_IN = 0.02f;         // share of its size a creature starts to grow in from
+
     private float _phase;
     private bool _wasMoving;
 
@@ -199,7 +201,8 @@ public partial class CreatureVisual3D : Node3D
         {
             GlobalPosition = Plane3D.To3D(Body.GlobalPosition, _lift * Body.Radius + Body.GroundLift - _sink - Plane3D.Drop(Body.GlobalPosition));
             Rotation       = new Vector3(0f, Plane3D.FacingToYaw(Body.Facing), 0f);
-            Scale          = Vector3.One * Body.Radius;
+            // A creature that appears in view grows in (CellBody.FadeIn), the clay cannot fade like a membrane
+            Scale          = Vector3.One * Body.Radius * Mathf.Max(MIN_GROW_IN, 1f - Body.Fade);
             Visible        = !Body.IsHidden;
             speedShare     = Mathf.Clamp(Body.Velocity.Length() / CellBody.SwimSpeed(Body.Radius), 0f, 1f);
         }
@@ -259,7 +262,8 @@ public partial class CreatureVisual3D : Node3D
         // Body language (CellBody.Strike: rearing up, bowing, ducking) rides on top of the posture
         float postureGoal = (ShowsPosture ? design.Pitch : 0f) + (Body?.Pose ?? 0f);
         _posture = Mathf.Lerp(_posture, postureGoal, Mathf.Clamp(dt * POSTURE_EASE, 0f, 1f));
-        var pitched = new Basis(Vector3.Back, _posture);
+        // A fallen animal lies rolled onto its side (CellBody.Roll), around the axis it looks along
+        var pitched = new Basis(Vector3.Right, Body?.Roll ?? 0f) * new Basis(Vector3.Back, _posture);
         _parts.Basis = pitched;
         if (null != _bodyMesh && IsInstanceValid(_bodyMesh))
         {

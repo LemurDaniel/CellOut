@@ -97,6 +97,9 @@ public partial class CellBody : Node2D
     /// <summary>Body language of a creature on top of its posture, radians: up rears up (display), down bows (court) or ducks.</summary>
     public float Pose { get; private set; }
 
+    /// <summary>(Optional) Radians a creature lies rolled onto its side, e.g. the fallen body of an animal (Tribe/Pack/Fallen.cs). Defaults to 0, upright.</summary>
+    public float Roll { get; set; }
+
     private float _poseLeft;
 
     /// <summary>Holds a body language for a while, the creature eases into it and back (CreatureVisual3D).</summary>

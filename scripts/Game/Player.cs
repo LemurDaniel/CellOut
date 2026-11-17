@@ -129,6 +129,9 @@ public partial class Player : CellBody
     /// <summary>Turn of the key directions in radians, 0 in the top view (W = screen up).</summary>
     public float InputTurn { get; set; }
 
+    /// <summary>(Optional) A plane direction that steers instead of keys and mouse, for the autopilots of the tests (tests/PackPlay.cs). Defaults to none.</summary>
+    public Vector2? Autopilot { get; set; }
+
     public override void _Ready()
     {
         base._Ready();
@@ -170,6 +173,10 @@ public partial class Player : CellBody
     /// <summary>WASD, arrows or the held mouse button, the keys turned with the camera.</summary>
     private Vector2 SteeringInput()
     {
+        if (Autopilot is Vector2 steered)
+        {
+            return steered;
+        }
         var input = Vector2.Zero;
         if (Input.IsPhysicalKeyPressed(Key.W) || Input.IsPhysicalKeyPressed(Key.Up))    input.Y -= 1f;
         if (Input.IsPhysicalKeyPressed(Key.S) || Input.IsPhysicalKeyPressed(Key.Down))  input.Y += 1f;

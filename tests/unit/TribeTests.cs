@@ -324,6 +324,7 @@ public class TribeTests
     //   DisplayNeedsMoreBody      More body wins, a tie does not.
     //   EachPathHasItsGoal        Allies, respect or defeat count, a defeated rival never counts for peace.
     //   NoRivalsIsNoVictory       Without rivals no path is won.
+    //   GoalGrowsWithEveryRival   The share of a goal: half the relation of an ally is half a rival, a defeated one counts only for war.
     //
 
     [Fact]
@@ -377,5 +378,18 @@ public class TribeTests
     public void NoRivalsIsNoVictory()
     {
         Assert.False(TribeWays.IsWon(TribePath.Warlike, System.Array.Empty<RivalStanding>()));
+    }
+
+    [Fact]
+    public void GoalGrowsWithEveryRival()
+    {
+        var halfway  = new RivalStanding(0.4f, 0.3f, IsDefeated: false);     // AllyAt 0.8, RespectAt 0.6 in the fixture
+        var ally     = new RivalStanding(0.9f, 0f, IsDefeated: false);
+        var defeated = new RivalStanding(0.9f, 0.7f, IsDefeated: true);
+
+        Assert.Equal(0.75f, TribeWays.GoalShare(TribePath.Pacifist, new[] { halfway, ally }), 4);
+        Assert.Equal(0.25f, TribeWays.GoalShare(TribePath.Territorial, new[] { halfway, defeated }), 4);
+        Assert.Equal(0.5f, TribeWays.GoalShare(TribePath.Warlike, new[] { defeated, ally }), 4);
+        Assert.Equal(0f, TribeWays.GoalShare(TribePath.Pacifist, System.Array.Empty<RivalStanding>()), 4);
     }
 }

@@ -383,6 +383,7 @@ public sealed record CreatureEffectsBalance
 //   TribeBalance     Pack, fruit, village, buildings and rivals of the social stages (Tribe/).
 //   PackBalance      Conspecifics, calling, the nest and the pups (Tribe/Pack/PackKeeper.cs, Kin.cs).
 //   FruitBalance     Fruit dropping from the trees of the islands (Game/World/Spawner.cs).
+//   WildlifeBalance  Herds of small prey on the islands (Game/World/Wildlife.cs).
 //   VillageBalance   Villagers, gathering, chopping and fighting of the tribe (Tribe/Village/TribeCommander.cs).
 //   BuildingBalance  Costs and effects of one building function (Tribe/Building/BuildingDesign.cs).
 //   RivalsBalance    Neighbor tribes, their trades, raids and relations (Tribe/Rivals/RivalKeeper.cs).
@@ -393,6 +394,7 @@ public sealed record TribeBalance
 {
     public required PackBalance Pack { get; init; }
     public required FruitBalance Fruit { get; init; }
+    public required WildlifeBalance Wildlife { get; init; }
     public required VillageBalance Village { get; init; }
     public required IReadOnlyDictionary<BuildingKind, BuildingBalance> Buildings { get; init; }
     public required RivalsBalance Rivals { get; init; }
@@ -431,6 +433,20 @@ public sealed record WaysBalance
     public required int KillFood { get; init; }                  // food for the stock per enemy killed on the warlike path
     public required float CourtPerSecond { get; init; }          // relation per second and villager courting a tribe
     public required float StartShift { get; init; }              // start relation of new tribes: + pacifist, - warlike
+    public required int AdoptPerPack { get; init; }              // animals one foreign pack lets go to the player's pack at most
+    public required float TerritoryRange { get; init; }          // body sizes around its den a hostile pack defends
+    public required float LeashRange { get; init; }              // body sizes from its den a hostile pack gives up the chase
+    public required float GreetCooldown { get; init; }           // seconds between two greetings (bow, duck) of the same pack
+    public required float MeatShare { get; init; }               // size of the meat a killed animal leaves, against its body
+    public required float LonerSize { get; init; }               // the lone beast against the player size
+    public required float LonerHealth { get; init; }             // its health in healths of a kin
+    public required float LonerDamage { get; init; }             // its damage in damages of a kin
+    public required float LonerPresence { get; init; }           // bodies of its own size it counts for in a display
+    public required float LonerDistance { get; init; }           // share of SameIslandDistance between the nest and its lair
+    public required float LonerRelation { get; init; }           // its start relation, hostile
+    public required float LonerProwlInterval { get; init; }      // seconds between two prowls to the player's nest
+    public required float LonerProwlSeconds { get; init; }       // a prowl ends after this long
+    public required float CourtCalm { get; init; }               // seconds a hostile animal starts no fight after a courtship
 }
 
 public sealed record PackBalance
@@ -447,12 +463,32 @@ public sealed record PackBalance
     public required float WanderRadius { get; init; }            // body sizes a kin roams around its home
     public required float FoundTribeGrowth { get; init; }        // share more biomass than at the nest that founds the tribe
     public required float NestRegen { get; init; }               // share of the maximum health the leader heals per second at the nest
+    public required float PackFoodShare { get; init; }           // share of a meal of a pack member that feeds the leader too (the pack eats together)
+    public required float ForageRange { get; init; }             // body sizes a following member walks off to food
+    public required int MaxMembers { get; init; }                // members a pack holds at most, wild kin answer the call until then
+    public required float LitterShare { get; init; }             // every this share of the growth towards the tribe a pup is born at the nest
 }
 
 public sealed record FruitBalance
 {
-    public required float Interval { get; init; }                // seconds between two fruit drops near the player
-    public required int MaxOnGround { get; init; }               // land food lying around at most
+    public required float Interval { get; init; }                // seconds between two fruit drops near the chieftain of a tribe (its people gather them)
+    public required int MaxOnGround { get; init; }               // land food lying around a tribe at most
+    public required float WildInterval { get; init; }            // seconds between two fruit drops before the tribe: fruit is the slow meal, deeds feed a pack
+    public required int WildMaxOnGround { get; init; }           // land food lying around at most before the tribe
+    public required float SizeMin { get; init; }                 // a fruit against the player size, smallest
+    public required float SizeMax { get; init; }                 // and biggest
+}
+
+public sealed record WildlifeBalance
+{
+    public required int Herds { get; init; }                     // herds of prey around the land animal at most
+    public required int HerdSize { get; init; }                  // animals of one herd
+    public required float HerdSeconds { get; init; }             // seconds between two new herds
+    public required float PreySize { get; init; }                // a prey animal against the player size
+    public required float PreyPace { get; init; }                // its pace on the run against the walking pace of a body of the player's size
+    public required float PreyHealth { get; init; }              // its health in healths of a kin
+    public required float FleeRange { get; init; }               // body sizes it lets the pack come close before it runs
+    public required float PreyMeat { get; init; }                // size of the meat it leaves, against its body
 }
 
 public sealed record VillageBalance
@@ -463,6 +499,7 @@ public sealed record VillageBalance
     public required float VillagerSeconds { get; init; }         // seconds a hut needs to raise a villager
     public required float GatherRange { get; init; }             // body sizes an idle villager looks for fruit
     public required int FoodPerFruit { get; init; }              // food stock one gathered fruit brings
+    public required int FoodPerMeat { get; init; }               // food a piece of meat brings on top (prey, fallen enemies)
     public required float ChopSeconds { get; init; }             // seconds a villager chops for one load of wood
     public required int WoodPerChop { get; init; }               // wood one load brings
     public required float KinHealth { get; init; }               // hit points of a grown kin

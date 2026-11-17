@@ -29,7 +29,11 @@ public partial class ContactResolver : Node
     //
     //   Setup        The session with player, layers and coast, before AddChild.
     //   KillReward   Biomass for an eaten cell.
+    //   PlayerAteOnLand   The player ate a piece of land food.
     //
+
+    /// <summary>The player ate a piece of land food: the chieftain of a tribe shares it with the stock (Tribe/Village/TribeCommander.cs).</summary>
+    [Signal] public delegate void PlayerAteOnLandEventHandler(bool isMeat);
 
     private const float CRITTER_GROWTH_CAP = 3f;    // critters grow up to this many player sizes
     private const float DESPAWN_VIEWS = 2.5f;       // food and cells this many view radii away despawn
@@ -103,8 +107,9 @@ public partial class ContactResolver : Node
             {
                 food.Position = Coast.ToSea(food.Position, food.Size);
             }
-            float distance = playerPosition.DistanceTo(food.Position);
-            if (distance > despawnDistance)
+            float distance  = playerPosition.DistanceTo(food.Position);
+            bool  isOrchard = _session.Orchard is (Vector2 fire, float radius) && FoodHabitat.Land == food.Habitat && fire.DistanceTo(food.Position) <= radius;
+            if (distance > despawnDistance && !isOrchard)
             {
                 food.QueueFree();
                 continue;
@@ -354,6 +359,10 @@ public partial class ContactResolver : Node
             if (eater == Player)
             {
                 Player.AddBiomass(food.Value, food.IsMeat ? BiomassSource.Meat : BiomassSource.Plant);
+                if (FoodHabitat.Land == food.Habitat)
+                {
+                    EmitSignal(SignalName.PlayerAteOnLand, food.IsMeat);
+                }
             }
             food.QueueFree();
         }

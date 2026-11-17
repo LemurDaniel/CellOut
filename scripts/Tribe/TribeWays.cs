@@ -133,6 +133,7 @@ public static class TribeWays
     //
     //   IsDone      Whether one rival counts for the goal of a path.
     //   Progress    Rivals done and rivals in total for a path.
+    //   GoalShare   0..1: how far the goal of a path is, for the progress ring.
     //   IsWon       Every rival counts: an alliance, respect from all, or all defeated.
     //
 
@@ -159,6 +160,29 @@ public static class TribeWays
     {
         RivalStanding[] all = rivals.ToArray();
         return (all.Count(rival => IsDone(path, rival)), all.Length);
+    }
+
+    /*
+      How far the path is, every rival counts the same:
+      - Pacifist:     its relation towards AllyAt (a defeated one counts nothing)
+      - Territorial:  its respect towards RespectAt (a defeated one counts nothing)
+      - Warlike:      1 once defeated
+    */
+    /// <summary>0..1: how far the goal of a path is, the mean over the rivals, 0 without any.</summary>
+    /// <example><code>TribeWays.GoalShare(TribePath.Territorial, rivals)   // 0.5 with half the respect of each</code></example>
+    public static float GoalShare(TribePath path, IEnumerable<RivalStanding> rivals)
+    {
+        RivalStanding[] all = rivals.ToArray();
+        if (0 == all.Length)
+        {
+            return 0f;
+        }
+        return all.Sum(rival => path switch
+        {
+            TribePath.Pacifist    => rival.IsDefeated ? 0f : Mathf.Clamp(rival.Relation / Tune.AllyAt, 0f, 1f),
+            TribePath.Territorial => rival.IsDefeated ? 0f : Mathf.Clamp(rival.Respect / Tune.RespectAt, 0f, 1f),
+            _                     => rival.IsDefeated ? 1f : 0f,
+        }) / all.Length;
     }
 
     /// <summary>The path reached its goal: at least one rival, and every rival counts.</summary>

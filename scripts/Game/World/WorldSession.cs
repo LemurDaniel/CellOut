@@ -25,6 +25,7 @@ public sealed class WorldSession
     //   FoodLayer      Holds every piece of food.
     //   CritterLayer   Holds every cell and sea creature.
     //   Coast          The coast of the organism stage, null until it showed up.
+    //   Orchard        The fire of the tribe and the radius its people gather in.
     //   AttachCoast    Makes the spawned coast known to everyone (CoastKeeper).
     //
 
@@ -34,6 +35,9 @@ public sealed class WorldSession
 
     /// <summary>The coast of the organism stage, null before it showed up.</summary>
     public Coast Coast { get; private set; }
+
+    /// <summary>(Optional) The fire of the player's tribe with the radius its people gather in (Tribe/Society.cs): fruit also falls there and stays while the chieftain is away. Null before the tribe.</summary>
+    public (Vector2 Center, float Radius)? Orchard { get; set; }
 
     /// <param name="player">(Required) The player.</param>
     /// <param name="foodLayer">(Required) Layer of the food.</param>

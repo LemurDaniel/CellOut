@@ -283,3 +283,61 @@ Wunsch des Users: in der Nestphase angreifen, sozial interagieren und ein dritte
 - [ ] Nie von Hand gespielt, die Zahlen in `creature.abilities` sind Schätzungen.
 - [ ] Rammstirn: Die Hörner sind groß, auf kleinen Köpfen im Spiel prüfen. Die Fähigkeits-Teile sind nur im Reiter-Icon gesehen, noch nicht an einem Tier im Spiel.
 - [ ] Die Duftdrüse wirkt auf Meeres-Kreaturen nur als „lässt dich in Ruhe“, Tinte färbt das Tier nicht ein (die Kreatur-Optik kennt kein Ausblenden).
+
+## Rudel und Stamm spaßiger: durchgespielt und umgebaut (2026-11-17)
+Auftrag des Users: „Spiel mal das Spiel ab Rudelphase und finde Wege, es spaßiger zu machen“, freie Hand von Modellen bis Interface. Gespielt wurde mit zwei neuen zielgerichteten Autopiloten (`tests/PackPlay.tscn`, `tests/TribePlay.tscn`: spielen mit Plan statt zufällig, drucken eine Zeitleiste, machen mit Fenster alle paar Sekunden ein Bild).
+
+**Befund vorher (gemessen):**
+- Rudelphase: Stamm nach 47 s (Jäger, ohne je unter 94 % Leben zu fallen) bzw. 90 s (Werber), Imponieren brachte in 10 min 0 % Fortschritt. Rechnerisch reichten 13 Früchte.
+- Mitglieder fraßen dem Anführer die Früchte ohne jeden Nutzen weg (`KinAte` zählte nur im Stamm).
+- Das Ziel der Phase (Biomasse seit dem Nest) war nirgends zu sehen, der Ring zeigte das nächste Level.
+- Werben adoptierte beide fremden Rudel komplett weg; Geschenke und Tribut erschienen am Nest, während der Spieler woanders stand.
+- An Land lebte außer Artgenossen und 6 fremden Tieren nichts: ein Fleischfresser musste seine Nachbarn fressen und hatte danach nur noch Früchte.
+- Stamm: Futter 0–5 bei Holz 1000+, Stadt erst nach 10–14 min; Beziehung und Respekt drifteten so schnell zurück, dass „alle Nachbarn zugleich“ kaum zu halten war. Händler der Nachbarn stauten sich endlos, sobald deren Hauptquartier auf ihrem Feuer stand (Bug).
+
+**Umbau Rudel** (Regel in CLAUDE.md „Rudel lebt von Taten“):
+- **Ziel sichtbar:** Der Fortschrittsring ist ab dem Nest golden und zeigt das Ziel von Rudel bzw. Stamm (`Society.Goal`, `TribeWays.GoalShare`).
+- **Eigenes Rudel:** läuft an den Flanken statt hinter dem Anführer (verdeckte die Kamera), sucht selbst Futter und teilt 35 %, lässt sich bis 8 Tiere weiter rufen, je 34 % Wachstum ein Junges am Nest.
+- **Fremde Rudel nach Stimmung** (`PackManners`): schauen her, feindliche verteidigen ihr Revier, Werben beruhigt ein feindliches Tier 3,5 s, freundliche bringen Frucht und respektvolle Tribut persönlich, je Rudel nur ein Tier zu adoptieren.
+- **Einzelgänger** (`LonerKeeper`): großes Raubtier (1,6-fach, 8-faches Leben, doppelter Biss) mit eigenem Lager, streift nach 50 s und dann alle 100 s zum Nest. Jagen = Festmahl, Imponieren = alle Nachbarn +0,25 Respekt, Werben = er schließt sich an.
+- **Beutetiere** (`Wildlife`): bis 3 Herden zu 4 Tieren (Schnecke, Ameise, Krabbe, Molch, Pinguin, Hummer), fliehen mit 92 % des Lauftempos, Taste 3 springt sie an, das Rudel hetzt mit.
+- **Anzeige am Fremden** (`EncounterMeter`): Herz-Balken (Beziehung mit Schwellen), Kronen-Balken (Respekt), Pfeil (wie ein Imponieren jetzt ausginge).
+- **Kamera:** rückt bei einem Fremden oder mit Gefolge zurück und höher (`FollowCamera.Company`).
+- **Tempo:** Früchte vor dem Stamm alle 6 s statt 2,5 s, kleiner (10–19 % statt 15–28 % der Körpergröße, gleich groß gezeichnet), höchstens 14 am Boden; Ziel 60 % statt 30 % mehr Biomasse.
+
+**Umbau Stamm:**
+- Früchte fallen auch am Feuer (`WorldSession.Orchard`) und bleiben dort liegen, wenn der Häuptling weg ist.
+- Was der Häuptling frisst, füllt den Vorrat mit; Fleisch bringt 2 Futter extra (Jagd mit dem Gefolge ernährt das Dorf).
+- Verbündete und der Respekt von Stämmen bleiben, bis Taten sie nehmen. Geschenk 8 statt 5 Futter, Holzhacken 6 statt 4 s, Abriss 1 statt 4 Schaden je Sekunde.
+- Bug behoben: Händler und Räuber gelten als heimgekehrt, sobald sie die Wand des Hauptquartiers auf ihrem Feuer erreichen (`RivalTribe.HomeReach`).
+- Bug behoben: Eine Taste der drei Wege auf ein Tier, das seit dem letzten Physik-Frame gestorben war, warf `ObjectDisposedException` (`PackEncounter.Target` und `Prey` liefern jetzt nie ein freigegebenes Tier).
+
+**Kleinigkeiten:**
+- Getötete Landtiere verschwinden nicht mehr im selben Frame: der Körper kippt auf die Seite und sinkt zusammen (`Tribe/Pack/Fallen.cs`, `CellBody.Roll`), daraus bleibt das Fleisch.
+- Kreaturen, die im Bild entstehen (Junge am Nest, Meerestiere), wachsen ein statt aufzutauchen (`CellBody.FadeIn` wirkt jetzt auch auf Kreaturen).
+- Das Lager des Einzelgängers steht als dunkler Reißzahn auf der Weltkarte; ein gewonnenes Imponieren beendet den Kampf (das Rudel lässt von den Unterlegenen ab).
+
+**Gemessen nachher** (Bots spielen ohne Pause und Umwege, ein Mensch braucht grob das Doppelte):
+
+| Rudel bis Stamm | vorher | nachher | Verlauf nachher |
+| --- | --- | --- | --- |
+| Sammler | – | 284 s | Rudel wächst auf 8 |
+| Jäger | 47 s | 100 s | ein Rudel und der Einzelgänger tot, nur 3 Mitglieder übrig |
+| Werber | 90 s | 188 s | beide Rudel verbündet, Einzelgänger gezähmt, 10 Mitglieder |
+| Imponierer | nie | 141 s | beide Rudel zahlen Tribut |
+
+| Stamm bis Stadt | vorher | nachher |
+| --- | --- | --- |
+| Friedlich | 568 s | 262 s |
+| Stolz | 848 s | 138 s |
+| Kriegerisch | – | 130–166 s |
+
+- Geprüft: Unit-Tests (184), Smoke-Test (neu: Wurf am Nest, Beute lässt Fleisch, Einzelgänger greift an und lässt sich beruhigen), `tests/PlayTest.tscn` in Rudel, Stamm und Zivilisation ohne Fehler, Bildfolgen der Autopiloten auf Hoch angesehen.
+- [ ] Nie von Hand gespielt: alle neuen Zahlen (`tribe.pack`, `tribe.wildlife`, `tribe.ways.loner*`, `tribe.fruit`) sind aus den Bot-Läufen abgeleitet.
+- [ ] Der Jäger ist mit 100 s der schnellste Weg; der Einzelgänger allein bringt etwa ein Viertel des Ziels.
+- [ ] Beute lässt sich erst ab dem Rudel jagen (die Wege gibt es vorher nicht), als Landtier ist sie nur Kulisse.
+- [ ] Der dritte Nachbar lebt über dem Meer und ist vor dem Segeln nur allein zu erreichen: Stolz und Kriegerisch stehen im Stamm bei 2 von 3.
+- [ ] Holz bleibt im Überfluss (Bot: 1000 Holz bei 160 Futter nach 11 min).
+- [ ] Ein gezähmter Einzelgänger kommt nach dem Laden im Körper des Spielers zurück (wie alle adoptierten Tiere).
+- [ ] `npm test` in `tools/font` läuft unter Node 26 nicht (mocha/yargs), die Glyphen-Abdeckung der neuen Texte ist ungeprüft (nur vorhandene Zeichen benutzt).
+- [ ] Größen: `Main.cs` 818 (war schon vorher über 800), `RivalKeeper.cs` 753, `PackKeeper.cs` 715 (Formation und Futtersuche sind nach `PackFormation.cs` ausgelagert), `PackEncounter.cs` 522 Zeilen; vor dem nächsten Feature prüfen.

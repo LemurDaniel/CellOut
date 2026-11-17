@@ -46,6 +46,7 @@ public partial class TribeCommander : Node3D
     //   Setup           The session and the pack, before AddChild.
     //   Bonuses         What the techs of the city do, read here and by the RivalKeeper.
     //   OnKinAte        A villager ate land food: gathered for the stock, more with a storehouse.
+    //   TakeMeal        A meal for the stock: of a villager, or shared by the chieftain; meat is worth more.
     //
 
     [Signal] public delegate void ChangedEventHandler();
@@ -119,14 +120,28 @@ public partial class TribeCommander : Node3D
         TopLevel = true;
     }
 
-    /// <summary>Gathered: every piece a villager eats fills the stock from the tribe on, storehouses add to it.</summary>
-    private void OnKinAte(Vector2 position, float size, Color color)
+    /// <summary>Gathered: every piece a villager eats fills the stock from the tribe on (TakeMeal).</summary>
+    private void OnKinAte(Vector2 position, float size, bool isMeat)
+    {
+        TakeMeal(isMeat);
+    }
+
+    /*
+      A meal for the stock, from the tribe on:
+      - A fruit brings FoodPerFruit, more with every storehouse and with pottery.
+      - A piece of meat brings FoodPerMeat on top: the hunt of the chieftain and its retinue feeds the village.
+      The chieftain shares what it eats itself (Main wires ContactResolver.PlayerAteOnLand here).
+    */
+    /// <summary>A villager or the chieftain ate a piece of land food: it fills the stock of the tribe.</summary>
+    /// <param name="isMeat">(Required) Meat instead of fruit, it is worth FoodPerMeat more.</param>
+    /// <example><code>contacts.PlayerAteOnLand += isMeat => tribe.TakeMeal(isMeat);</code></example>
+    public void TakeMeal(bool isMeat)
     {
         if (!IsActive)
         {
             return;
         }
-        Economy.AddFood(Tune.FoodPerFruit + (int)Sum(hut => hut.Design.FoodPerFruit) + Bonuses.FoodPerFruit);
+        Economy.AddFood(Tune.FoodPerFruit + (isMeat ? Tune.FoodPerMeat : 0) + (int)Sum(hut => hut.Design.FoodPerFruit) + Bonuses.FoodPerFruit);
         EmitSignal(SignalName.Changed);
     }
 
@@ -277,6 +292,9 @@ public partial class TribeCommander : Node3D
         }
         float size = Player.BodySize();
         Work(size);
+
+        // The orchard: fruit also falls around the fire and stays there while the chieftain is away (Spawner, ContactResolver)
+        _session.Orchard = (_pack.Nest.Position, size * Tune.GatherRange);
 
         // Choppers at their trunk fill the wood stock
         foreach (Kin kin in _pack.Kin)

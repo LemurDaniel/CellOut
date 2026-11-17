@@ -192,6 +192,7 @@ public sealed record SaveSociety
     public SaveTribe Tribe { get; init; }
     public SaveCiv Civ { get; init; }                 // from the civilization on
     public List<SaveRival> Rivals { get; init; } = new();
+    public SaveRival Loner { get; init; }             // the lone beast of the island, null before the nest and in older saves
 }
 
 public sealed record SaveCiv

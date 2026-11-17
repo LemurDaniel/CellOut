@@ -1,6 +1,6 @@
 // NOTE:
 //   Coordinator of the social stages: owns the pack (PackKeeper), the encounters with
-//   foreign packs (PackEncounter), the tribe (TribeCommander), its city (Civ/CivKeeper) with its ship (ShipKeeper) and scenery (CityScenery), the neighbor tribes
+//   foreign packs (PackEncounter), their manners (PackManners), the lone beast (LonerKeeper), the prey of the islands (Game/World/Wildlife.cs), the tribe (TribeCommander), its city (Civ/CivKeeper) with its ship (ShipKeeper) and scenery (CityScenery), the neighbor tribes
 //   (RivalKeeper) and the diplomacy of its path (RivalDiplomacy), the building placer,
 //   the village builder, the HUD layers of the tribe (TribePanel, TribeHub) and the tech tree of the city. It
 //   wires them and advances them in the right order. Main creates it, routes input and
@@ -51,6 +51,9 @@ public partial class Society : Node
     public TribeCommander Tribe { get; private set; }
     public RivalKeeper Rivals { get; private set; }
     public RivalDiplomacy Diplomacy { get; private set; }
+    public LonerKeeper Loners { get; private set; }
+    public PackManners Manners { get; private set; }
+    public Wildlife Wildlife { get; private set; }
     public BuildingPlacer Placer { get; private set; }
     public BuildingEditor BuildingEditor { get; private set; }
     public TribePanel Panel { get; private set; }
@@ -116,10 +119,29 @@ public partial class Society : Node
         Diplomacy.BannerRequested += Banner;
         AddChild(Diplomacy);
 
-        Encounter = new PackEncounter();
+        // The lone beast moves in with the foreign packs, humbled by a display the packs hear of it
+        Loners = new LonerKeeper();
+        Loners.Setup(_session, Pack, Rivals);
+        Loners.Humbled += OnLonerHumbled;
+        AddChild(Loners);
+        Rivals.Loners   = Loners.Loners;
+        Pack.NestBuilt += () => Loners.Settle();
+
+        // Herds of small prey on the islands, the hunt goes for them too
+        Wildlife = new Wildlife();
+        Wildlife.Setup(_session, _camera, Pack);
+        AddChild(Wildlife);
+
+        Encounter = new PackEncounter { Wildlife = Wildlife };
         Encounter.Setup(_session, Pack, Rivals);
         Encounter.BannerRequested += Banner;
         AddChild(Encounter);
+        Wildlife.PreyKilled += (position, meat) => Encounter.DropFood(position, meat, isMeat: true);
+
+        // How the foreign packs behave by their mood: defend, greet, carry gifts
+        Manners = new PackManners();
+        Manners.Setup(_session, Pack, Rivals, Encounter);
+        AddChild(Manners);
 
         Placer = new BuildingPlacer();
         Placer.Setup(_session, Tribe);
@@ -186,6 +208,9 @@ public partial class Society : Node
         AddChild(TechTree);
     }
 
+    private const int FULL_COMPANY = 6;              // followers from which the camera gives a pack its full room
+    private const float PACK_COMPANY = 0.6f;         // share of the room a stranger gets
+
     private bool _hasSailed;                         // the first cast off of a game gets its banner
 
     private void Banner(string titleKey, string textKey, params object[] args)
@@ -200,7 +225,9 @@ public partial class Society : Node
     //   HandleInput   Placer, encounters and pack take the input in this order.
     //   Update        Pack, encounters, tribe, city, ship, scenery, placer, neighbors and their diplomacy, in this order.
     //   SettleTribe   The tribe was founded: the path locks, the packs become tribes.
+    //   Goal          The goal of pack or tribe for the progress ring of the HUD.
     //   OnKinKilled   Meat in the pack stage, food for a warlike tribe.
+    //   OnLonerHumbled The lone beast respects the player: every neighbor hears of it.
     //
 
     /// <summary>Routes one input event, the first part that uses it wins.</summary>
@@ -215,7 +242,9 @@ public partial class Society : Node
     public void Update(float dt)
     {
         Rivals.ForgetGone();      // animals freed at the end of the last frame, before the encounter looks at them
+        Loners.ForgetGone();
         Pack.Update(dt);
+        Wildlife.Update(dt);
         Encounter.Update(dt);
         Tribe.Update(dt);
         Civ.Update(dt);
@@ -224,7 +253,13 @@ public partial class Society : Node
         Placer.Update();
         Panel.Placing = Placer.Pending;
         Rivals.Update(dt);
+        Loners.Update(dt);
+        Manners.Update(dt);
         Diplomacy.Update();
+
+        // The camera makes room for company: a stranger close by, or the pack that runs along
+        int followers   = Tribe.IsActive ? Pack.Retinue : Pack.Members;
+        _camera.Company = null != Encounter.Target ? 1f : Mathf.Clamp(followers / (float)FULL_COMPANY, 0f, 1f) * PACK_COMPANY;
     }
 
     /// <summary>The tribe was founded: its path locks from the diet, the packs become tribes.</summary>
@@ -235,6 +270,41 @@ public partial class Society : Node
         Rivals.Settle(Tribe.Path);
         Log.Verbose("Society", $"Tribe founded on the {Tribe.Path} path (diet {_session.Player.Diet:F2}).");
         return Tribe.Path;
+    }
+
+    /*
+      > Before the nest: no goal of the society, the ring shows the next evolution
+      > Pack: the biomass gathered since the nest against what the tribe needs
+      > Tribe and city: how far the goal of the path is (allies, respect or defeated neighbors)
+    */
+    /// <summary>The goal of pack or tribe for the progress ring of the HUD: its share 0..1 and the translated tooltip, null before the nest.</summary>
+    /// <example><code>hud.SocietyGoal = society.Goal;</code></example>
+    public (float Share, string Tip)? Goal()
+    {
+        if (null == Pack?.Nest || !_session.Player.IsPackLeader)
+        {
+            return null;
+        }
+        if (!Tribe.IsActive)
+        {
+            (float gathered, float needed) = Pack.TribeGrowth;
+            float share = Mathf.Clamp(gathered / Mathf.Max(needed, 1f), 0f, 1f);
+            return (share, string.Format(Tr("GOAL_TRIBE"), Mathf.FloorToInt(share * 100f)));
+        }
+        (int done, int total) = Diplomacy.Progress;
+        return (Diplomacy.Share, string.Format(Tr($"GOAL_PATH_{Tribe.Path}".ToUpperInvariant()), done, total));
+    }
+
+    private const float HUMBLED_RESPECT = 0.25f;     // respect every pack and tribe gains when the lone beast is humbled
+
+    /// <summary>The lone beast bows to the player for the first time: the news travels, every neighbor respects the player a little more.</summary>
+    private void OnLonerHumbled(RivalTribe loner)
+    {
+        foreach (RivalTribe rival in Rivals.Rivals)
+        {
+            rival.ShiftRespect(HUMBLED_RESPECT);
+        }
+        Banner("BANNER_HUMBLED_TITLE", "BANNER_HUMBLED_TEXT", Tr(PackEncounter.NameOf(loner)));
     }
 
     /// <summary>An enemy died by the player's side: meat where it fell in the pack stage, food for the stock of a warlike tribe.</summary>

@@ -93,21 +93,32 @@ public partial class Hud : CanvasLayer
         }
         _stageLabel.Text = Tr(Player.STAGE_KEYS[_player.Stage]);
 
-        // The dial: health, progress, diet (from the single cell on) and the editor icon with its points
+        // The dial: health, progress, diet (from the single cell on) and the editor icon with its points.
+        // From the nest on the progress ring shows the goal of pack or tribe instead of the next evolution.
+        (float Share, string Tip)? society = SocietyGoal?.Invoke();
+        _shownGoal = society?.Share ?? -1f;
         _dial.Refresh(new VitalsDial.State(
-            Health:      _player.Hp / _player.MaxHp,
-            Progress:    _player.GoalProgress(),
-            Diet:        _player.Diet,
-            HasDiet:     _player.Stage >= Player.SINGLE_STAGE,
-            Points:      _player.EvolutionPoints,
-            HealthTip:   string.Format(Tr("DIAL_HEALTH"), Mathf.CeilToInt(_player.Hp), Mathf.CeilToInt(_player.MaxHp)),
-            ProgressTip: GoalText(),
-            EditorTip:   string.Format(Tr("EDITOR_OPEN"), _player.EvolutionPoints)));
+            Health:        _player.Hp / _player.MaxHp,
+            Progress:      society?.Share ?? _player.GoalProgress(),
+            Diet:          _player.Diet,
+            HasDiet:       _player.Stage >= Player.SINGLE_STAGE,
+            Points:        _player.EvolutionPoints,
+            HealthTip:     string.Format(Tr("DIAL_HEALTH"), Mathf.CeilToInt(_player.Hp), Mathf.CeilToInt(_player.MaxHp)),
+            ProgressTip:   society?.Tip ?? GoalText(),
+            EditorTip:     string.Format(Tr("EDITOR_OPEN"), _player.EvolutionPoints),
+            IsSocietyGoal: null != society));
 
         // Offered actions pop in: divide once allowed, the organism once the full cluster is big enough
         _divideShownAt   = Offer(_divideButton, _player.CanDivide, _divideShownAt);
         _organismShownAt = Offer(_organismButton, _player.CanEvolve, _organismShownAt);
     }
+
+    private const float GOAL_STEP = 0.004f;          // the ring follows the goal of pack and tribe in steps this small
+
+    private float _shownGoal = -1f;
+
+    /// <summary>(Optional) The goal of pack or tribe (Tribe/Society.cs): its share 0..1 and the translated tooltip, null before the nest. Defaults to none.</summary>
+    public System.Func<(float Share, string Tip)?> SocietyGoal { get; set; }
 
     /// <summary>Shows or hides an action button, a newly shown one pops in.</summary>
     /// <returns>The time the button was shown, unchanged while it stays.</returns>
@@ -131,6 +142,12 @@ public partial class Hud : CanvasLayer
         {
             List<AbilitySlots.Slot> slots = SlotsNow();
             _abilitySlots.Refresh(slots, _player.BodyColor, FansOf(slots));
+
+            // The goal of pack and tribe moves without a change of the player (relations, respect)
+            if (Mathf.Abs((SocietyGoal?.Invoke()?.Share ?? -1f) - _shownGoal) > GOAL_STEP)
+            {
+                Refresh();
+            }
         }
         Breathe(_divideButton, _divideShownAt, 0f);
         Breathe(_organismButton, _organismShownAt, 2.6f);
@@ -171,7 +188,7 @@ public partial class Hud : CanvasLayer
         {
             foreach (PackWay way in System.Enum.GetValues<PackWay>())
             {
-                bool isDim = null == _encounter.Target && !(PackWay.Hunt == way && _player.IsTribal);
+                bool isDim = null == _encounter.Target && !(PackWay.Hunt == way && (_player.IsTribal || null != _encounter.Prey));
                 slots.Add(new AbilitySlots.Slot(null, way, null, TribeWays.DietOf(way), _encounter.CooldownShare(way), IsRunning: false, isDim));
             }
         }

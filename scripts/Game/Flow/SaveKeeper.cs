@@ -166,6 +166,7 @@ public partial class SaveKeeper : Node
                 Tribe  = Player.IsTribal ? Main.Tribe.Save() : null,
                 Civ    = Main.Civ.IsCity ? Main.Civ.Save() : null,
                 Rivals = Main.Rivals.Save(),
+                Loner  = Main.Loners.Save(),
             } : null,
         };
     }
@@ -223,6 +224,7 @@ public partial class SaveKeeper : Node
                 Main.Civ.Restore(save.Society.Civ);
             }
             Main.Rivals.Restore(save.Society.Rivals);
+            Main.Loners.Restore(save.Society.Loner);
         }
         _playSeconds = (float)save.Meta.PlaySeconds;
         Log.Verbose("SaveKeeper", $"Game of {save.Meta.Planet} restored at stage {save.Player.Stage}.");

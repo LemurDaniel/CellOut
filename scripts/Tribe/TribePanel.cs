@@ -1,7 +1,7 @@
 // NOTE:
 //   The HUD of pack and tribe: a hint top center only while there is something to do right
-//   now (placing a building, a stranger close by with the keys of the three ways, the next
-//   step of the pack), the offered action as a button bottom center (call, build the nest,
+//   now (placing a building, a stranger close by with the keys of the three ways and below
+//   it the standing with its pack (EncounterMeter.cs), the next step of the pack), the offered action as a button bottom center (call, build the nest,
 //   found the tribe, like the divide and organism buttons of the Hud) and the build menu of
 //   the tribe: a row of tiles above the builder button of the TribeHub, the blueprints
 //   first, then one tile per building function (a live icon of its blueprint with the cost).
@@ -51,6 +51,7 @@ public partial class TribePanel : CanvasLayer
     private TribeCommander _tribe;
     private PackEncounter _encounter;
     private Label _hint;
+    private EncounterMeter _meter;
     private Button _action;
     private PackOffer _shownOffer = PackOffer.None;
 
@@ -80,6 +81,8 @@ public partial class TribePanel : CanvasLayer
         _hint = NewLabel(16);
         _hint.HorizontalAlignment = HorizontalAlignment.Center;
         top.AddChild(_hint);
+        _meter = new EncounterMeter();
+        top.AddChild(_meter);
 
         // Action button bottom center, the row of the Hud buttons is empty at these stages
         var bottom = new MarginContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
@@ -103,7 +106,7 @@ public partial class TribePanel : CanvasLayer
     /*
       > Before the land animal: everything hidden
       > Hint, only while there is something to do right now (the lasting goals sit in the
-        TribeHub): placing a building, a stranger close by, else in the pack stage the next
+        TribeHub): placing a building, a stranger close by, prey close by, else in the pack stage the next
         step (find the kin, go inland, back to the nest), in the tribe at the fire what a city still needs
       > The offered action, the build menu while the tribe has it open
     */
@@ -118,11 +121,21 @@ public partial class TribePanel : CanvasLayer
         bool   isStep  = !isTribe && null != missing && !SILENT_HINTS.Contains(missing);
         string city    = isTribe ? Civ?.FoundHint() : null;
 
-        _hint.Visible = null != Placing || _encounter?.Target is not null || isStep || null != city;
+        bool   isPrey  = _encounter?.Prey is not null;
+        _hint.Visible = null != Placing || _encounter?.Target is not null || isPrey || isStep || null != city;
         _hint.Text    = null != Placing ? Tr("TRIBE_PLACE_HINT")
             : _encounter?.Target is not null ? WaysHint()
+            : isPrey ? Tr("PACK_HINT_PREY")
             : isStep ? Tr(missing)
             : city ?? "";
+
+        // The standing with the stranger close by: relation, respect and how a display would go
+        EncounterMeter.State? standing = null;
+        if (null == Placing && _encounter?.TargetPack is RivalTribe stranger && _encounter.DisplayOdds() is (float ours, float theirs))
+        {
+            standing = new EncounterMeter.State(stranger.Relation, stranger.Respect, TribeWays.DisplayWins(ours, theirs));
+        }
+        _meter.Refresh(standing);
 
         // The offered action pops in when it changes
         PackOffer offer = _pack.Offer;
@@ -352,7 +365,7 @@ public partial class TribePanel : CanvasLayer
     {
         RivalTribe stranger = _encounter.TargetPack;
         string     name     = stranger.IsSettled ? Tr(stranger.NameKey) : Tr(PackEncounter.NameOf(stranger));
-        return string.Format(Tr("PACK_HINT_WAYS"), name, MoodOf(stranger, key => Tr(key)));
+        return string.Format(Tr(stranger.IsLoner ? "PACK_HINT_LONER" : "PACK_HINT_WAYS"), name, MoodOf(stranger, key => Tr(key)));
     }
 
     /// <summary>The mood word of a rival: defeated, respectful, friendly, hostile or neutral.</summary>

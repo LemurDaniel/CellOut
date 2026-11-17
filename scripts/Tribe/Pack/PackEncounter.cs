@@ -43,6 +43,7 @@ public partial class PackEncounter : Node
     //   IsActive          The player leads a pack or the tribe and lives.
     //   Target            The closest foreign animal or villager within EncounterRange, null when none.
     //   TargetPack        Its pack.
+    //   Wildlife / Prey   The small animals of the islands and the closest of them, the hunt goes for it too.
     //   NameOf            The species of a foreign pack as a translation key.
     //
 
@@ -68,17 +69,31 @@ public partial class PackEncounter : Node
         _rivals  = rivals;
     }
 
-    public override void _Ready()
-    {
-        _rivals.PackGave += OnPackGave;
-    }
-
     /// <summary>The player leads a pack or is the chieftain of a tribe, on land, alive.</summary>
     public bool IsActive => null != Coast && Player.IsPackLeader && !Player.IsDead;
 
-    public Kin Target { get; private set; }
+    /// <summary>The stranger the ways act on. Keys and clicks arrive between two physics frames: an animal that died since the last one counts as no target.</summary>
+    public Kin Target
+    {
+        get => GodotObject.IsInstanceValid(_target) && !_target.IsQueuedForDeletion() ? _target : null;
+        private set => _target = value;
+    }
+
+    private Kin _target;
 
     public RivalTribe TargetPack { get; private set; }
+
+    /// <summary>(Optional) The small animals of the islands (Game/World/Wildlife.cs): the hunt also goes for prey. Defaults to none.</summary>
+    public Wildlife Wildlife { get; set; }
+
+    /// <summary>The closest prey animal within EncounterRange, null when none: the hunt (key 3) lunges at it while no stranger is in reach.</summary>
+    public Kin Prey
+    {
+        get => GodotObject.IsInstanceValid(_prey) && !_prey.IsQueuedForDeletion() ? _prey : null;
+        private set => _prey = value;
+    }
+
+    private Kin _prey;
 
     /// <summary>The species of a foreign pack as a translation key (its creature template).</summary>
     public static string NameOf(RivalTribe pack)
@@ -135,12 +150,13 @@ public partial class PackEncounter : Node
         {
             return false;
         }
+        Kin  target = Target;       // read once: null when the animal died since the last physics frame
         bool isDone = way switch
         {
-            _ when null == Target => PackWay.Hunt == way && Raze(),
-            PackWay.Court         => Court(Target, TargetPack),
-            PackWay.Display       => Display(Target, TargetPack),
-            _                     => Hunt(Target, TargetPack) || Raze(),
+            _ when null == target => PackWay.Hunt == way && (HuntPrey() || Raze()),
+            PackWay.Court         => Court(target, TargetPack),
+            PackWay.Display       => Display(target, TargetPack),
+            _                     => Hunt(target, TargetPack) || HuntPrey() || Raze(),
         };
         if (isDone)
         {
@@ -186,9 +202,11 @@ public partial class PackEncounter : Node
         {
             Target     = null;
             TargetPack = null;
+            Prey       = null;
             return;
         }
         (Target, TargetPack) = Closest(Player.BodySize() * Tune.EncounterRange);
+        Prey = Wildlife?.PreyNear(Player.GlobalPosition, Player.BodySize() * Tune.EncounterRange);
     }
 
     /// <summary>The closest animal of a foreign pack (not yet a tribe) within a range.</summary>
@@ -197,7 +215,7 @@ public partial class PackEncounter : Node
         Kin        closest  = null;
         RivalTribe pack     = null;
         float      distance = range;
-        foreach (RivalTribe rival in _rivals.Rivals)
+        foreach (RivalTribe rival in _rivals.Everyone)
         {
             if (rival.IsDefeated)
             {
@@ -227,7 +245,9 @@ public partial class PackEncounter : Node
     //
     //   Court     Bow at close range: relation up, a hostile pack snaps back, a trusting animal joins.
     //   Display   The pack rears up: more body than theirs wins respect, the losers duck and retreat.
+    //   Sides     Who counts on both sides of a display and how much body each shows, DisplayOdds for the HUD.
     //   Hunt      Lunge and bite, the pack joins in, the strangers fight back, a kill leaves meat.
+    //   HuntPrey  Without a stranger in reach: lunge at the closest prey animal, the pack chases it too.
     //   Raze      In the tribe without prey in reach: the members nearby tear down the closest foreign hut.
     //   Gap       Distance between the membranes of the player and an animal.
     //   Ours      The grown members of the player's pack within a range of a point.
@@ -253,15 +273,19 @@ public partial class PackEncounter : Node
         float strength = TribeWays.Strength(PackWay.Court, Player.Diet);
         if (pack.IsHostile)
         {
-            Player.TakeDamage(Tune.CourtSnap, animal.GlobalPosition);
+            // It snaps once, then the bow calms it for a moment: bow after bow keeps it from attacking
+            Player.TakeDamage(Tune.CourtSnap * animal.DamageScale, animal.GlobalPosition);
+            animal.Calm(Player.GlobalPosition, Tune.CourtCalm);
             pack.Shift(Tune.CourtRelation * strength * 0.5f);
             return true;
         }
         animal.Strike(BOW, COURT_POSE_SECONDS);
+        animal.Calm(Player.GlobalPosition, COURT_POSE_SECONDS);
         pack.Shift(Tune.CourtRelation * strength);
 
-        // A trusting animal leaves its pack and joins the player's: a mixed pack
-        if (pack.Relation >= Tune.AdoptAt && pack.Release(animal))
+        // A trusting animal leaves its pack and joins the player's: a mixed pack. A pack lets only AdoptPerPack go, a lone beast is its own master
+        bool isFree = pack.IsLoner || pack.Released < Tune.AdoptPerPack;
+        if (pack.Relation >= Tune.AdoptAt && isFree && pack.Release(animal))
         {
             _pack.Adopt(animal);
             pack.Shift(-ADOPT_COST);
@@ -281,6 +305,45 @@ public partial class PackEncounter : Node
     */
     private bool Display(Kin animal, RivalTribe pack)
     {
+        (List<Kin> ours, List<Kin> theirs, float ourBody, float theirBody) = Sides(animal, pack);
+        bool isWon = TribeWays.DisplayWins(ourBody, theirBody);
+
+        float winner = REAR_UP;
+        float loser  = DUCK;
+        Player.Strike(isWon ? winner : loser, Tune.DisplaySeconds);
+        ours.ForEach(member => member.Strike(isWon ? winner : loser, Tune.DisplaySeconds));
+        if (isWon)
+        {
+            // A won display ends the fight: the members let go of the losers, who walk home
+            foreach (Kin member in ours)
+            {
+                if (member.AttackTarget is Kin enemy && theirs.Contains(enemy))
+                {
+                    member.OrderMove(member.Position);
+                }
+            }
+        }
+        foreach (Kin other in theirs)
+        {
+            other.Strike(isWon ? loser : winner, Tune.DisplaySeconds);
+            if (isWon)
+            {
+                other.OrderMove(pack.Fire);
+            }
+        }
+
+        bool wasRespectful = pack.IsRespectful;
+        pack.ShiftRespect(isWon ? Tune.DisplayWin : -Tune.DisplayLose);
+        if (!wasRespectful && pack.IsRespectful)
+        {
+            BannerRequested?.Invoke("BANNER_RESPECT_TITLE", "BANNER_RESPECT_TEXT", new object[] { Tr(NameOf(pack)) });
+        }
+        return true;
+    }
+
+    /// <summary>Both sides of a display around a stranger: who counts and how much body each side shows (ours times the strength of the way, theirs times the presence of the pack).</summary>
+    private (List<Kin> Ours, List<Kin> Theirs, float OurBody, float TheirBody) Sides(Kin animal, RivalTribe pack)
+    {
         float range  = Player.BodySize() * Tune.DisplayRange;
         var   ours   = Ours(Player.GlobalPosition, range);
         var   theirs = new List<Kin>();
@@ -298,29 +361,21 @@ public partial class PackEncounter : Node
         float ourBody   = Player.BodySize();
         float theirBody = 0f;
         ours.ForEach(member => ourBody += member.Radius);
-        theirs.ForEach(other => theirBody += other.Radius);
-        bool isWon = TribeWays.DisplayWins(ourBody * TribeWays.Strength(PackWay.Display, Player.Diet), theirBody);
+        theirs.ForEach(other => theirBody += other.Radius * pack.Presence);
+        return (ours, theirs, ourBody * TribeWays.Strength(PackWay.Display, Player.Diet), theirBody);
+    }
 
-        float winner = REAR_UP;
-        float loser  = DUCK;
-        Player.Strike(isWon ? winner : loser, Tune.DisplaySeconds);
-        ours.ForEach(member => member.Strike(isWon ? winner : loser, Tune.DisplaySeconds));
-        foreach (Kin other in theirs)
+    /// <summary>How a display at the current target would go: the body both sides show, null without a target. For the meter of the HUD.</summary>
+    /// <example><code>(float ours, float theirs) = encounter.DisplayOdds().Value;</code></example>
+    public (float Ours, float Theirs)? DisplayOdds()
+    {
+        Kin target = Target;
+        if (null == target)
         {
-            other.Strike(isWon ? loser : winner, Tune.DisplaySeconds);
-            if (isWon)
-            {
-                other.OrderMove(pack.Fire);
-            }
+            return null;
         }
-
-        bool wasRespectful = pack.IsRespectful;
-        pack.ShiftRespect(isWon ? Tune.DisplayWin : -Tune.DisplayLose);
-        if (!wasRespectful && pack.IsRespectful)
-        {
-            BannerRequested?.Invoke("BANNER_RESPECT_TITLE", "BANNER_RESPECT_TEXT", new object[] { Tr(NameOf(pack)) });
-        }
-        return true;
+        (_, _, float ourBody, float theirBody) = Sides(target, TargetPack);
+        return (ourBody, theirBody);
     }
 
     /// <summary>Lunge and bite: the pack joins the fight, the strangers nearby fight back, a kill leaves meat (RivalKeeper.KinKilled).</summary>
@@ -355,6 +410,37 @@ public partial class PackEncounter : Node
         if (animal.Hurt(Tune.HuntDamage * TribeWays.Strength(PackWay.Hunt, Player.Diet)))
         {
             _rivals.ReportKill(animal);
+        }
+        return true;
+    }
+
+    /*
+      The hunt for prey (Game/World/Wildlife.cs), when no stranger is in reach of the bite:
+      > No prey within EncounterRange: nothing happens.
+      > The leader lunges at the closest prey animal, the members nearby chase it too.
+      > Within HuntRange the lunge ends in a bite, a deadly one leaves meat.
+    */
+    private bool HuntPrey()
+    {
+        Kin prey = Prey;
+        if (null == prey)
+        {
+            return false;
+        }
+        float   size   = Player.BodySize();
+        Vector2 toPrey = prey.GlobalPosition - Player.GlobalPosition;
+        Player.Push  += toPrey.Normalized() * Player.CurrentSpeed() * Tune.HuntLunge;
+        Player.Facing = toPrey.Angle();
+        foreach (Kin member in Ours(Player.GlobalPosition, size * Tune.DisplayRange))
+        {
+            if (member.IsIdle)
+            {
+                member.OrderAttack(prey);
+            }
+        }
+        if (Gap(prey) <= size * Tune.HuntRange)
+        {
+            Wildlife.Bite(prey, Tune.HuntDamage * TribeWays.Strength(PackWay.Hunt, Player.Diet));
         }
         return true;
     }
@@ -420,28 +506,11 @@ public partial class PackEncounter : Node
     // ================================   FOOD   =================================
     // ===========================================================================
     //
-    //   OnPackGave   A friendly pack brings fruit to the nest, a respectful one fruit and meat (tribute).
     //   DropMeat     The meat of an animal killed in the pack stage, where it fell.
-    //   DropFood     One piece of land food on the ground.
+    //   DropFood     One piece of land food on the ground (also what a carrier of PackManners hands over).
     //
 
     private const float LAND_FOOD_LOOK = 2.6f;      // like the land food of the Spawner
-    private const float MEAT_SHARE = 0.3f;          // size of a meat chunk against the animal
-
-    private void OnPackGave(RivalTribe pack, bool isTribute)
-    {
-        if (null == _pack.Nest || !IsActive)
-        {
-            return;
-        }
-        float   size = Player.BodySize();
-        Vector2 spot = _pack.Nest.Position + Vector2.FromAngle(Rand.Angle()) * size * 2f;
-        DropFood(spot, size * 0.25f, isMeat: false);
-        if (isTribute)
-        {
-            DropFood(spot + Vector2.FromAngle(Rand.Angle()) * size, size * 0.3f, isMeat: true);
-        }
-    }
 
     /// <summary>The meat of an animal killed in the pack stage, where it fell.</summary>
     /// <param name="position">(Required) Where it died.</param>
@@ -452,10 +521,14 @@ public partial class PackEncounter : Node
         {
             return;
         }
-        DropFood(position, size * MEAT_SHARE, isMeat: true);
+        DropFood(position, size * Tune.MeatShare, isMeat: true);
     }
 
-    private void DropFood(Vector2 spot, float size, bool isMeat)
+    /// <summary>One piece of land food on the ground: fruit, or meat. Nothing off the land.</summary>
+    /// <param name="spot">(Required) Plane point.</param>
+    /// <param name="size">(Required) Size of the piece on the plane.</param>
+    /// <param name="isMeat">(Required) Meat instead of fruit.</param>
+    public void DropFood(Vector2 spot, float size, bool isMeat)
     {
         if (!Coast.IsOnLand(spot))
         {
