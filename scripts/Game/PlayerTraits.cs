@@ -30,7 +30,7 @@ public sealed class PlayerTraits
     //   LandSpeed        Multiplier of the speed on land: crawling until legs carry the body.
     //   Acceleration     How fast the body takes up speed.
     //   DigestAll / DigestPlant / DigestMeat   Biomass gained per bite by source.
-    //   Photosynthesis   Biomass per second from light at reference size.
+    //   Photosynthesis   Biomass per second from light at reference size (light sails, all the time).
     //   Toxin            Multiplier of spike and jaw damage.
     //   MagnetRange      Body sizes from which food drifts to the player.
     //   EpPerLevel       Evolution points per level, a brain adds to it.
@@ -75,20 +75,14 @@ public sealed class PlayerTraits
     /// <param name="mutations">(Required) Mutations of the prelude, empty for none.</param>
     public static PlayerTraits OfCell(CellDesign design, IReadOnlyList<MutationKind> mutations)
     {
+        // The plates of a cell are a shield (AbilitySet.TryBlock), not a share like a creature shell
         CellStats cell   = CellStats.From(design);
         var       traits = new PlayerTraits { Cell = cell };
-        traits.Health         *= cell.Health;
         traits.Speed          *= cell.Speed;
-        traits.Acceleration   *= cell.Acceleration;
-        traits.DigestAll      *= cell.DigestAll;
-        traits.DigestPlant    *= cell.DigestPlant;
-        traits.DigestMeat     *= cell.DigestMeat;
         traits.Photosynthesis += cell.Photosynthesis;
-        traits.Toxin          *= cell.Toxin;
         traits.MagnetRange    += cell.MagnetBonus;
         traits._spikeAngles.AddRange(cell.SpikeAngles);
         traits._jawAngles.AddRange(cell.JawAngles);
-        traits._plateAngles.AddRange(cell.PlateAngles);
 
         foreach (MutationKind kind in mutations)
         {
@@ -129,7 +123,7 @@ public sealed class PlayerTraits
     //   HasThorns       Whether any spike or jaw exists.
     //   ContactDamage   Spike and jaw damage towards a direction of the body.
     //   CanBite         Whether a jaw points towards a direction.
-    //   DamageFactor    Share of the damage taken from a direction: plates halve it, slime lowers it everywhere.
+    //   DamageFactor    Share of the damage taken from a direction: a creature shell halves it.
     //
     //   Angles are local to the body: 0 is its front.
     //
@@ -148,6 +142,6 @@ public sealed class PlayerTraits
 
     public float DamageFactor(float localAngle)
     {
-        return CellStats.DamageFactor(_plateAngles, localAngle) * Cell.DamageTaken;
+        return CellStats.DamageFactor(_plateAngles, localAngle);
     }
 }

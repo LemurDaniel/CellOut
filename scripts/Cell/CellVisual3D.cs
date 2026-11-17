@@ -198,6 +198,7 @@ public partial class CellVisual3D : Node3D
         {
             _signature = signature;
             Rebuild();
+            _fade = -1f;     // the new meshes take the fade again (ApplyFade)
         }
 
         // ---------------------------------------------------------------------------
@@ -206,10 +207,11 @@ public partial class CellVisual3D : Node3D
         //   moves divided cells out of their mothers.
         // ---------------------------------------------------------------------------
 
-        GlobalPosition = Plane3D.To3D(Body.GlobalPosition, -Plane3D.Drop(Body.GlobalPosition));
+        GlobalPosition = Plane3D.To3D(Body.GlobalPosition, -Plane3D.Drop(Body.GlobalPosition) - Body.Depth);
         Rotation       = new Vector3(0f, Plane3D.FacingToYaw(Body.Facing), 0f);
-        Scale          = Vector3.One * Body.Radius;
+        Scale          = new Vector3(1f, Body.HeightScale, 1f) * Body.Radius;
         Visible        = !Body.IsHidden;
+        ApplyFade();
 
         // Divided cells glide out of their mothers with a little overshoot
         if (_splitTime < SPLIT_SECONDS)
@@ -240,6 +242,7 @@ public partial class CellVisual3D : Node3D
             membrane.SetShaderParameter("flash", Body.HurtFlash);
             membrane.SetShaderParameter("engulf_dir", engulfDir);
             membrane.SetShaderParameter("engulf", Body.EngulfReach);
+            membrane.SetShaderParameter("haze", Body.Fade);
         }
 
         AnimateParts();
@@ -343,7 +346,44 @@ public partial class CellVisual3D : Node3D
     //   RimTilt           Tilt of that normal above the horizon.
     //   SurfaceY          Height of the membrane top at a unit point, outline and heights included.
     //   ShapeAt           Radius of the stretched outline at an angle.
+    //   ApplyFade         Fades every mesh by Body.Fade, a deep giant in the background.
     //
+
+    private float _fade;
+
+    /// <summary>
+    /// Hands Body.Fade to every mesh of the cell. While faded every frame, part models
+    /// arrive after the rebuild; a body on the plane only once when the fade changed.
+    /// </summary>
+    private void ApplyFade()
+    {
+        if (Mathf.IsEqualApprox(_fade, Body.Fade) && Body.Fade <= 0f)
+        {
+            return;
+        }
+        // Fully visible again: one rebuild brings back the shadows the fade switched off
+        if (_fade > 0f && Body.Fade <= 0f)
+        {
+            _signature = unchecked(_signature + 1);
+            _fade      = 0f;
+            return;
+        }
+        _fade = Body.Fade;
+        var pending = new Stack<Node>(GetChildren());
+        while (pending.Count > 0)
+        {
+            Node node = pending.Pop();
+            if (node is GeometryInstance3D geometry)
+            {
+                geometry.Transparency = _fade;
+                geometry.CastShadow   = _fade > 0f ? GeometryInstance3D.ShadowCastingSetting.Off : geometry.CastShadow;
+            }
+            foreach (Node child in node.GetChildren())
+            {
+                pending.Push(child);
+            }
+        }
+    }
 
     private void Rebuild()
     {
@@ -631,22 +671,20 @@ public partial class CellVisual3D : Node3D
     public static readonly IReadOnlyDictionary<PartKind, (string File, string Animation)> CELL_MODELS =
         new Dictionary<PartKind, (string File, string Animation)>
         {
-            [PartKind.Chloroplast]   = ("cell.chloroplast.glb", null),
+            [PartKind.LightSail]     = ("cell.lightsail.glb", "Sway"),
             [PartKind.FilterMouth]   = ("cell.filtermouth.glb", null),
             [PartKind.ArmorPlate]    = ("cell.armorplate.glb", null),
+            [PartKind.SlimeGland]    = ("cell.slimegland.glb", null),
             [PartKind.Flagellum]     = ("cell.flagellum.glb", "Whip"),
             [PartKind.Eyespot]       = ("cell.eyespot.glb", null),
-            [PartKind.Vacuole]       = ("cell.vacuole.glb", null),
+            [PartKind.JetNozzle]     = ("cell.jetnozzle.glb", null),
             [PartKind.Cilia]         = ("cell.cilium.glb", "Beat"),
+            [PartKind.Pseudopod]     = ("cell.pseudopod.glb", "Ooze"),
+            [PartKind.Chromatophore] = ("cell.chromatophore.glb", null),
             [PartKind.Spike]         = ("cell.spike.glb", null),
             [PartKind.Jaw]           = ("cell.jaw.glb", "Chomp"),
-            [PartKind.Toxin]         = ("cell.toxin.glb", null),
-            [PartKind.Mitochondrion] = ("cell.mitochondrion.glb", null),
-            [PartKind.StarchGranule] = ("cell.starch.glb", null),
-            [PartKind.SlimeCoat]     = ("cell.slime.glb", null),
-            [PartKind.Pseudopod]     = ("cell.pseudopod.glb", "Ooze"),
-            [PartKind.Pili]          = ("cell.pili.glb", null),
-            [PartKind.Camouflage]    = ("cell.camouflage.glb", null),
+            [PartKind.ToxinGland]    = ("cell.toxingland.glb", null),
+            [PartKind.Electrocyte]   = ("cell.electrocyte.glb", null),
             [PartKind.Nematocyst]    = ("cell.nematocyst.glb", null),
             [PartKind.Sucker]        = ("cell.sucker.glb", null),
         };
@@ -657,6 +695,7 @@ public partial class CellVisual3D : Node3D
     private const float BEAT_RATE = 1.6f;            // cilia beats per second
     private const float CHOMP_RATE = 0.9f;
     private const float OOZE_RATE = 0.5f;            // pseudopod sways per second
+    private const float SWAY_RATE = 0.5f;            // light sail sways per second
 
     /// <summary>A new instance of a cell part model, recolored (Core/PartModels.cs).</summary>
     /// <param name="kind">(Required) An editor part.</param>
@@ -670,37 +709,28 @@ public partial class CellVisual3D : Node3D
     private const float EYE_SINK = 0.06f;            // the eyespot sits this deep in the membrane, along its normal
 
     /// <summary>
-    /// A part placed in the editor as its generated model. Rim parts stand on the membrane
-    /// at their angle and lift, pointing along its normal; inner parts float at their
-    /// position inside the membrane.
+    /// A part placed in the editor as its generated model. Every part stands on the membrane
+    /// at its angle and lift, pointing along its normal.
     /// </summary>
     private void BuildPlaced(Node3D root, PlacedPart part, Color cellColor)
     {
         float   angle = part.Angle;
         float   lift  = part.Lift;
         float   tilt  = RimTilt(angle, lift);
-        var     inner = new Vector3(part.Position.X, 0f, part.Position.Y);
         Color   skin  = cellColor.Darkened(0.2f);
 
         switch (part.Kind)
         {
-            // Inner parts: centered at their spot, organelles drift
-            case PartKind.Chloroplast:
-            case PartKind.Vacuole:
-            case PartKind.Toxin:
-            case PartKind.Mitochondrion:
-            case PartKind.StarchGranule:
-            case PartKind.SlimeCoat:
-            case PartKind.Camouflage:
-                _spinners.Add(AttachPart(root, part.Kind, skin, inner, angle, CELL_PART_SIZE));
-                break;
-
-            // Rim parts: base on the membrane, pointing outwards along its normal
+            // Rim parts: base on the membrane, pointing outwards along its normal (every part sits on the rim)
             case PartKind.ArmorPlate:
             case PartKind.Spike:
-            case PartKind.Pili:
             case PartKind.Nematocyst:
             case PartKind.Sucker:
+            case PartKind.SlimeGland:
+            case PartKind.JetNozzle:
+            case PartKind.Chromatophore:
+            case PartKind.ToxinGland:
+            case PartKind.Electrocyte:
                 AttachPart(root, part.Kind, skin, RimPoint(angle, lift, 0.97f), angle, CELL_PART_SIZE, tilt);
                 break;
             case PartKind.Jaw:
@@ -714,6 +744,10 @@ public partial class CellVisual3D : Node3D
                 {
                     _whips.Add(whip);
                 }
+                break;
+            case PartKind.LightSail:
+                Node3D sail = AttachPart(root, part.Kind, skin, RimPoint(angle, lift, 0.95f), angle, CELL_PART_SIZE, tilt);
+                PartModels.PlayLoop(sail, CELL_MODELS[part.Kind].Animation, Body.AnimSeed + angle / Mathf.Tau, SWAY_RATE);
                 break;
             case PartKind.Pseudopod:
                 Node3D pseudopod = AttachPart(root, part.Kind, skin, RimPoint(angle, lift, 0.93f), angle, CELL_PART_SIZE, tilt);

@@ -14,6 +14,7 @@
 //   $env:CELLOUT_REEL_PART = '0'       # optional, with a mode: the index of the part picked in the editor
 //   $env:CELLOUT_REEL_SKY = '1'       # optional, while rushing: the camera tilts flat, the still shows sky and horizon
 //   $env:CELLOUT_REEL_MAP = '1'       # optional: the tribe pans off the village and opens the world map (rushing: still 198)
+//   $env:CELLOUT_REEL_ABILITIES = '1' # optional: the single cell gets every ability and fires them (stills: frames 76, 86, 96, 104), end with --quit-after 118
 
 //
 //   Chapters:
@@ -58,6 +59,7 @@ public partial class GraphicsReel : Node
     private static readonly bool IS_SHOWING_MAP = "1" == OS.GetEnvironment("CELLOUT_REEL_MAP");
     private static readonly bool IS_LOOKING_UP = "1" == OS.GetEnvironment("CELLOUT_REEL_SKY");
     private static readonly string TEMPLATE_KEY = OS.GetEnvironment("CELLOUT_REEL_TEMPLATE");
+    private static readonly bool IS_SHOWING_ABILITIES = "1" == OS.GetEnvironment("CELLOUT_REEL_ABILITIES");
     private static readonly CreatureEditorMode EDITOR_MODE = System.Enum.TryParse(OS.GetEnvironment("CELLOUT_REEL_MODE"), true, out CreatureEditorMode mode) ? mode : CreatureEditorMode.Build;
 
     private Main _main;
@@ -116,6 +118,10 @@ public partial class GraphicsReel : Node
             _main.FollowCamera.HandleInput(new InputEventMouseButton { ButtonIndex = MouseButton.Right, Pressed = true });
             _main.FollowCamera.HandleInput(new InputEventMouseMotion { Relative = new Vector2(120f, -200f) });
             _main.FollowCamera.HandleInput(new InputEventMouseButton { ButtonIndex = MouseButton.Right, Pressed = false });
+        }
+        if (IS_SHOWING_ABILITIES)
+        {
+            ShowAbilities(player);
         }
         switch (frame)
         {
@@ -195,6 +201,53 @@ public partial class GraphicsReel : Node
                 break;
             case QUIT_FRAME:
                 GetTree().Quit();
+                break;
+        }
+    }
+
+    /*
+      The abilities, only with CELLOUT_REEL_ABILITIES, right after the single cell:
+      - 66: every key ability plus electrocyte, toxin gland, light sail and filter mouth,
+            three small cells around it
+      - 72: dash, 78: slime, 82: a hit wells up the poison cloud, 90: cloak, 100: blast,
+            the electrocyte fires by itself at the cells close by
+    */
+    private void ShowAbilities(Player player)
+    {
+        switch (_frame)
+        {
+            case 66:
+                var design = new CellDesign();
+                design.TryPlace(PartKind.Flagellum, Vector2.Left, 0);
+                design.TryPlace(PartKind.SlimeGland, new Vector2(-0.7f, 0.7f), 0);
+                design.TryPlace(PartKind.Chromatophore, new Vector2(-0.7f, -0.7f), 0);
+                design.TryPlace(PartKind.JetNozzle, Vector2.Right, 0);
+                design.TryPlace(PartKind.Electrocyte, Vector2.Up, 0);
+                design.TryPlace(PartKind.ToxinGland, Vector2.Down, 0);
+                design.TryPlace(PartKind.LightSail, new Vector2(0.7f, 0.7f), 0);
+                design.TryPlace(PartKind.FilterMouth, new Vector2(0.7f, -0.7f), 0);
+                player.CommitDesign(design, player.EvolutionPoints);
+                for (int i = 0; i < 3; i++)
+                {
+                    var cell = new Critter { Position = player.GlobalPosition + Vector2.FromAngle(i * 2.1f) * player.BodySize() * 2.6f };
+                    cell.Setup(player.BodySize() * 0.6f, CritterKind.Amoeba, player.BodySize(), 1);
+                    _main.CritterLayer.AddChild(cell);
+                }
+                break;
+            case 72:
+                _main.Abilities.UseSlot(0);
+                break;
+            case 78:
+                _main.Abilities.UseSlot(1);
+                break;
+            case 82:
+                player.WasHit = true;
+                break;
+            case 90:
+                _main.Abilities.UseSlot(2);
+                break;
+            case 100:
+                _main.Abilities.UseSlot(3);
                 break;
         }
     }

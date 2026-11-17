@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://bgmcvmdiywkxh"
-path="res://.godot/imported/cell.chloroplast.glb-d19e1193f0ae6810d8d22d6f0a5d2bde.scn"
+uid="uid://cpr2cr08vb5nu"
+path="res://.godot/imported/cell.jetnozzle.glb-382fae30ebadfd1e6cff22e99d3e49cc.scn"
 
 [deps]
 
-source_file="res://assets/models/cell/cell.chloroplast.glb"
-dest_files=["res://.godot/imported/cell.chloroplast.glb-d19e1193f0ae6810d8d22d6f0a5d2bde.scn"]
+source_file="res://assets/models/cell/cell.jetnozzle.glb"
+dest_files=["res://.godot/imported/cell.jetnozzle.glb-382fae30ebadfd1e6cff22e99d3e49cc.scn"]
 
 [params]
 

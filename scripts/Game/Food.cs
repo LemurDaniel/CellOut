@@ -87,7 +87,7 @@ public partial class Food : Node2D
         _spin  = Rand.Range(-1.5f, 1.5f);
     }
 
-    /// <summary>Main color of the food (meat chunks are red), also used for the splash when eaten.</summary>
+    /// <summary>Main color of the food (meat chunks are red).</summary>
     public Color ColorOf()
     {
         if (IsMeat)

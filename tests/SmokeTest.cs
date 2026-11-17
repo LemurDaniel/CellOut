@@ -43,7 +43,9 @@ public partial class SmokeTest : Node
     private const int KILL_FRAME = 450;
     private const int FEED_FRAME = 460;
     private const int GROW_FRAME = 470;             // enough biomass for 64 cells and the organism
+    private const int ABILITY_FRAME = 540;          // the full cluster dashes and cloaks before it evolves
     private const int EVOLVE_FRAME = 560;
+    private const int COAST_DELAY = 5;              // physics frames after the evolution until the coast must exist
     private const int LAND_FRAME = 580;             // cheats: points, then legs, lung and the coast
     private const int PACK_FRAME = 600;             // cheat: followers and the nest
     private const int TRIBE_FRAME = 640;            // cheat: the tribe, then a hut from a full stock
@@ -68,6 +70,8 @@ public partial class SmokeTest : Node
     private bool _isCellSacrificeOk;
     private bool _isManualEditorOk;
     private bool _isEvolveOk;
+    private bool _isAbilityWorldOk;
+    private bool _isCoastWithOrganism;     // the islands are there right after the evolution, before any land cheat
     private bool _isCreatureEditorOk;
     private bool _isChecked;
     private bool _isCheatPointsOk;
@@ -183,12 +187,22 @@ public partial class SmokeTest : Node
         {
             player.AddBiomass(GROW_BIOMASS, BiomassSource.Raw);
         }
+        // Abilities in the running soup, the design comes back afterwards
+        if (ABILITY_FRAME == _frame)
+        {
+            _isAbilityWorldOk = ProbeAbilitiesInWorld(player);
+        }
         // Full cluster: evolve, choose a marine mammal, shape it, done
         if (EVOLVE_FRAME == _frame)
         {
             _isEvolveOk         = player.CanEvolve && _main.StartEvolve(isInstant: true) && _main.IsEvolving && GetTree().Paused;
             _isCreatureEditorOk = ShapeCreature(_main.CreatureEditor);
             _isEvolveOk         = _isEvolveOk && !_main.IsEvolving && !GetTree().Paused && player.IsOrganism;
+        }
+        // The islands show up as soon as the organism swims, no sea-only phase before them
+        if (EVOLVE_FRAME + COAST_DELAY == _frame)
+        {
+            _isCoastWithOrganism = player.IsOrganism && null != _main.Coast;
         }
         // Cheat menu: ten points, then onto the land with legs and lung
         if (LAND_FRAME == _frame)
@@ -496,6 +510,8 @@ public partial class SmokeTest : Node
     //   Texte DE                German stage name and every mutation translated.
     //   Sprach-Button           ToggleLanguage switches from German to English.
     //   Stachel gerichtet       A forward spike hurts forward only.
+    //   Fähigkeiten             Key slots in placement order, a front nematocyst, a back plate shields once.
+    //   Fähigkeiten im Spiel    In the running soup the player dashes and cloaks on its keys 1 and 2.
     //   Geißel hinten           A flagellum at the back is faster than one at the front.
     //   Ernährung links         Only molecules -> clearly herbivore.
     //   Ernährung rechts        Mostly meat afterwards -> carnivore side.
@@ -517,6 +533,7 @@ public partial class SmokeTest : Node
     //   Kreatur-Geometrie       Blob profile and inside test, vertebra limits, NPC body plans.
     //   Texte Kreatur           Every creature part and type translated in both languages.
     //   Küste                   The coast exists, land and sea are on the right sides, things get pushed to sea.
+    //   Küste beim Lebewesen    The islands exist a few frames after the evolution, before any land cheat.
     //   Landtier per Cheat      F10 points add 10 EP, the land jump walks the creature onto the coast: stage 5.
     //   Luft an Land            Without a lung fish and marine mammal run out of air on land and suffocate slowly, a lung saves them.
     //   Laufen an Land          Without legs it crawls, with legs it walks faster, lung and legs make it a land animal.
@@ -607,7 +624,8 @@ public partial class SmokeTest : Node
             ("Texte DE", ProbeTexts("de", "Protozelle")),
             ("Sprach-Button", ProbeLanguageButton()),
             ("Stachel gerichtet", ProbeDirectionalSpike()),
-            ("Schleim, Pili, Tarnung", ProbeCellTraits()),
+            ("Fähigkeiten", ProbeCellTraits()),
+            ("Fähigkeiten im Spiel", _isAbilityWorldOk),
             ("Geißel hinten", ProbeFlagellumThrust()),
             ("Ernährung links", ProbeDiet().IsHerbivore),
             ("Ernährung rechts", ProbeDiet().IsCarnivore),
@@ -632,7 +650,7 @@ public partial class SmokeTest : Node
             ("Kreatur-Geometrie", ProbeCreatureGeometry()),
             ("Texte Kreatur", ProbeCreatureTexts("en") && ProbeCreatureTexts("de")),
             ("Küste", ProbeCoast()),
-            ("Küste nach Evolve-Biomasse", player.EvolvedAt >= GROW_BIOMASS && _main.CoastAt > player.EvolvedAt),
+            ("Küste beim Lebewesen", _isCoastWithOrganism),
             ("Landtier per Cheat", _isCheatPointsOk && player.IsLandAnimal && player.IsOnLand),
             ("Third Person", _isThirdPersonOk),
             ("Futter Meer/Land", _isFoodHabitatsOk),
@@ -666,7 +684,8 @@ public partial class SmokeTest : Node
     //   ProbeTexts            Stage name as expected and no part key left untranslated.
     //   ProbeLanguageButton   Toggling from German lands on English, German is restored.
     //   ProbeDirectionalSpike Spike at angle 0: 8 damage forward, none backward.
-    //   ProbeCellTraits       Slime, pili, pigment and a front nematocyst on a loose player, a stun slows it.
+    //   ProbeCellTraits       Key slots, a front nematocyst and a back plate that shields once on a loose player, a stun slows it.
+    //   ProbeAbilitiesInWorld The player dashes and cloaks on its keys in the running soup, its design comes back after.
     //   ProbeFlagellumThrust  Back flagellum vs. front flagellum on two loose players.
     //   ProbeDiet             100 plant, then 500 meat on a fresh tracker.
     //   ProbeRefund           Place a spike, remove it, get its cost back.
@@ -953,20 +972,48 @@ public partial class SmokeTest : Node
         return isDirectional;
     }
 
+    /// <summary>The player dashes on key 1 and cloaks on key 2 in the running soup, then gets its own design back.</summary>
+    private bool ProbeAbilitiesInWorld(Player player)
+    {
+        var own = new CellDesign();
+        own.CopyFrom(player.Design);
+        int points = player.EvolutionPoints;
+
+        var design = new CellDesign();
+        design.TryPlace(PartKind.Flagellum, Vector2.Left, paidCost: 0);
+        design.TryPlace(PartKind.Chromatophore, Vector2.Up, paidCost: 0);
+        player.CommitDesign(design, points);
+        player.Push = Vector2.Zero;
+        bool isDashed  = _main.Abilities.UseSlot(0) && player.Push.Length() > 0f;
+        bool isCloaked = _main.Abilities.UseSlot(1) && player.Abilities.IsRunning(PartKind.Chromatophore);
+        bool isCharged = !_main.Abilities.UseSlot(0);     // the dash recharges first
+
+        player.CommitDesign(own, points);
+        player.Push = Vector2.Zero;
+        if (!(isDashed && isCloaked && isCharged))
+        {
+            GD.Print($"  abilities: dash {isDashed}, cloak {isCloaked}, recharge {isCharged}");
+        }
+        return isDashed && isCloaked && isCharged;
+    }
+
     private static bool ProbeCellTraits()
     {
         var design = new CellDesign();
-        design.TryPlace(PartKind.SlimeCoat, Vector2.Zero, paidCost: 0);
-        design.TryPlace(PartKind.Camouflage, new Vector2(0.4f, 0f), paidCost: 0);
-        design.TryPlace(PartKind.Pili, Vector2.Left, paidCost: 0);
+        design.TryPlace(PartKind.SlimeGland, Vector2.Up, paidCost: 0);
+        design.TryPlace(PartKind.Chromatophore, Vector2.Down, paidCost: 0);
+        design.TryPlace(PartKind.Eyespot, new Vector2(0.7f, 0.7f), paidCost: 0);
         design.TryPlace(PartKind.Nematocyst, Vector2.Right, paidCost: 0);
+        design.TryPlace(PartKind.ArmorPlate, Vector2.Left, paidCost: 0);
         var probe = new Player();
         probe.CommitDesign(design, 0);
-        bool isApplied = Mathf.IsEqualApprox(probe.DamageFactorFrom(Mathf.Pi), 0.8f)
-            && Mathf.IsEqualApprox(probe.CellTraits.Knockback, 0.5f)
-            && Mathf.IsEqualApprox(probe.CellTraits.Camouflage, 0.75f)
+
+        // Key slots in placement order, the eyespot and the passive parts take none; a plate shields its side once
+        bool isApplied = probe.Abilities.Slots.SequenceEqual(new[] { PartKind.SlimeGland, PartKind.Chromatophore })
             && probe.CellTraits.StingToward(0f) > 0f
-            && Mathf.IsZeroApprox(probe.CellTraits.StingToward(Mathf.Pi));
+            && Mathf.IsZeroApprox(probe.CellTraits.StingToward(Mathf.Pi))
+            && probe.CellTraits.IsPlatedToward(Mathf.Pi) && !probe.CellTraits.IsPlatedToward(0f)
+            && 1 == probe.Abilities.ShieldCharges && probe.Abilities.TryBlock() && !probe.Abilities.TryBlock();
 
         // A sting paralyses: the swim speed drops to StunSpeed
         float free = probe.CurrentSpeed();
@@ -1144,7 +1191,7 @@ public partial class SmokeTest : Node
         // The new parts show up on NPCs: 200 late rolls per kind find them
         bool HasRolled(CritterKind kind, PartKind part) => Enumerable.Range(0, 200).Any(_ => CellDesign.ForCritter(kind, 2).Count(part) > 0);
         bool hasNewParts = HasRolled(CritterKind.Hunter, PartKind.Nematocyst) && HasRolled(CritterKind.Hunter, PartKind.Sucker)
-            && HasRolled(CritterKind.Amoeba, PartKind.Pseudopod) && HasRolled(CritterKind.Bacterium, PartKind.Camouflage);
+            && HasRolled(CritterKind.Amoeba, PartKind.Pseudopod) && HasRolled(CritterKind.Bacterium, PartKind.Chromatophore) && HasRolled(CritterKind.Hunter, PartKind.Electrocyte);
 
         // A hunter's spike hurts towards its direction (facing 0: local = world)
         var hunter = new Critter();

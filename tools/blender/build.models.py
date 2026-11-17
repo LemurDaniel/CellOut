@@ -1,7 +1,7 @@
 # NOTE:
 #   Builds the models of Cell Out in Blender and exports one .glb per model:
 #   - assets/models/creature/  feet, hands, pincer, squid club, wings, fins, mouths, spines, shell, gills, brain, stalk eyes, lantern of the organism stage
-#   - assets/models/cell/      the eighteen cell editor parts (flagellum, cilium, jaw, spike, ...)
+#   - assets/models/cell/      the sixteen cell editor parts (flagellum, cilium, jaw, electrocyte, ...)
 #   - assets/models/tree/      primeval trees of the islands (fern, cycad, horsetail, broadleaf, giant)
 #   - assets/models/village/   the nest of the pack and the fire pit of the tribe
 #   - assets/models/building/  the eighteen blocks of the building designer (walls, roofs, frames, ...)
@@ -95,23 +95,21 @@ from models.buildings import (
 )
 from models.cells import (
     build_armor,
-    build_camouflage,
     build_cell_jaw,
-    build_chloroplast,
+    build_chromatophore,
     build_cilium,
+    build_electrocyte,
     build_eyespot,
     build_filter,
     build_flagellum,
-    build_mitochondrion,
+    build_jet_nozzle,
+    build_light_sail,
     build_nematocyst,
-    build_pili,
     build_pseudopod,
-    build_slime,
+    build_slime_gland,
     build_spike,
-    build_starch,
     build_sucker,
-    build_toxin,
-    build_vacuole,
+    build_toxin_gland,
 )
 from models.fins import build_caudal, build_dorsal, build_fluke, build_pectoral
 from models.helpers import build_scene, export, join_by_material
@@ -272,17 +270,15 @@ PARTS = {
     'cell/cell.armorplate.glb':            build_armor,
     'cell/cell.filtermouth.glb':           build_filter,
     'cell/cell.eyespot.glb':               build_eyespot,
-    'cell/cell.chloroplast.glb':           build_chloroplast,
-    'cell/cell.vacuole.glb':               build_vacuole,
-    'cell/cell.toxin.glb':                 build_toxin,
-    'cell/cell.mitochondrion.glb':         build_mitochondrion,
-    'cell/cell.starch.glb':                build_starch,
-    'cell/cell.slime.glb':                 build_slime,
     'cell/cell.pseudopod.glb':             build_pseudopod,
-    'cell/cell.pili.glb':                  build_pili,
-    'cell/cell.camouflage.glb':            build_camouflage,
     'cell/cell.nematocyst.glb':            build_nematocyst,
     'cell/cell.sucker.glb':                build_sucker,
+    'cell/cell.lightsail.glb':             build_light_sail,
+    'cell/cell.jetnozzle.glb':             build_jet_nozzle,
+    'cell/cell.slimegland.glb':            build_slime_gland,
+    'cell/cell.chromatophore.glb':         build_chromatophore,
+    'cell/cell.toxingland.glb':            build_toxin_gland,
+    'cell/cell.electrocyte.glb':           build_electrocyte,
     'tree/tree.fern.glb':                  build_tree_fern,
     'tree/tree.cycad.glb':                 build_tree_cycad,
     'tree/tree.horsetail.glb':             build_tree_horsetail,

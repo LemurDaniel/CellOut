@@ -1,7 +1,8 @@
 // NOTE:
 //   Unit tests for the cell stages: the part catalog (Cell/PartCatalog.cs), the traits
 //   of a design (Cell/CellStats.cs), the diet bar (Cell/DietTracker.cs) and the
-//   mutations of the prelude (Prelude/Mutation.cs), the NPC colonies (Cell/ColonyRule.cs).
+//   mutations of the prelude (Prelude/Mutation.cs), the NPC colonies (Cell/ColonyRule.cs)
+//   and the body forms of the NPC cells (Cell/CellForms.cs).
 //
 //   dotnet test tests/unit/CellOut.Tests.csproj --filter CellTests
 
@@ -11,7 +12,9 @@
 //     COMPUTE TRAITS   Part effects and the directional combat values.
 //     TRACK DIET       Meals, fading and the mix with the part lean.
 //     ROLL MUTATIONS   The table of the prelude.
+//     FIRE ABILITIES   Triggers, key slots, cooldowns, running effects and shields (Cell/Abilities/AbilitySet.cs).
 //     SIZE COLONIES    Cell count and burst size of the NPC colonies.
+//     FORM CELLS       Body forms of the NPC cells (Cell/CellForms.cs).
 //
 
 using System.Linq;
@@ -41,8 +44,9 @@ public class CellTests
         PartKind[] listed = PartCatalog.All().Select(part => part.Kind).ToArray();
 
         Assert.Equal(System.Enum.GetValues<PartKind>(), listed);
-        Assert.Equal(-1f, PartCatalog.Get(PartKind.Chloroplast).Lean);
-        Assert.Equal(1f, PartCatalog.Get(PartKind.Toxin).Lean);
+        Assert.Equal(-1f, PartCatalog.Get(PartKind.LightSail).Lean);
+        Assert.Equal(1f, PartCatalog.Get(PartKind.Electrocyte).Lean);
+        Assert.All(PartCatalog.All(), part => Assert.Equal(Placement.Rim, part.Placement));      // every part sits visibly outside
         Assert.Equal("PART_FILTERMOUTH_NAME", PartCatalog.Get(PartKind.FilterMouth).NameKey);
     }
 
@@ -88,19 +92,17 @@ public class CellTests
     // ===========================   COMPUTE TRAITS   ============================
     // ===========================================================================
     //
-    //   BareCellHasBaseTraits        No parts: every multiplier 1, no thorns.
-    //   FlagellumPushesBestFromBack  +22% at the back, +6.6% at the front.
-    //   SpikeHurtsOnlyTowardsItsSide 8 inside its arc, 0 outside, toxin multiplies.
-    //   JawBitesTowardsItsSide       Inside the jaw arc only.
-    //   PlateHalvesDamageFromItsSide 0.5 towards the plate, 1 from behind.
-    //   ArcWrapsAroundTheBack        A part at 3 rad covers -3 rad.
-    //   MitochondriaAndStarchTradeSpeed  +8% speed and +10% agility, starch doubles regen for -6% speed.
-    //   SlimeAndPigmentStopAtTheirFloor  0.8 and 0.75 for one, never below 0.5 and 0.4.
-    //   SlimeLowersDamageFromEverySide   Plate and slime: 0.4 in front, 0.8 from behind.
-    //   PiliAndPseudopodsWork            Half the knockback, +0.8 pull range.
-    //   NematocystStingsTowardsItsSide   5 inside its arc, 0 outside, toxin multiplies.
+    //   BareCellHasBaseTraits            No parts: speed 1, no light, no pull, no thorns.
+    //   FlagellumPushesBestFromBack      +22% at the back, +6.6% at the front.
+    //   SpikeHurtsOnlyTowardsItsSide     8 inside its arc, 0 outside, toxin multiplies.
+    //   JawBitesTowardsItsSide           Inside the jaw arc only.
+    //   ShellHalvesDamageFromItsSide     0.5 towards a creature shell, 1 from behind.
+    //   ArcWrapsAroundTheBack            A part at 3 rad covers -3 rad.
+    //   SailsAndMouthsAddUp              Two sails 5 light, a filter mouth 2.5 pull range and pull 4.
+    //   PlateShieldsItsSide              A cell plate covers its arc only.
+    //   NematocystStingsTowardsItsSide   5 inside its arc, 0 outside, no contact damage.
     //   SuckerHoldsTowardsItsSide        Inside the sucker arc only.
-    //   PartSizeIsClampedAndLooksOnly  1 at first, clamped to 0.5..2, the speed stays.
+    //   PartSizeIsClampedAndLooksOnly    1 at first, clamped to 0.5..2, the speed stays.
     //
 
     [Fact]
@@ -109,7 +111,7 @@ public class CellTests
         CellStats stats = CellStats.From(new CellDesign());
 
         Assert.Equal(1f, stats.Speed);
-        Assert.Equal(1f, stats.Health);
+        Assert.Equal(0f, stats.Photosynthesis);
         Assert.Equal(0f, stats.MagnetBonus);
         Assert.False(stats.HasThorns);
     }
@@ -148,7 +150,7 @@ public class CellTests
     }
 
     [Fact]
-    public void PlateHalvesDamageFromItsSide()
+    public void ShellHalvesDamageFromItsSide()
     {
         float[] plates = { 0f };
 
@@ -163,7 +165,7 @@ public class CellTests
         Assert.False(CellStats.IsWithin(localAngle: 0f, partAngle: 3f, arc: 0.7f));
     }
 
-    /// <summary>A design with the given parts, inner ones spread over the cell, rim ones at their direction.</summary>
+    /// <summary>A design with the given parts on the rim at their direction.</summary>
     private static CellDesign DesignWith(params (PartKind Kind, Vector2 Point)[] parts)
     {
         var design = new CellDesign();
@@ -174,51 +176,24 @@ public class CellTests
         return design;
     }
 
-    private static readonly Vector2[] INNER_SPOTS = { Vector2.Zero, new(0.4f, 0f), new(-0.4f, 0f), new(0f, 0.4f) };
-
     [Fact]
-    public void MitochondriaAndStarchTradeSpeed()
+    public void SailsAndMouthsAddUp()
     {
-        CellStats mito   = CellStats.From(DesignWith((PartKind.Mitochondrion, Vector2.Zero)));
-        CellStats starch = CellStats.From(DesignWith((PartKind.StarchGranule, Vector2.Zero)));
+        CellStats stats = CellStats.From(DesignWith((PartKind.LightSail, Vector2.Up), (PartKind.LightSail, Vector2.Down), (PartKind.FilterMouth, Vector2.Right)));
 
-        Assert.Equal(1.08f, mito.Speed, PRECISION);
-        Assert.Equal(1.1f, mito.Acceleration, PRECISION);
-        Assert.Equal(2f, starch.Regen, PRECISION);
-        Assert.Equal(0.94f, starch.Speed, PRECISION);
-        Assert.Equal(1f, mito.Regen);
+        Assert.Equal(5f, stats.Photosynthesis, PRECISION);
+        Assert.Equal(2.5f, stats.MagnetBonus, PRECISION);
+        Assert.Equal(4f, stats.VortexPull, PRECISION);
+        Assert.Equal(1f, stats.Speed);
     }
 
     [Fact]
-    public void SlimeAndPigmentStopAtTheirFloor()
+    public void PlateShieldsItsSide()
     {
-        CellStats oneSlime   = CellStats.From(DesignWith((PartKind.SlimeCoat, Vector2.Zero)));
-        CellStats fourSlimes = CellStats.From(DesignWith(INNER_SPOTS.Select(spot => (PartKind.SlimeCoat, spot)).ToArray()));
-        CellStats onePigment = CellStats.From(DesignWith((PartKind.Camouflage, Vector2.Zero)));
-        CellStats fourPigments = CellStats.From(DesignWith(INNER_SPOTS.Select(spot => (PartKind.Camouflage, spot)).ToArray()));
+        CellStats stats = CellStats.From(DesignWith((PartKind.ArmorPlate, Vector2.Right)));
 
-        Assert.Equal(0.8f, oneSlime.DamageTaken, PRECISION);
-        Assert.Equal(0.5f, fourSlimes.DamageTaken, PRECISION);
-        Assert.Equal(0.75f, onePigment.Camouflage, PRECISION);
-        Assert.Equal(0.4f, fourPigments.Camouflage, PRECISION);
-    }
-
-    [Fact]
-    public void SlimeLowersDamageFromEverySide()
-    {
-        CellStats stats = CellStats.From(DesignWith((PartKind.ArmorPlate, Vector2.Right), (PartKind.SlimeCoat, Vector2.Zero)));
-
-        Assert.Equal(0.4f, stats.DamageFactorFrom(0f), PRECISION);
-        Assert.Equal(0.8f, stats.DamageFactorFrom(Mathf.Pi), PRECISION);
-    }
-
-    [Fact]
-    public void PiliAndPseudopodsWork()
-    {
-        CellStats stats = CellStats.From(DesignWith((PartKind.Pili, Vector2.Left), (PartKind.Pseudopod, Vector2.Right)));
-
-        Assert.Equal(0.5f, stats.Knockback, PRECISION);
-        Assert.Equal(0.8f, stats.MagnetBonus, PRECISION);
+        Assert.True(stats.IsPlatedToward(0.8f));
+        Assert.False(stats.IsPlatedToward(Mathf.Pi));
         Assert.False(stats.HasThorns);
     }
 
@@ -226,11 +201,9 @@ public class CellTests
     public void NematocystStingsTowardsItsSide()
     {
         CellStats plain = CellStats.From(DesignWith((PartKind.Nematocyst, Vector2.Right)));
-        CellStats toxic = CellStats.From(DesignWith((PartKind.Nematocyst, Vector2.Right), (PartKind.Toxin, Vector2.Zero)));
 
         Assert.Equal(5f, plain.StingToward(0.4f), PRECISION);
         Assert.Equal(0f, plain.StingToward(0.6f), PRECISION);
-        Assert.Equal(8f, toxic.StingToward(0f), PRECISION);
         Assert.Equal(0f, plain.ContactDamageToward(0f));
     }
 
@@ -260,6 +233,103 @@ public class CellTests
         Assert.Equal(CellDesign.MIN_PART_SIZE, design.Parts[0].Size);
 
         Assert.Equal(speed, CellStats.From(design).Speed);
+    }
+
+    // ===========================================================================
+    // ===========================   FIRE ABILITIES   ============================
+    // ===========================================================================
+    //
+    //   EveryPartHasATrigger       Five on keys, five by themselves, five all the time, the eyespot only looks.
+    //   SlotsFollowPlacement       Key kinds in placement order, each once, at most four.
+    //   CooldownRunsDown           Fired: not ready, share 1; after the cooldown ready again.
+    //   MorePartsRechargeFaster    Two flagella recharge in 2 s instead of 3.
+    //   EffectRunsForItsDuration   The cloak runs 4 s, then stops.
+    //   MissingPartNeverFires      No part: not ready, TryUse false, no slots, no shield.
+    //   PlatesBlockAndGrowBack     Two plates block two hits, then one grows back every 4 s.
+    //
+
+    [Fact]
+    public void EveryPartHasATrigger()
+    {
+        PartKind[] kinds = System.Enum.GetValues<PartKind>();
+
+        Assert.Equal(5, kinds.Count(kind => AbilityTrigger.Active == AbilitySet.TriggerOf(kind)));
+        Assert.Equal(5, kinds.Count(kind => AbilityTrigger.Auto == AbilitySet.TriggerOf(kind)));
+        Assert.Equal(5, kinds.Count(kind => AbilityTrigger.Passive == AbilitySet.TriggerOf(kind)));
+        Assert.Equal(AbilityTrigger.None, AbilitySet.TriggerOf(PartKind.Eyespot));
+    }
+
+    [Fact]
+    public void SlotsFollowPlacement()
+    {
+        var points = new[] { Vector2.Up, Vector2.Down, Vector2.Left, Vector2.Right, new Vector2(0.7f, 0.7f), new Vector2(-0.7f, 0.7f), new Vector2(0.7f, -0.7f) };
+        var kinds  = new[] { PartKind.Chromatophore, PartKind.Spike, PartKind.Flagellum, PartKind.Chromatophore, PartKind.JetNozzle, PartKind.Cilia, PartKind.SlimeGland };
+        AbilitySet set = AbilitySet.From(DesignWith(kinds.Zip(points).ToArray()));
+
+        Assert.Equal(new[] { PartKind.Chromatophore, PartKind.Flagellum, PartKind.JetNozzle, PartKind.Cilia }, set.Slots);
+        Assert.Equal(2, set.Count(PartKind.Chromatophore));
+    }
+
+    [Fact]
+    public void CooldownRunsDown()
+    {
+        AbilitySet set = AbilitySet.From(DesignWith((PartKind.Flagellum, Vector2.Left)));
+
+        Assert.True(set.TryUse(PartKind.Flagellum));
+        Assert.False(set.IsReady(PartKind.Flagellum));
+        Assert.Equal(1f, set.CooldownShare(PartKind.Flagellum), PRECISION);
+        set.Tick(1.5f);
+        Assert.Equal(0.5f, set.CooldownShare(PartKind.Flagellum), PRECISION);
+        set.Tick(1.5f);
+        Assert.True(set.IsReady(PartKind.Flagellum));
+    }
+
+    [Fact]
+    public void MorePartsRechargeFaster()
+    {
+        AbilitySet one = AbilitySet.From(DesignWith((PartKind.Flagellum, Vector2.Left)));
+        AbilitySet two = AbilitySet.From(DesignWith((PartKind.Flagellum, Vector2.Left), (PartKind.Flagellum, new Vector2(-0.7f, 0.7f))));
+
+        Assert.Equal(3f, one.CooldownOf(PartKind.Flagellum), PRECISION);
+        Assert.Equal(2f, two.CooldownOf(PartKind.Flagellum), PRECISION);
+    }
+
+    [Fact]
+    public void EffectRunsForItsDuration()
+    {
+        AbilitySet set = AbilitySet.From(DesignWith((PartKind.Chromatophore, Vector2.Up)));
+
+        Assert.True(set.TryUse(PartKind.Chromatophore));
+        set.Tick(3.9f);
+        Assert.True(set.IsRunning(PartKind.Chromatophore));
+        set.Tick(0.2f);
+        Assert.False(set.IsRunning(PartKind.Chromatophore));
+    }
+
+    [Fact]
+    public void MissingPartNeverFires()
+    {
+        AbilitySet set = AbilitySet.From(new CellDesign());
+
+        Assert.False(set.IsReady(PartKind.Electrocyte));
+        Assert.False(set.TryUse(PartKind.Electrocyte));
+        Assert.Empty(set.Slots);
+        Assert.False(set.TryBlock());
+    }
+
+    [Fact]
+    public void PlatesBlockAndGrowBack()
+    {
+        AbilitySet set = AbilitySet.From(DesignWith((PartKind.ArmorPlate, Vector2.Left), (PartKind.ArmorPlate, Vector2.Right)));
+
+        Assert.Equal(2, set.ShieldCharges);
+        Assert.True(set.TryBlock());
+        Assert.True(set.TryBlock());
+        Assert.False(set.TryBlock());
+        set.Tick(4.1f);     // two plates: cooldown 6 / 1.5 = 4
+        Assert.Equal(1, set.ShieldCharges);
+        set.Tick(4.1f);
+        Assert.Equal(2, set.ShieldCharges);
     }
 
     // ===========================================================================
@@ -410,5 +480,66 @@ public class CellTests
         Assert.Equal(10f, ColonyRule.SizeAfterBurst(20f, 8, 2), PRECISION);
         Assert.Equal(20f, ColonyRule.SizeAfterBurst(20f, 8, 8), PRECISION);
         Assert.Equal(15.4919f, ColonyRule.SizeAfterBurst(20f, 10, 6), PRECISION);
+    }
+
+    // ===========================================================================
+    // =============================   FORM CELLS   ==============================
+    // ===========================================================================
+    //
+    //   FormsStayInsideLimits   Every kind over many seeds: 8 radii and heights inside the CellDesign limits.
+    //   FormsKeepTheirSize      The mean radius stays about 1, the contacts fit the look.
+    //   FormsVary               Different seeds give different outlines, the same seed the same one.
+    //   BacteriaAreLong         Most bacteria are longer than wide (rods and commas).
+    //
+
+    private const int FORM_SEEDS = 200;
+
+    [Fact]
+    public void FormsStayInsideLimits()
+    {
+        foreach (CritterKind kind in System.Enum.GetValues<CritterKind>())
+        {
+            for (int seed = 0; seed < FORM_SEEDS; seed++)
+            {
+                CellForm form = CellForms.For(kind, new System.Random(seed));
+                Assert.Equal(CellDesign.SHAPE_POINTS, form.Shape.Length);
+                Assert.Equal(CellDesign.SHAPE_POINTS, form.Heights.Length);
+                Assert.All(form.Shape, radius => Assert.InRange(radius, CellDesign.MIN_SHAPE, CellDesign.MAX_SHAPE));
+                Assert.All(form.Heights, height => Assert.InRange(height, CellDesign.MIN_HEIGHT, CellDesign.MAX_HEIGHT));
+            }
+        }
+    }
+
+    [Fact]
+    public void FormsKeepTheirSize()
+    {
+        foreach (CritterKind kind in System.Enum.GetValues<CritterKind>())
+        {
+            for (int seed = 0; seed < FORM_SEEDS; seed++)
+            {
+                Assert.InRange(CellForms.For(kind, new System.Random(seed)).Shape.Average(), 0.95f, 1.05f);
+            }
+        }
+    }
+
+    [Fact]
+    public void FormsVary()
+    {
+        CellForm first  = CellForms.For(CritterKind.Amoeba, new System.Random(1));
+        CellForm again  = CellForms.For(CritterKind.Amoeba, new System.Random(1));
+        CellForm second = CellForms.For(CritterKind.Amoeba, new System.Random(2));
+
+        Assert.Equal(first.Shape, again.Shape);
+        Assert.NotEqual(first.Shape, second.Shape);
+    }
+
+    [Fact]
+    public void BacteriaAreLong()
+    {
+        int longCount = Enumerable.Range(0, FORM_SEEDS)
+            .Select(seed => CellForms.For(CritterKind.Bacterium, new System.Random(seed)).Shape)
+            .Count(shape => shape[0] + shape[4] > shape[2] + shape[6] + 0.3f);
+
+        Assert.True(longCount > FORM_SEEDS / 2, $"expected most bacteria to be long, got {longCount} of {FORM_SEEDS}");
     }
 }

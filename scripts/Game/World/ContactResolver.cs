@@ -34,6 +34,10 @@ public partial class ContactResolver : Node
     private const float CRITTER_GROWTH_CAP = 3f;    // critters grow up to this many player sizes
     private const float DESPAWN_VIEWS = 2.5f;       // food and cells this many view radii away despawn
     private const float KILL_REWARD_FACTOR = 0.045f;
+    private const float BASE_FOOD_PULL = 3f;       // body sizes per second food drifts to the player inside the magnet range
+
+    /// <summary>Share of the drained health a sucker gives its owner (cell.abilities.Sucker.power).</summary>
+    private static float SuckerHeal => AbilitySet.Tune(PartKind.Sucker)?.Power ?? 0f;
 
     private WorldSession _session;
 
@@ -107,7 +111,9 @@ public partial class ContactResolver : Node
             }
             if (distance < playerSize * Player.MagnetRange + 10f)
             {
-                food.Position = food.Position.MoveToward(playerPosition, playerSize * 3f * dt);
+                // The vortex of filter mouths drags faster than the plain membrane
+                float pull = Mathf.Max(BASE_FOOD_PULL, Player.CellTraits.VortexPull);
+                food.Position = food.Position.MoveToward(playerPosition, playerSize * pull * dt);
             }
             if (distance < playerSize + food.Size * 0.5f)
             {
@@ -193,12 +199,14 @@ public partial class ContactResolver : Node
                 continue;
             }
 
-            // Equal: a sucker towards it holds it on the membrane and drains it, else push apart
+            // Equal: a sucker towards it holds it on the membrane and drains it (the drain heals), else push apart
             Vector2 normal = (critter.Position - playerPosition).Normalized();
             if (Player.CellTraits.CanSuckToward(direction - Player.Facing))
             {
                 critter.Position = Player.Position + normal * (playerSize + critter.BodySize()) * LATCH_GAP;
-                critter.Hurt(Combat.SuckerDamage * Player.CellTraits.Toxin * thornScale * dt, Player.GlobalPosition);
+                float drained = Combat.SuckerDamage * thornScale * dt;
+                critter.Hurt(drained, Player.GlobalPosition, isSteady: true);
+                Player.Heal(drained * SuckerHeal / Mathf.Max(Player.MaxHp, 1f));     // Heal takes a share of the maximum
             }
             else
             {
@@ -206,11 +214,12 @@ public partial class ContactResolver : Node
                 critter.Position += normal * overlap * 0.5f;
                 Player.Position  -= normal * overlap * 0.5f;
             }
-            // Its suckers towards the player drain it while they touch
+            // Its suckers towards the player drain it while they touch, the drain heals the cell
             float drain = critter.SuckerDrainToward(direction + Mathf.Pi);
             if (drain > 0f)
             {
                 Player.Digest(drain * dt, critter.Position);
+                critter.Heal(drain * dt * SuckerHeal);
             }
             // Spikes and jaws towards each other hurt on bump
             if (thornHit > 0f && critter.BumpCooldown <= 0f)
@@ -392,7 +401,7 @@ public partial class ContactResolver : Node
         Player.Digest((damage * DIGEST_PER_SECOND + critterHit) * dt, critter.Position);
         if (thornHit > 0f)
         {
-            critter.Hurt(thornHit * THORNS_PER_SECOND * dt, Player.GlobalPosition);
+            critter.Hurt(thornHit * THORNS_PER_SECOND * dt, Player.GlobalPosition, isSteady: true);
         }
     }
 

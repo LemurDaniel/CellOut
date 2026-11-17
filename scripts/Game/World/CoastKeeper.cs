@@ -1,20 +1,19 @@
 // NOTE:
 //   Brings the coast of the organism stage into the world and keeps it around the
-//   player: spawns the archipelago once (by biomass or by cheat), lets it follow the
-//   view and tells the player where land is. The coast becomes a child of the keeper and
-//   is known to everyone through the session. It does not process on its own: Main calls
-//   Update at the start of every physics frame.
+//   player: spawns the archipelago once, right when the organism swims (or by cheat),
+//   lets it follow the view and tells the player where land is. The coast becomes a child
+//   of the keeper and is known to everyone through the session. It does not process on
+//   its own: Main calls Update at the start of every physics frame.
 //
 //   var coast = new CoastKeeper();
 //   coast.Setup(session, followCamera);
-//   coast.CoastSpawned += () => Hud.ShowBanner("BANNER_COAST_TITLE", "BANNER_COAST_TEXT");
 //   AddChild(coast);
 //   coast.Update(isSpawnAllowed: !IsEvolving);   // in _PhysicsProcess
 
 //
 //   Chapters:
-//     SETTINGS     The session, the camera and the spawn signal.
-//     KEEP COAST   The biomass threshold, the update per frame and the spawn.
+//     SETTINGS     The session and the camera.
+//     KEEP COAST   The update per frame and the spawn.
 //
 
 using Godot;
@@ -27,11 +26,8 @@ public partial class CoastKeeper : Node
     // ==============================   SETTINGS   ===============================
     // ===========================================================================
     //
-    //   CoastSpawned   The coast just showed up, Main shows its banner.
-    //   Setup          The session and the camera (view radius, draw reach), before AddChild.
+    //   Setup   The session and the camera (view radius, draw reach), before AddChild.
     //
-
-    [Signal] public delegate void CoastSpawnedEventHandler();
 
     private WorldSession _session;
     private FollowCamera _camera;
@@ -52,22 +48,17 @@ public partial class CoastKeeper : Node
     // =============================   KEEP COAST   ==============================
     // ===========================================================================
     //
-    //   CoastAt      Biomass from which the coast shows up, the next step after the organism.
     //   Update       Spawns the coast once, keeps it around the player, tells the player where land is.
     //   SpawnCoast   An archipelago ahead of the player, its first shore far off or right in front.
     //
 
-    private const float COAST_GROWTH = 2f;           // the coast needs twice the biomass of the evolution
     private const float TRUNK_CONTACT = 0.5f;        // the body touches a trunk this many sizes from its center
 
-    // Grows from the biomass of the evolution, not from EvolveAt: a long multicellular phase must not bring the coast right away
-    public float CoastAt => Mathf.Max(Player.EvolveAt, Player.EvolvedAt) * COAST_GROWTH;
-
-    /// <summary>One physics frame of the coast.</summary>
+    /// <summary>One physics frame of the coast: the islands show up as soon as the organism swims (decision of the user 2026-11-17, no sea-only phase).</summary>
     /// <param name="isSpawnAllowed">(Required) False while the evolution still runs, the coast waits for the swimming organism.</param>
     public void Update(bool isSpawnAllowed)
     {
-        if (null == Coast && Player.IsOrganism && isSpawnAllowed && Player.Biomass >= CoastAt)
+        if (null == Coast && Player.IsOrganism && isSpawnAllowed)
         {
             SpawnCoast(isNear: false);
         }
@@ -103,7 +94,6 @@ public partial class CoastKeeper : Node
         _session.AttachCoast(coast);
         AddChild(coast);
         coast.Follow(Player.GlobalPosition, size, _camera.ViewRadius());
-        EmitSignal(SignalName.CoastSpawned);
         Log.Verbose("CoastKeeper", $"Coast spawned {distance:F0} ahead (near: {isNear}).");
         return coast;
     }

@@ -27,7 +27,7 @@ public partial class Hud : CanvasLayer
     //   Refresh       Writes the stage into its label, the numbers into the dial.
     //   GoalText      Translated goal line of the current stage, the tooltip of the progress ring.
     //   EditorRequested   The editor icon of the dial was pressed, Main opens the editor.
-    //   _Process      Offered buttons breathe, the air arc of the dial follows the breath.
+    //   _Process      Offered buttons breathe, the key slots of the abilities follow their cooldowns.
     //   ShowBanner    Big title with subtitle, fades out after a few seconds.
     //
 
@@ -38,6 +38,7 @@ public partial class Hud : CanvasLayer
     private Player _player;
     private Label _stageLabel;
     private VitalsDial _dial;
+    private AbilitySlots _abilitySlots;
     private Label _banner;
     private Label _bannerSub;
     private string _bannerTitleKey = "";
@@ -117,9 +118,10 @@ public partial class Hud : CanvasLayer
     {
         _time += (float)delta;
 
-        // Air: it drains on land without a lung, the dial shows it while it is not full
+        // Cooldowns of the key abilities change every frame
         if (null != _player)
         {
+            _abilitySlots.Refresh(_player.Abilities, _player.BodyColor, !_player.IsOrganism && !_player.IsHidden);
         }
         Breathe(_divideButton, _divideShownAt, 0f);
         Breathe(_organismButton, _organismShownAt, 2.6f);
@@ -266,6 +268,10 @@ public partial class Hud : CanvasLayer
         _dial = new VitalsDial();
         _dial.EditorPressed += () => EmitSignal(SignalName.EditorRequested);
         AddChild(_dial);
+
+        // The key slots of the cell abilities in an arc around the dial
+        _abilitySlots = new AbilitySlots();
+        AddChild(_abilitySlots);
     }
 
     private void BuildBanner()

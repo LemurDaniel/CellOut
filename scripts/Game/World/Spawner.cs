@@ -10,14 +10,13 @@
 //
 //   var spawner = new Spawner();
 //   spawner.Setup(session, followCamera);
-//   spawner.SplashRequested += SpawnSplash;
 //   AddChild(spawner);
 //   spawner.StartPopulating();   // after the intro and after the evolution
 //   spawner.Refill(dt);          // in _PhysicsProcess
 
 //
 //   Chapters:
-//     SETTINGS   The session, the camera and the splash signal.
+//     SETTINGS   The session, the camera and the giants.
 //     SPAWN      The starting queue, the refill, food, cells and their spawn points.
 //     PATCHES    Whole food patches outside the view.
 //     FRUIT      Fruit dropping from the trees of the islands, in sight of the land animal.
@@ -34,11 +33,9 @@ public partial class Spawner : Node
     // ==============================   SETTINGS   ===============================
     // ===========================================================================
     //
-    //   SplashRequested   A plop is due on the plane, Main spawns it.
-    //   Setup             The session and the camera (view radius), before AddChild.
+    //   Setup             The session and the camera (view radius), before AddChild, creates the giants.
+    //   OnGiantSurfaced   Hands a risen giant into the critter layer.
     //
-
-    [Signal] public delegate void SplashRequestedEventHandler(Vector2 position, float radius, Color color);
 
     private const int MAX_CRITTERS = 24;
     public const int START_CRITTERS = 8;
@@ -58,6 +55,22 @@ public partial class Spawner : Node
     {
         _session = session;
         _camera  = camera;
+
+        // Giants in the background, handed into the critter layer once the player grew (Game/Deep/)
+        _deep = new DeepKeeper();
+        _deep.Setup(session, camera);
+        _deep.Surfaced += OnGiantSurfaced;
+        AddChild(_deep);
+    }
+
+    private DeepKeeper _deep;
+
+    /// <summary>A giant rose to the plane: from now on it is a cell like every other.</summary>
+    private void OnGiantSurfaced(Critter giant)
+    {
+        giant.Popped     += OnCritterPopped;
+        giant.CellsBurst += OnColonyCellsBurst;
+        CritterLayer.AddChild(giant);
     }
 
     // ===========================================================================
@@ -66,7 +79,7 @@ public partial class Spawner : Node
     //
     //   StartPopulating      The first food patches outside the view, queues the starting cells.
     //   Refill               Spawns the queue first, then keeps the world topped up outside the view.
-    //   UpdatePopulating     Spawns the cell queue bit by bit inside the view, with a plop.
+    //   UpdatePopulating     Spawns the cell queue bit by bit inside the view, fading in.
     //   SpawnFood            One piece of food at a point (molecule, sea or land food), size and value relative to the player.
     //   SpawnCritter         One cell or colony, kind and size depend on the stage, never right on top of the player.
     //   SpawnPosition        A point inside the view or in a ring just outside it, in the sea if asked.
@@ -75,6 +88,7 @@ public partial class Spawner : Node
     //
 
     public const float POPULATE_SECONDS = 5f;      // the starting cells arrive over this time
+    private const float FADE_IN_SECONDS = 1.2f;    // a starting cell in sight fades in, nothing pops into view
     private const float SEA_FOOD_LOOK = 2.2f;      // sea and land food are drawn bigger than their value size,
     private const float LAND_FOOD_LOOK = 2.6f;     // next to a creature a molecule sized apple looked lost
     private const float COLONY_SHARE = 0.2f;       // share of colonies among the cells of the multicellular stage
@@ -95,6 +109,7 @@ public partial class Spawner : Node
         _patchCooldown   = Patches.Interval;
         _pendingCritters = START_CRITTERS;
         _populateTime    = 0f;
+        _deep.Clear();
     }
 
     /// <summary>Fills the soup after the start, then keeps it topped up outside the view.</summary>
@@ -118,6 +133,7 @@ public partial class Spawner : Node
             SpawnCritter(isInView: false);
         }
         DropFruit(dt);
+        _deep.Advance(dt);
     }
 
     /// <summary>Spawns as many cells of the queue as the elapsed share of POPULATE_SECONDS allows, starting a second in.</summary>
@@ -133,8 +149,7 @@ public partial class Spawner : Node
         int   crittersDue = Mathf.CeilToInt(START_CRITTERS * cellShare) - (START_CRITTERS - _pendingCritters);
         for (int i = 0; i < crittersDue && _pendingCritters > 0; i++, _pendingCritters--)
         {
-            Critter critter = SpawnCritter(isInView: true);
-            EmitSignal(SignalName.SplashRequested, critter.Position, critter.Radius * 1.5f, critter.BodyColor);
+            SpawnCritter(isInView: true).FadeIn(FADE_IN_SECONDS);
         }
         return true;
     }
@@ -264,7 +279,6 @@ public partial class Spawner : Node
 
     private void OnCritterPopped(Vector2 position, float radius, Color color)
     {
-        EmitSignal(SignalName.SplashRequested, position, radius * 1.8f, color);
         SpawnMeat(position, radius, radius * 0.6f, POP_FOOD);
     }
 
@@ -273,7 +287,6 @@ public partial class Spawner : Node
     /// (inside, the colony would swallow them right back).</param>
     private void OnColonyCellsBurst(Vector2 position, float cellRadius, float bodySize, Color color, int count)
     {
-        EmitSignal(SignalName.SplashRequested, position, bodySize * 1.2f, color);
         SpawnMeat(position, cellRadius, bodySize * 1.15f, Mathf.Min(count, MAX_BURST_FOOD));
     }
 

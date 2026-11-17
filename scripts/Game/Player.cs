@@ -109,7 +109,7 @@ public partial class Player : CellBody
 
     public float MagnetRange => _traits.MagnetRange;
 
-    /// <summary>Traits only a cell has (regeneration, slime, pili, pigment, stings, suckers), neutral for an organism.</summary>
+    /// <summary>Traits only a cell has (thrust, light, vortex, plates, stings, suckers), neutral for an organism.</summary>
     public CellStats CellTraits => _traits.Cell;
 
     // ===========================================================================
@@ -151,10 +151,10 @@ public partial class Player : CellBody
 
         // Regeneration, photosynthesis and fading meals
         Invulnerable = Mathf.Max(0f, Invulnerable - dt);
-        Hp           = Mathf.Min(MaxHp, Hp + MaxHp * Tune.RegenPerSecond * CellTraits.Regen * dt);
+        Hp           = Mathf.Min(MaxHp, Hp + MaxHp * Tune.RegenPerSecond * dt);
         if (_traits.Photosynthesis > 0f)
         {
-            // By body size, not cell radius: a division shrinks the cells and must not cut the light
+            // Light sails catch light all the time. By body size, not cell radius: a division shrinks the cells and must not cut the light
             AddBiomass(_traits.Photosynthesis * BodySize() / REFERENCE_SIZE * dt, BiomassSource.Light);
         }
         _diet.Decay(dt);
@@ -453,7 +453,7 @@ public partial class Player : CellBody
     /// <summary>Swim speed in the water, on land the walking (or crawling) speed of LAND.</summary>
     public float CurrentSpeed()
     {
-        return SwimSpeed(BodySize()) * (IsOnLand ? _traits.LandSpeed : _traits.Speed) * StunFactor;
+        return SwimSpeed(BodySize()) * (IsOnLand ? _traits.LandSpeed : _traits.Speed) * StunFactor * SlowFactor;
     }
 
     public float GoalProgress()
@@ -555,10 +555,10 @@ public partial class Player : CellBody
         EmitSignal(SignalName.StatsChanged);
     }
 
-    /// <summary>Hurts the player unless invulnerable, armor plates towards the attacker halve the damage.</summary>
+    /// <summary>Hurts the player unless invulnerable: a charged armor plate of a cell towards the attacker blocks the hit, a creature shell halves it.</summary>
     /// <param name="amount">(Required) Damage in hit points before armor.</param>
     /// <param name="from">(Required) Plane point of the attacker, the player is pushed away from it.</param>
-    /// <returns>True when the hit landed, false while invulnerable.</returns>
+    /// <returns>True when the hit landed, false while invulnerable or blocked.</returns>
     public bool TakeDamage(float amount, Vector2 from)
     {
         if (Invulnerable > 0f || IsDead)
@@ -566,10 +566,17 @@ public partial class Player : CellBody
             return false;
         }
         Vector2 toAttacker = from - GlobalPosition;
+        if (!IsOrganism && CellTraits.IsPlatedToward(toAttacker.Angle() - Facing) && Abilities.TryBlock())
+        {
+            Invulnerable = Tune.HitInvulnerability;
+            Log.Verbose("Player", $"An armor plate blocks a hit of {amount:F1}, {Abilities.ShieldCharges} charge(s) left.");
+            return false;
+        }
         Hp           -= amount * DamageFactorFrom(toAttacker.Angle());
         HurtFlash     = 1f;
+        WasHit        = true;
         Invulnerable  = Tune.HitInvulnerability;
-        Velocity     -= toAttacker.Normalized() * CurrentSpeed() * Tune.Knockback * CellTraits.Knockback;
+        Velocity     -= toAttacker.Normalized() * CurrentSpeed() * Tune.Knockback;
         CheckDeath();
         return true;
     }
@@ -586,6 +593,7 @@ public partial class Player : CellBody
         }
         Hp        -= amount * DamageFactorFrom((from - GlobalPosition).Angle());
         HurtFlash  = Mathf.Max(HurtFlash, 0.6f);
+        WasHit     = true;
         CheckDeath();
     }
 
@@ -723,7 +731,8 @@ public partial class Player : CellBody
     private void ApplyDesign()
     {
         float hpRatio = MaxHp > 0f ? Hp / MaxHp : 1f;
-        _traits = IsOrganism ? PlayerTraits.OfCreature(Creature) : PlayerTraits.OfCell(Design, _mutations);
+        _traits   = IsOrganism ? PlayerTraits.OfCreature(Creature) : PlayerTraits.OfCell(Design, _mutations);
+        Abilities = IsOrganism ? new AbilitySet() : AbilitySet.From(Design);
 
         float hpMultiplier = _traits.Health * (1f + Tune.HpPerDivision * Divisions);
         BodyColor = IsOrganism ? Creature.Color ?? ORGANISM_COLOR : Design.Color ?? _stageColor;

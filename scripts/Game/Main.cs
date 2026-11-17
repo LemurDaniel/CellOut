@@ -15,7 +15,7 @@
 //     PLAY SHORT CUTSCENES     The stage cutscene and the transition into an editor.
 //     EVOLVE INTO ORGANISM     Cutscene from 64 cells to the clay blob, creature editor, the new sea.
 //     COAST AND CHEATS         The coast of the organism stage, the pack, the tribe and the F10 stage jumps.
-//     HELPERS                  Kill reward, splash and layers.
+//     HELPERS                  Kill reward.
 //
 
 using Godot;
@@ -39,7 +39,7 @@ public partial class Main : Node2D
     // ===========================================================================
     //
     //   1. Scene        The session and the camera with environment, sun and backdrop.
-    //   2. Layers       Food, critters, the player and effects in draw order.
+    //   2. Layers       Food, critters and the player in draw order.
     //   3. HUD          Binds HUD, editors and the F10 cheat menu and connects the player signals.
     //   4. Components   Contacts, spawning, coast, pack, tribe, cutscenes and the start flow, wired by signals.
     //   5. Menu         The title menu over the empty soup, it fills after the start (MENU AND INTRO).
@@ -48,6 +48,7 @@ public partial class Main : Node2D
     private WorldSession _session;
     private FollowCamera _followCamera;
     private ContactResolver _contacts;
+    private AbilityResolver _abilities;
     private Spawner _spawner;
     private CoastKeeper _coast;
     private PackKeeper _pack;
@@ -60,7 +61,6 @@ public partial class Main : Node2D
     private TribeHub _hub;
     private CutsceneDirector _cutscenes;
     private StartFlow _startFlow;
-    private Node2D _fxLayer;
 
     public override void _Ready()
     {
@@ -84,13 +84,12 @@ public partial class Main : Node2D
 
         // ---------------------------------------------------------------------------
         // Layers
-        //   Food, critters, the player and effects in draw order.
+        //   Food, critters and the player in draw order.
         // ---------------------------------------------------------------------------
 
         AddChild(FoodLayer);
         AddChild(CritterLayer);
         AddChild(Player);
-        _fxLayer = AddLayer();
         _followCamera.StartClose();
 
         // ---------------------------------------------------------------------------
@@ -125,14 +124,17 @@ public partial class Main : Node2D
         _contacts.Setup(_session);
         AddChild(_contacts);
 
+        // The abilities of the cell parts, after the contacts in every physics frame
+        _abilities = new AbilityResolver();
+        _abilities.Setup(_session);
+        AddChild(_abilities);
+
         _spawner = new Spawner();
         _spawner.Setup(_session, _followCamera);
-        _spawner.SplashRequested += SpawnSplash;
         AddChild(_spawner);
 
         _coast = new CoastKeeper();
         _coast.Setup(_session, _followCamera);
-        _coast.CoastSpawned += () => Hud.ShowBanner("BANNER_COAST_TITLE", "BANNER_COAST_TEXT");
         AddChild(_coast);
 
         _pack = new PackKeeper();
@@ -340,7 +342,8 @@ public partial class Main : Node2D
                     then the neighbor tribes: traders, raids and fights (Tribe/Rivals/RivalKeeper.cs).
       4. Contacts   Food, engulfing, player vs. cells, cells vs. cells (World/ContactResolver.cs),
                     with the size and position of the player from before the coast moved it.
-      5. Refill     Fills the soup after the start, then keeps it topped up, fruit from the trees (World/Spawner.cs).
+      5. Abilities  Keys 1 to 4, auto abilities, zones and shoves of the cell parts (Game/Abilities/AbilityResolver.cs).
+      6. Refill     Fills the soup after the start, then keeps it topped up, fruit from the trees (World/Spawner.cs).
     */
     public override void _PhysicsProcess(double delta)
     {
@@ -355,6 +358,7 @@ public partial class Main : Node2D
         _tribePanel.Placing = _placer.Pending;
         _rivals.Update(dt);
         _contacts.Resolve(dt, playerSize, playerPosition, viewRadius);
+        _abilities.Resolve(dt, viewRadius);
         _spawner.Refill(dt);
     }
 
@@ -367,12 +371,12 @@ public partial class Main : Node2D
     //                      (E, HUD button), after the editor transition.
     //   OpenEditorNow      The editor of the stage, without transition.
     //   OnEditorClosed     Resumes the game.
-    //   OnPlayerDivided    Plop around the cluster, banner at 64 cells.
+    //   OnPlayerDivided    Banner at 64 cells.
     //   OnStageChanged     Stage cutscene, then the banner of the stage.
-    //   OnPlayerDied       Game over: splash, the soup pauses, the game over screen shows. A pack
+    //   OnPlayerDied       Game over: the soup pauses, the game over screen shows. A pack
     //                      leader lives on in a member instead (PackKeeper.TryTakeOver).
     //   Restart            Reloads the scene, straight into a new game or to the title menu.
-    //   OnPlayerLostCells  Red plops at the cluster edge and banner, the cluster lives on.
+    //   OnPlayerLostCells  Banner, the cluster lives on.
     //
 
     /// <summary>A stage advance never opens the editor by itself (E / HUD button do), an open one shows the new points.</summary>
@@ -423,10 +427,9 @@ public partial class Main : Node2D
         GetTree().Paused = false;
     }
 
-    /// <summary>A plop around the cluster, the full cluster gets its banner.</summary>
+    /// <summary>The full cluster gets its banner.</summary>
     private void OnPlayerDivided(int cellCount)
     {
-        SpawnSplash(Player.GlobalPosition, Player.BodySize() * 1.3f, Player.BodyColor);
         if (Player.MAX_CELLS == cellCount)
         {
             Hud.ShowBanner("BANNER_CLUSTER_TITLE", "BANNER_CLUSTER_TEXT");
@@ -464,8 +467,6 @@ public partial class Main : Node2D
 
     private void OnPlayerDied()
     {
-        SpawnSplash(Player.GlobalPosition, Player.BodySize() * 2f, new Color(1f, 0.4f, 0.4f));
-
         // A pack leader lives on in the body of a member, the pack shrinks by one
         if (_pack.TryTakeOver())
         {
@@ -495,15 +496,9 @@ public partial class Main : Node2D
         GetTree().ReloadCurrentScene();
     }
 
-    /// <summary>Red plops around the edge of the cluster, one per lost cell (at most eight).</summary>
+    /// <summary>The cluster survived a deadly hit, its lost cells burst (Player.LoseCells).</summary>
     private void OnPlayerLostCells(int lost)
     {
-        const int MAX_PLOPS = 8;
-        for (int i = 0; i < Mathf.Min(lost, MAX_PLOPS); i++)
-        {
-            Vector2 edge = Player.GlobalPosition + Vector2.FromAngle(Rand.Angle()) * Player.BodySize() * 0.9f;
-            SpawnSplash(edge, Player.Radius * 1.5f, new Color(1f, 0.4f, 0.4f));
-        }
         Hud.ShowBanner("BANNER_CELLS_LOST_TITLE", "BANNER_CELLS_LOST_TEXT");
     }
 
@@ -583,6 +578,7 @@ public partial class Main : Node2D
         {
             critter.QueueFree();
         }
+        _abilities.Clear();
         Log.Verbose("Main", $"Evolving into an organism (instant: {isInstant}).");
         if (isInstant)
         {
@@ -640,7 +636,6 @@ public partial class Main : Node2D
     // ===========================================================================
     //
     //   Coast        The coast of the organism stage, null until it showed up.
-    //   CoastAt      Biomass from which the coast shows up, the next step after the organism.
     //   SpawnCoast   An archipelago ahead of the player, its first shore far off or right in front.
     //   Pack         The pack of the land animal: kin, nest, offer (Tribe/Pack/PackKeeper.cs).
     //   Tribe        The tribe: selection, stock, huts (Tribe/Village/TribeCommander.cs).
@@ -648,14 +643,13 @@ public partial class Main : Node2D
     //   BuildingEditor   The village builder (Tribe/Building/Editor/BuildingEditor.cs).
     //   Hub          The hub bar: map, home button, counters (Tribe/TribeHub.cs).
     //   FollowCamera     The camera, for the strategy focus (World/FollowCamera.cs).
+    //   Abilities        The abilities of the cell parts (Abilities/AbilityResolver.cs).
     //   CheatTo     F10 menu: jumps forward to a stage, the coast or more points.
     //
     //   The coast itself is kept by World/CoastKeeper.cs.
     //
 
     public Coast Coast => _session.Coast;
-
-    public float CoastAt => _coast.CoastAt;
 
     public PackKeeper Pack => _pack;
 
@@ -670,6 +664,9 @@ public partial class Main : Node2D
     public TribeHub Hub => _hub;
 
     public FollowCamera FollowCamera => _followCamera;
+
+    /// <summary>The abilities of the cell parts, the smoke test fires key slots through it.</summary>
+    public AbilityResolver Abilities => _abilities;
 
     /// <summary>An archipelago ahead of the player (its facing), the landing island first.</summary>
     /// <param name="isNear">(Required) Right in front (cheat) instead of just outside the view.</param>
@@ -739,7 +736,6 @@ public partial class Main : Node2D
                 {
                     return;
                 }
-                Player.AddBiomass(Mathf.Max(0f, CoastAt - Player.Biomass), BiomassSource.Raw);
                 SpawnCoast(isNear: true);
                 break;
             case CheatTarget.LandAnimal:
@@ -794,8 +790,6 @@ public partial class Main : Node2D
     // ===========================================================================
     //
     //   KillReward    Biomass for an eaten cell.
-    //   SpawnSplash   A plop effect on the plane.
-    //   AddLayer      An empty 2D layer below Main.
     //
 
     /// <summary>Biomass for an eaten cell.</summary>
@@ -804,18 +798,5 @@ public partial class Main : Node2D
     public float KillReward(float radius)
     {
         return ContactResolver.KillReward(radius);
-    }
-
-    private void SpawnSplash(Vector2 position, float radius, Color color)
-    {
-        var splash = new Splash { Position = Plane3D.To3D(position), MaxRadius = radius, Color = color };
-        _fxLayer.CallDeferred(Node.MethodName.AddChild, splash);
-    }
-
-    private Node2D AddLayer()
-    {
-        var layer = new Node2D();
-        AddChild(layer);
-        return layer;
     }
 }

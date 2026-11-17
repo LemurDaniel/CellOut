@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://cno2ej2d6st4m"
-path="res://.godot/imported/cell.slime.glb-5e36d788a64bc095deadff42b483a63a.scn"
+uid="uid://bjtleihn78h44"
+path="res://.godot/imported/cell.electrocyte.glb-c6aba5e06be2c38c82894a7e24571257.scn"
 
 [deps]
 
-source_file="res://assets/models/cell/cell.slime.glb"
-dest_files=["res://.godot/imported/cell.slime.glb-5e36d788a64bc095deadff42b483a63a.scn"]
+source_file="res://assets/models/cell/cell.electrocyte.glb"
+dest_files=["res://.godot/imported/cell.electrocyte.glb-c6aba5e06be2c38c82894a7e24571257.scn"]
 
 [params]
 

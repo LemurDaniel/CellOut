@@ -188,9 +188,11 @@ public sealed record DietBalance
 //
 //   CellBalance          Parts, effects and combat of the cell stages.
 //   CellPartBalance      Cost and unlock range of one cell part (Cell/PartCatalog.cs).
-//   CellEffectsBalance   What every cell part does (Cell/CellStats.cs).
-//   CellCombatBalance    Arcs and damage of spikes, jaws and plates (Cell/CellStats.cs).
+//   CellEffectsBalance   The passive thrust of the flagellum (Cell/CellStats.cs).
+//   AbilityBalance       Cooldown and numbers of one cell ability (Game/Abilities/).
+//   CellCombatBalance    Arcs and damage of spikes, jaws, plates, stings and suckers (Cell/CellStats.cs).
 //   CritterBalance       Hunting rules and speed of the NPC cells (Cell/Critter.cs).
+//   GiantBalance         Giant cells deep in the background until the player grew (Game/Deep/).
 //
 
 public sealed record CellBalance
@@ -198,6 +200,7 @@ public sealed record CellBalance
     public required IReadOnlyDictionary<PartKind, CellPartBalance> Parts { get; init; }
     public required CellEffectsBalance Effects { get; init; }
     public required CellCombatBalance Combat { get; init; }
+    public required IReadOnlyDictionary<PartKind, AbilityBalance> Abilities { get; init; }
 }
 
 public sealed record CellPartBalance
@@ -209,38 +212,34 @@ public sealed record CellPartBalance
 
 public sealed record CellEffectsBalance
 {
-    public required float ChloroplastLight { get; init; }        // light biomass per second at the reference size
-    public required float FilterMouthMagnet { get; init; }       // added pull range in body sizes
-    public required float FilterMouthDigestPlant { get; init; }
-    public required float ArmorPlateHealth { get; init; }
     public required float FlagellumSpeed { get; init; }          // added speed share at full thrust (from the back)
     public required float FlagellumFrontThrust { get; init; }    // thrust share when it sits at the front
-    public required float EyespotMagnet { get; init; }
-    public required float EyespotSight { get; init; }            // added sense range share of NPC cells
-    public required float VacuoleDigest { get; init; }
-    public required float CiliaAcceleration { get; init; }
-    public required float JawDigestMeat { get; init; }
-    public required float ToxinDamage { get; init; }             // multiplier on spike and jaw damage
-    public required float MitochondrionSpeed { get; init; }      // added speed share
-    public required float MitochondrionAcceleration { get; init; }
-    public required float StarchRegen { get; init; }             // added share of the base regeneration
-    public required float StarchSpeed { get; init; }             // speed multiplier, the store weighs
-    public required float SlimeDamage { get; init; }             // multiplier on the damage taken from every side
-    public required float SlimeMinDamage { get; init; }          // stacked slime never lets less through
-    public required float PseudopodMagnet { get; init; }         // added pull range in body sizes
-    public required float PiliKnockback { get; init; }           // multiplier on the push back of a hit
-    public required float CamouflageSense { get; init; }         // multiplier on the range NPC cells notice the player
-    public required float CamouflageMinSense { get; init; }      // stacked pigment never hides more
+}
+
+/// <summary>
+/// Numbers of one cell ability (Cell/Abilities/AbilitySet.cs, Game/Abilities/AbilityResolver.cs).
+/// What Damage, Power, Reach, Duration and Linger mean depends on the part, see the table
+/// in the header of AbilityResolver.cs. Reach is in body sizes beyond the membrane.
+/// </summary>
+public sealed record AbilityBalance
+{
+    public required float Cooldown { get; init; }                // seconds until it fires again, 0: works all the time
+    public float Duration { get; init; }                         // seconds the effect runs (cloak, slime laying, stun of a bolt)
+    public float Damage { get; init; }                           // at the reference size, per second for clouds
+    public float Power { get; init; }                            // strength: push in swim speeds, pull, heal share, slow share
+    public float Reach { get; init; }                            // body sizes beyond the membrane
+    public float Linger { get; init; }                           // seconds a cloud or a slime patch stays
+    public int Count { get; init; } = 1;                         // targets of a bolt
 }
 
 public sealed record CellCombatBalance
 {
     public required float SpikeArc { get; init; }                // half angle a spike covers, radians
     public required float JawArc { get; init; }
-    public required float PlateArc { get; init; }
+    public required float PlateArc { get; init; }                // half angle a plate shields, radians
     public required float SpikeDamage { get; init; }             // at the reference size
     public required float JawDamage { get; init; }
-    public required float PlateDamageFactor { get; init; }       // share of the damage that gets through a plate
+    public required float PlateDamageFactor { get; init; }       // share of the damage that gets through a creature shell (a cell plate is a shield instead)
     public required float StingArc { get; init; }                // half angle a nematocyst covers, radians
     public required float StingReach { get; init; }              // reach beyond the membrane in body sizes
     public required float StingDamage { get; init; }             // per shot at the reference size, times the toxin
@@ -262,6 +261,17 @@ public sealed record CritterBalance
     public required float AmoebaSpeed { get; init; }
     public required float HunterSpeed { get; init; }
     public required float ColonySpeed { get; init; }             // a cluster swims slower than a single hunter
+    public required GiantBalance Giants { get; init; }
+}
+
+/// <summary>Giant cells in the background of the cell stages (Game/Deep/DeepRule.cs).</summary>
+public sealed record GiantBalance
+{
+    public required int Count { get; init; }                     // giants deep below the player at once
+    public required float MinSize { get; init; }                 // body size at the spawn in player sizes
+    public required float MaxSize { get; init; }
+    public required float SurfaceRatio { get; init; }            // rises to the plane once it is at most this many player sizes big
+    public required float RiseSeconds { get; init; }             // from the depth up to the plane
 }
 
 // ===========================================================================

@@ -7,7 +7,7 @@
 //
 //   var followCamera = new FollowCamera();
 //   followCamera.Setup(session);
-//   AddChild(followCamera);            // builds environment, sun, camera, backdrop and lens
+//   AddChild(followCamera);            // builds environment, sun, camera, backdrop, swim wake and lens
 //   followCamera.StartClose();         // once the player is in the tree
 //   followCamera.Advance(dt);          // in _Process
 //   if (followCamera.HandleInput(@event)) GetViewport().SetInputAsHandled();
@@ -50,6 +50,7 @@ public partial class FollowCamera : Node
     private DirectionalLight3D _sun;
     private Godot.Environment _environment;
     private Backdrop _backdrop;
+    private SwimWake _wake;
     private SoupLens _lens;
     private LandPollen _pollen;
     private CameraAttributesPractical _attributes;
@@ -96,6 +97,9 @@ public partial class FollowCamera : Node
 
         _backdrop = new Backdrop();
         AddChild(_backdrop);
+        _wake = new SwimWake();
+        _wake.Setup(_session);
+        AddChild(_wake);
         _lens = new SoupLens();
         AddChild(_lens);
         _pollen = new LandPollen();
@@ -423,7 +427,10 @@ public partial class FollowCamera : Node
         UpdateSky(playerSize);
         _backdrop.IsMotesShown = _view < 0.5f;
         _pollen.Follow(_camFocus, playerSize, _view > 0.5f && _strategy < 0.5f);     // too small to see from the strategy view
-        _backdrop.Follow(new Vector2(_camFocus.X, _camFocus.Z), playerSize, ViewRadius());
+        // The cell stages: motes part around the player, every swimming cell leaves a wake
+        bool isCellStage = !Player.IsOrganism && !Player.IsHidden;
+        _backdrop.Follow(new Vector2(_camFocus.X, _camFocus.Z), playerSize, ViewRadius(), isCellStage ? Player.GlobalPosition : null);
+        _wake.Follow(dt, ViewRadius(), _palette.Light, !Player.IsOrganism);
     }
 
     private const float PALETTE_SPEED = 0.6f;        // share per second the water eases towards the colors of a new stage

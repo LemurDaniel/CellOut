@@ -165,4 +165,54 @@ Umgesetzt aus der Liste „Wie wir Tiere aufbauen“:
 - [ ] Smoke-Check "Stamm" wackelt: bisher 2 Fehlschläge bei rund 30 Läufen, jeweils ohne Code-Änderung beim nächsten Lauf grün. Ursache suchen (vermutlich Zufall im Dorf-Aufbau).
 - Freie Platzierung (2026-11-16): jedes Teil überall und beliebig oft, der Editor setzt es an den Abwurfpunkt (`CreaturePartPlacer.MoveToHit`). Offen: nicht von Hand im Editor ausprobiert; die Drop-Vorschau (Geist) zeigt noch den alten Platz des Teils, nicht den Abwurfpunkt; Wirkung mehrfacher Teile (zwei Mäuler, drei Schwänze) summiert sich ungebremst.
 - [x] Abschaltbare Animationen pro Teil (2026-11-16 umgesetzt als Modus „Animieren" im Editor: je Teil an/aus, Tempo, Ausschlag, Versatz, Blinzeln; fürs ganze Tier Schwimmwelle, Wellentempo, Atmen).
-- [ ] Editor-Umbau vom 2026-11-16 (drei Modi, Icon-Reiter, Rückgängig) von Hand prüfen: bisher nur je ein Standbild pro Modus gesehen. Nie geklickt: Moduswechsel, Strg+Z/Y, Regler ziehen (ein Undo-Schritt je Zug?), Teil im Bemalen/Animieren anwählen, Vorschau an Land. Offen: der Ausschlag wirkt nur auf Glieder (Modell-Schleifen aus Blender lassen sich nur schneller, langsamer, versetzt oder aus stellen); Glieder mit Ästen stehen weiter still; der Größen-Regler in der Fußzeile gehört eigentlich in den Bereich „Form"; Rückgängig/Wiederholen sind Text-Knöpfe ohne Icon.
+- [ ] Editor-Umbau vom 2026-11-16 (inzwischen vier Modi, Icon-Reiter, Rückgängig) von Hand prüfen: bisher nur je ein Standbild pro Modus gesehen. Nie geklickt: Moduswechsel, Strg+Z/Y, Regler ziehen (ein Undo-Schritt je Zug?), Teil im Bemalen/Animieren anwählen, Vorschau an Land. Offen: der Ausschlag wirkt nur auf Glieder (Modell-Schleifen aus Blender lassen sich nur schneller, langsamer, versetzt oder aus stellen); Glieder mit Ästen stehen weiter still; der Größen-Regler in der Fußzeile gehört eigentlich in den Bereich „Form"; Rückgängig/Wiederholen sind Text-Knöpfe ohne Icon.
+
+## Stand 2026-11-16 abends (Kreatur-Editor, Köpfe, eigene Teile)
+
+Alles unten ist per Build, 123 Unit-Tests und Smoke-Test geprüft und in Standbildern angesehen. Im Editor von Hand geklickt und in Bewegung gesehen wurde nichts davon: das ist der wichtigste offene Punkt.
+
+**Was an diesem Tag dazukam**
+- **Editor neu aufgebaut:** vier Modi in der Kopfzeile statt eines Titels (`CreatureEditorMode` Bauen / Bemalen / Animieren / Formen, `CreatureModeBar`), Rückgängig / Wiederholen (Strg+Z / Strg+Y, `CreatureDraftHistory`), Reiter als 3D-Icons, je Modus eigene Bereiche links und rechts der Bühne (`CreaturePanel`, `CreatureToolbar`, `CreatureMotionPanel`, `CreatureShapePanel`).
+- **Gizmo:** arbeitet immer entlang der gezeigten Weltachsen (`TryGetPartFrame`); jeder Wirbel lässt sich je Achse skalieren (Länge, Höhe, Breite), der Regler „Flach" ist weg (`heights` / `widths` statt `flat` / `flats`).
+- **Baukasten:** bis 24 Wirbel, Umfang ab 0,08, Ringform je Wirbel (`crowns`, `bellies`), Gliedarten `Trunk`, `WingLimb`, `Finger`, Glied-Aussehen wechselbar, Farbe je Teil (`color`) und ab einem Gelenk (`tipColor` / `tipFrom`), Mundlage (`mouthLevel`, `mouthLength`), Hauttyp `Wrinkles`, Muster `Net` mit Feinheit und Rundum.
+- **Bewegung:** je Teil an/aus, Tempo, Ausschlag, Versatz, Blinzeln (`PartMotion`), je Knochen einer Modell-Animation eine eigene Stärke (`Core/ModelChannels.cs`, `CreaturePart.Channels`), fürs ganze Tier Schwimmwelle, Wellentempo, Atmen. Die Welle auf und ab ist ganz entfernt (Wasser und Land), die seitliche Welle treiben nur echte Schwimmflossen an (`CreatureDesign.WAVE_DRIVERS`).
+- **Kopf-Modelle mit Steckplätzen:** Reiter „Köpfe", Modellraum `Head`, Steckplätze `Eye` / `Ear` / `Horn` / `Mouth` (`slot()` im Generator, `CreatureParts3D.BuildOnSlot`). 13 Köpfe: Elefant, Keilkopf, Raubtier, Nashorn, Papagei, Pinguin, Greifvogel, Krokodil, Tyrann, Hornkopf, Insekt, Spinne, Krebs. In Vorlagen eingebaut bei Elefant, Giraffe, Papagei, Pinguin, Krokodil, T-Rex, Triceratops, Spinne, Krabbe und der neuen Ameise.
+- **Eigene Teile:** Modus „Formen": Ton mit eigener Wirbelsäule (`CustomShape`), als `CustomPart` aufs Tier gesetzt, nur Aussehen.
+- **Entfernt:** Hirn und Lunge samt Reitern und Wirkungen; Blasloch, Kiemen, Federkiemen und Sipho sitzen im Reiter Abwehr.
+- **README:** Galerie zeigt Ara, Qualle, Triceratops und Alligator (`docs/creatures/`).
+
+**Nächste Schritte, nach Wirkung sortiert**
+1. Den Editor einmal von Hand durchspielen: alle vier Modi, Rückgängig, Regler ziehen, Teile anklicken und ziehen, Vorschau im Wasser und an Land. Was dabei auffällt, hier eintragen.
+2. Steckplatz-Lücken schließen (machen mehrere Köpfe gleichzeitig besser): schlichtes `Eye` und `StalkEye` auf `Eye`, `Feeler` auf `Horn`, ein kleines Stehohr als eigenes Teil, ein mittiger Steckplatz ohne Spiegelung (Nashorn), freies Ziehen eines gesteckten Teils, Steckplätze auch für einen Kopf auf einem Glied.
+3. Köpfe nachbessern: Raubtierkopf (liest sich als Bär), Nashornkopf (Sattel, Lippe), Greifvogel-, Raubtier- und Nashornkopf in je eine Vorlage setzen und ansehen; Giraffenhörnchen auf dem Keilkopf sichtbar machen; T-Rex-Schnauze weniger kantig.
+4. Helle Fußballen der Elefantenfüße klären (Ursache unbekannt, siehe TODO oben).
+5. Modus „Formen" ausbauen: Vorschaubild je eigenem Teil, Ton in Körperfarbe, mittig setzen, eigener Reiter in der Palette, Vorlagen-Feld.
+6. Aufräumen: `CreatureEditorSession.cs` ist über 900 Zeilen und muss nach Verantwortung geteilt werden (Modus und Vorschau, Bemalen, Wirbel, eigene Formen); Reste von Hirn und Lunge entfernen (`EpPerLevelBonus`, `CreatureMount.Skull`, `GiveLegsAndLung`, `build_brain`); ungenutzte Maul-Modelle (`ParrotBeak`, `RexMaw`, `CrocMaw`, `NeckFrill`) entweder behalten oder streichen; Übersetzungen `CREATURE_CHANNEL_<KNOCHEN>` für die übrigen Modelle.
+
+**Für die Arbeit mit Agenten gemerkt**
+- Vorgaben als Datei im Scratchpad (zuletzt `brief7.md` Vorlagen-Mittel, `brief8.md` Kopf-Modelle), Besitz je Agent strikt, neue Arten verdrahtet der Koordinator vorher als Platzhalter.
+- Referenzfotos müssen als harte Bedingung im Auftrag stehen und im Bericht einzeln genannt werden; trotzdem öffneten Agenten in mehreren Runden nur ein oder zwei.
+- Agenten sehen nur Standbilder: Bewegung, Editor und Tests prüft der Koordinator selbst.
+- Ein Tier mit markantem Kopf bekommt ein Kopf-Modell; drei Runden Zahlen-Drehen an den Wirbeln haben beim Elefanten nichts gebracht.
+- `Build-Models.ps1` braucht `-BlenderPath 'C:\Program Files\Blender Foundation\Blender 5.3\blender.exe'` (der Standardpfad zeigt auf 5.2), und ein Syntaxfehler in einem Modul stoppt den Bau für alle.
+## Zellstufen: Wasser-Effekte, Riesen im Hintergrund, schnelleres Wachsen (2026-11-17)
+- **Schwimmspur** (`Game/Water/SwimWake.cs`): jede schwimmende Zelle (Spieler und NPCs, nur in den Zellstufen) zieht hinter sich gegenläufige Wirbel von den Flanken und aufsteigende Bläschen her, nach geschwommener Strecke, nicht nach Zeit. Die Schwebeteilchen nahe der Ebene weichen dem Spieler aus und schließen sich hinter ihm (`Backdrop.PartAround`).
+- **Riesenzellen** (`Game/Deep/`): bis zu 3 Amöben und Jäger mit 4 bis 8 Spielergrößen treiben als Hintergrund unter der Ebene durchs Bild, in einer eigenen Ebene (nicht im `CritterLayer`, also keine Kontakte), gestaucht zwischen Ebene und Boden, entsättigt und blass (`CellBody.Fade`, Membran-Uniform `haze`). Ist ein Riese höchstens 2,2 Spielergrößen groß, steigt er in 5 s auf und wird eine normale Zelle. Werte in `critter.giants`.
+- **Wachstum:** `player.bodySizeGrowth` 1,6 → 2,2 (Körpergröße je Biomasse). Gilt fürs ganze Spiel (Stamm im Smoke-Test 709 statt 518 groß), noch nicht auf die Zellstufen beschränkt.
+- [ ] Riesen nur in Standbildern gesehen (Testlauf mit Spawn mitten im Bild), nie in Bewegung durchs Bild treiben sehen. Aufgetauchte Riesen werfen keinen Schatten mehr (`ApplyFade` schaltet ihn ab und nicht wieder an).
+- **Alle Splash-Effekte entfernt** (Wunsch des Users 2026-11-17): `Splash.cs` gelöscht, keine Ringe mehr bei Teilung, Platzen, Tod, verlorenen Zellen und neuen Zellen. Die Start-Zellen im Bild blenden sich stattdessen über 1,2 s ein (`CellBody.FadeIn`); Kreaturen nach der Evolution erscheinen noch ohne Einblenden (die Kreatur-Optik kennt `Fade` nicht).
+- **Küste direkt beim Lebewesen** (Wunsch des Users 2026-11-17, ein Abschnitt weniger): die Inseln erscheinen, sobald das Lebewesen schwimmt, statt erst bei doppelter Evolve-Biomasse (`CoastAt` entfernt). Der Banner „Land in Sicht“ ist weg, der Lebewesen-Banner nennt die Inseln. Smoke-Check „Küste beim Lebewesen“. Der F10-Cheat „Küste herholen“ holt die schon vorhandene Küste nur noch, er ist praktisch überflüssig.
+- **Formen der NPC-Zellen** (Wunsch des Users 2026-11-17, „alle rund"): jede NPC-Zelle bekommt einen Umriss und ein Höhenprofil ihrer Art (`Cell/CellForms.cs`, über `CellDesign.SetShape`/`SetHeights` in `ForCritter`): Bakterien Stäbchen, Komma, Tropfen; Amöben freie Lappen, Bohne, Scheibe, Knubbel; Jäger meist Tropfen; Kolonien leicht. Zufällig gespiegelt und gewackelt, mittlerer Radius bleibt 1 (Kontakte bleiben rund). Gilt auch für die Riesen.
+
+## Zellteile als Fähigkeiten (2026-11-17)
+Wunsch des Users: statt kleiner Werte-Änderungen Fähigkeiten wie die Nesselkapsel, keine Innen-Teile, alles außen sichtbar, der Augenfleck bleibt ohne Fähigkeit. Auslösung gemischt, NPCs nach denselben Regeln.
+- **16 Teile, alle am Rand:**
+  - Tasten 1-4: Geißel (Sprint, behält ihren kleinen Dauerschub), Zilien (Ausweichen), Rückstoßdüse (Druckwelle mit Rückstoß), Schleimdrüse (Schleimspur), Tarnzellen (Tarnen).
+  - Automatisch: Elektro-Organ (Kettenblitz, neu), Giftdrüse (Giftwolke bei Treffer), Kiefer (Schnappen), Scheinfüßchen (Greifen), Panzerplatte (Schild, blockt einen ganzen Treffer und wächst nach).
+  - Dauernd: Lichtsegel (Biomasse aus Licht, immer aktiv, Wunsch des Users 2026-11-17), Filtermund (Strudel), Saugnapf (heilt beim Aussaugen), Stachel, Nesselkapsel.
+  - Entfernt: Mitochondrium, Stärkekorn, Pili. Die alten Innen-Modelle sind aus Generator und Assets gelöscht, 6 neue Rand-Modelle sind gebaut.
+- **Code:** reine Logik in `Cell/Abilities/AbilitySet.cs` (Tests in `CellTests`), Ausführung in `Game/Abilities/` (`AbilityResolver`, `AbilityZones`, `AbilityParticles`), Tastenplätze in `Game/Ui/AbilitySlots.cs`, Zahlen in `cell.abilities`. Ansehen: `$env:CELLOUT_REEL_ABILITIES = '1'` im GraphicsReel.
+- [ ] Nie von Hand gespielt, die Zahlen in `cell.abilities` sind erste Schätzungen.
+- [ ] NPC-Zellen setzen ihre Fähigkeiten nur gegen den Spieler ein, nicht gegeneinander.
+- [ ] Panzerplatte: Blocken und Nachwachsen sind im Bild nicht zu sehen (kein Leuchten, keine Splitter).
+- [ ] `CellVisual3D.cs` (833 Zeilen) ist über 800 und muss vor dem nächsten Feature geteilt werden; `Main.cs` liegt bei 802, `AbilityResolver.cs` bei 736.

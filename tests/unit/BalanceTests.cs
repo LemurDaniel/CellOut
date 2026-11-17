@@ -55,12 +55,12 @@ public class BalanceTests
     [Fact]
     public void MissingPartIsNamed()
     {
-        string json = TestSetup.ReadRepoFile(TestSetup.FIXTURE_FILE).Replace("\"Toxin\":", "\"Jaw\":");
+        string json = TestSetup.ReadRepoFile(TestSetup.FIXTURE_FILE).Replace("\"ToxinGland\":", "\"Jaw\":");
 
-        // The duplicate Jaw overwrites, Toxin is gone
+        // The duplicate Jaw overwrites, ToxinGland is gone
         var error = Assert.Throws<InvalidOperationException>(() => Balance.Parse(json));
         Assert.Contains("cell.parts", error.Message);
-        Assert.Contains("Toxin", error.Message);
+        Assert.Contains("ToxinGland", error.Message);
     }
 
     [Fact]

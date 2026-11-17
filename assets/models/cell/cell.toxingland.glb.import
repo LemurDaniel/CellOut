@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://1np4d4myp6yh"
-path="res://.godot/imported/cell.starch.glb-e284eac37efaa486d6617394830b655c.scn"
+uid="uid://q13a686sjkhi"
+path="res://.godot/imported/cell.toxingland.glb-f3a64f9610428bbc067605a57c32f94d.scn"
 
 [deps]
 
-source_file="res://assets/models/cell/cell.starch.glb"
-dest_files=["res://.godot/imported/cell.starch.glb-e284eac37efaa486d6617394830b655c.scn"]
+source_file="res://assets/models/cell/cell.toxingland.glb"
+dest_files=["res://.godot/imported/cell.toxingland.glb-f3a64f9610428bbc067605a57c32f94d.scn"]
 
 [params]
 

@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://bp01lmmdskw7p"
-path="res://.godot/imported/cell.toxin.glb-ac290d176fb23a1cdf2007e4b308e6c9.scn"
+uid="uid://c2wjy3sbcn4fr"
+path="res://.godot/imported/cell.lightsail.glb-b41b95080fd69800b199dd5ff4c5b309.scn"
 
 [deps]
 
-source_file="res://assets/models/cell/cell.toxin.glb"
-dest_files=["res://.godot/imported/cell.toxin.glb-ac290d176fb23a1cdf2007e4b308e6c9.scn"]
+source_file="res://assets/models/cell/cell.lightsail.glb"
+dest_files=["res://.godot/imported/cell.lightsail.glb-b41b95080fd69800b199dd5ff4c5b309.scn"]
 
 [params]
 

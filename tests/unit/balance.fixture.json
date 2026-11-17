@@ -43,48 +43,26 @@
 
   "cell": {
     "parts": {
-      "Chloroplast": { "cost": 4 },
-      "FilterMouth": { "cost": 2 },
-      "ArmorPlate":  { "cost": 4, "maxDiet": -0.2 },
-      "Mitochondrion": { "cost": 4 },
-      "StarchGranule": { "cost": 3 },
-      "SlimeCoat":   { "cost": 4, "maxDiet": 0.2 },
-      "Flagellum":   { "cost": 4 },
-      "Eyespot":     { "cost": 2 },
-      "Vacuole":     { "cost": 4 },
-      "Cilia":       { "cost": 5, "minDiet": -0.5, "maxDiet": 0.5 },
-      "Pseudopod":   { "cost": 3 },
-      "Pili":        { "cost": 3 },
-      "Camouflage":  { "cost": 4, "minDiet": -0.6, "maxDiet": 0.6 },
-      "Spike":       { "cost": 2 },
-      "Jaw":         { "cost": 5, "minDiet": 0.2 },
-      "Toxin":       { "cost": 6, "minDiet": 0.5 },
-      "Nematocyst":  { "cost": 5, "minDiet": 0.4 },
-      "Sucker":      { "cost": 4, "minDiet": 0.2 }
+      "LightSail":     { "cost": 3 },
+      "FilterMouth":   { "cost": 3 },
+      "ArmorPlate":    { "cost": 4, "maxDiet": -0.2 },
+      "SlimeGland":    { "cost": 4, "maxDiet": 0.2 },
+      "Flagellum":     { "cost": 4 },
+      "Eyespot":       { "cost": 1 },
+      "JetNozzle":     { "cost": 4 },
+      "Cilia":         { "cost": 4, "minDiet": -0.5, "maxDiet": 0.5 },
+      "Pseudopod":     { "cost": 3 },
+      "Chromatophore": { "cost": 5, "minDiet": -0.6, "maxDiet": 0.6 },
+      "Spike":         { "cost": 2 },
+      "Jaw":           { "cost": 5, "minDiet": 0.2 },
+      "ToxinGland":    { "cost": 5, "minDiet": 0.4 },
+      "Nematocyst":    { "cost": 5, "minDiet": 0.4 },
+      "Sucker":        { "cost": 4, "minDiet": 0.2 },
+      "Electrocyte":   { "cost": 6, "minDiet": 0.5 }
     },
     "effects": {
-      "chloroplastLight": 0.4,
-      "filterMouthMagnet": 0.4,
-      "filterMouthDigestPlant": 1.25,
-      "armorPlateHealth": 1.1,
       "flagellumSpeed": 0.22,
-      "flagellumFrontThrust": 0.3,
-      "eyespotMagnet": 0.5,
-      "eyespotSight": 0.5,
-      "vacuoleDigest": 1.2,
-      "ciliaAcceleration": 1.4,
-      "jawDigestMeat": 1.2,
-      "toxinDamage": 1.6,
-      "mitochondrionSpeed": 0.08,
-      "mitochondrionAcceleration": 1.1,
-      "starchRegen": 1,
-      "starchSpeed": 0.94,
-      "slimeDamage": 0.8,
-      "slimeMinDamage": 0.5,
-      "pseudopodMagnet": 0.8,
-      "piliKnockback": 0.5,
-      "camouflageSense": 0.75,
-      "camouflageMinSense": 0.4
+      "flagellumFrontThrust": 0.3
     },
     "combat": {
       "spikeArc": 0.7,
@@ -101,6 +79,21 @@
       "stunSpeed": 0.3,
       "suckerArc": 0.6,
       "suckerDamage": 6
+    },
+    "abilities": {
+      "Electrocyte":   { "cooldown": 4,   "damage": 6, "reach": 2.5, "count": 3, "duration": 0.6 },
+      "ToxinGland":    { "cooldown": 5,   "damage": 5, "reach": 1.8, "linger": 4, "power": 0.5 },
+      "Jaw":           { "cooldown": 2.5, "reach": 2,   "power": 4 },
+      "Pseudopod":     { "cooldown": 3,   "reach": 3,   "power": 6 },
+      "ArmorPlate":    { "cooldown": 6 },
+      "Sucker":        { "cooldown": 0,   "power": 0.6 },
+      "FilterMouth":   { "cooldown": 0,   "reach": 2.5, "power": 4 },
+      "LightSail":     { "cooldown": 0,   "power": 2.5 },
+      "Flagellum":     { "cooldown": 3,   "power": 3.5 },
+      "Cilia":         { "cooldown": 2.5, "power": 4 },
+      "JetNozzle":     { "cooldown": 5,   "damage": 3, "reach": 3, "power": 5 },
+      "SlimeGland":    { "cooldown": 8,   "duration": 2.5, "linger": 5, "reach": 0.9, "power": 0.25 },
+      "Chromatophore": { "cooldown": 10,  "duration": 4 }
     }
   },
 
@@ -113,7 +106,8 @@
     "bacteriumSpeed": 0.6,
     "amoebaSpeed": 0.5,
     "hunterSpeed": 0.7,
-    "colonySpeed": 0.55
+    "colonySpeed": 0.55,
+    "giants": { "count": 3, "minSize": 4, "maxSize": 8, "surfaceRatio": 2.2, "riseSeconds": 5 }
   },
 
   "creature": {

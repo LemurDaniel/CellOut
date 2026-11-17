@@ -149,6 +149,7 @@ public partial class Backdrop : Node3D
     //   Follow     1. Floor   Centers the floor below the view and scales its pattern with the view.
     //              2. Motes   Seeds every grid cell around the view and places its motes.
     //              3. Blobs   Seeds every fifth cell and places a faint soft blob close to the camera.
+    //   PartAround Motes near the plane make way for the swimming player.
     //
 
     private Color _light = SoupPalette.SEA.Light;
@@ -168,7 +169,8 @@ public partial class Backdrop : Node3D
     /// <param name="center">(Required) Plane point the camera looks at.</param>
     /// <param name="playerSize">(Required) Player.BodySize(), sets the depths.</param>
     /// <param name="viewRadius">(Required) Visible radius on the plane, sets extent and density.</param>
-    public void Follow(Vector2 center, float playerSize, float viewRadius)
+    /// <param name="swimmer">(Optional) Plane point of the player, motes near the plane part around it. Defaults to null: none.</param>
+    public void Follow(Vector2 center, float playerSize, float viewRadius, Vector2? swimmer = null)
     {
         // ---------------------------------------------------------------------------
         // Floor
@@ -208,6 +210,7 @@ public partial class Backdrop : Node3D
                     point += new Vector2(Mathf.Sin(time * 0.4f + phase), Mathf.Cos(time * 0.3f + phase)) * cell * 0.08f;
                     float depth = rng.RandfRange(-FLOOR_DEPTH * 0.9f, 0.8f) * playerSize;
                     float size  = rng.RandfRange(0.6f, 2.2f) * cell / 50f;
+                    point = PartAround(point, depth, swimmer, playerSize);
                     _motes.SetInstanceTransform(count, new Transform3D(Basis.FromScale(Vector3.One * size), Plane3D.To3D(point, depth)));
                     _motes.SetInstanceColor(count, new Color(_light, rng.RandfRange(0.08f, 0.25f)));
                     count++;
@@ -239,5 +242,31 @@ public partial class Backdrop : Node3D
             }
         }
         _blobs.VisibleInstanceCount = blobs;
+    }
+
+    private const float PART_RADIUS = 2.4f;       // motes this many player sizes around the swimmer make way
+    private const float PART_DEPTH = 1.2f;        // only motes this close to the plane, in player sizes
+
+    /// <summary>
+    /// Pushes a mote near the plane out of the way of the swimmer: inside PART_RADIUS it
+    /// slides outwards, the closer the more, so the soup parts around the cell and
+    /// closes again behind it. The motes keep no state, the push is a field around the player.
+    /// </summary>
+    private static Vector2 PartAround(Vector2 point, float depth, Vector2? swimmer, float playerSize)
+    {
+        if (swimmer is not Vector2 center || Mathf.Abs(depth) > PART_DEPTH * playerSize)
+        {
+            return point;
+        }
+        Vector2 away     = point - center;
+        float   distance = away.Length();
+        float   reach    = PART_RADIUS * playerSize;
+        if (distance >= reach || distance < 0.001f)
+        {
+            return point;
+        }
+        float closeness = 1f - distance / reach;
+        float nearPlane = 1f - Mathf.Abs(depth) / (PART_DEPTH * playerSize);
+        return point + away / distance * closeness * closeness * reach * 0.6f * nearPlane;
     }
 }

@@ -145,6 +145,9 @@ public static class PartModels
             "Pigment"     => CellVisual3D.Material(new Color(0.22f, 0.14f, 0.28f), 0f, 0.6f),
             "PigmentLight"=> CellVisual3D.Material(new Color(0.65f, 0.55f, 0.4f), 0f, 0.6f),
             "Nettle"      => CellVisual3D.Material(new Color(0.95f, 0.85f, 0.55f, 0.75f), 0.3f, 0.15f),
+            "Sail"        => CellVisual3D.Material(new Color(0.45f, 0.9f, 0.4f, 0.6f), 0.35f, 0.2f),
+            "Plate"       => CellVisual3D.Material(new Color(0.55f, 0.6f, 0.72f), 0.05f, 0.15f),
+            "Spark"       => CellVisual3D.Material(new Color(0.55f, 0.88f, 1f), 1.8f, 0.2f),
             // Village props (tools/blender/models/village.py)
             "Twig"        => CellVisual3D.Material(new Color(0.45f, 0.32f, 0.18f), 0f, 0.9f),
             "Moss"        => CellVisual3D.Material(new Color(0.35f, 0.52f, 0.22f), 0f, 0.95f),

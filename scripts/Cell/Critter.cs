@@ -61,6 +61,9 @@ public partial class Critter : CellBody
     /// <summary>(Optional) The layer with the food it grazes on, null: it never grazes.</summary>
     public Node2D FoodLayer { get; set; }
     public float BumpCooldown { get; set; }
+
+    /// <summary>(Optional) Unit course of a giant in the background: it ignores everything and drifts along it. Null steers normally.</summary>
+    public Vector2? Drift { get; set; }
     private float _speed = 80f;
     private float _sense = 300f;
     private float _sated;
@@ -72,6 +75,7 @@ public partial class Critter : CellBody
     // ===========================================================================
     //
     //   Setup         Size, look, editor parts (CellDesign.ForCritter) and speed per kind, called before AddChild.
+    //   MatchSpeed    Speed for the current player size.
     //   SetBodySize   Sets the size of the whole body, a cluster shares it between its cells.
     //   FullHp        Health of a fresh body of the current size.
     //
@@ -95,9 +99,10 @@ public partial class Critter : CellBody
         CellCount = cellCount;
         SetBodySize(radius);
         Design = CellDesign.ForCritter(kind, stage);
-        _stats = CellStats.From(Design);
-        Hp     = FullHp();
-        _sense = radius * Tune.SenseRadii * (1f + _stats.SightBonus);
+        _stats    = CellStats.From(Design);
+        Abilities = AbilitySet.From(Design);
+        Hp        = FullHp();
+        _sense    = radius * Tune.SenseRadii;
 
         float speedFactor;
         switch (kind)
@@ -121,7 +126,17 @@ public partial class Critter : CellBody
             default:
                 throw new System.ArgumentOutOfRangeException(nameof(kind), $"kind must be a known CritterKind, got '{kind}'.");
         }
-        _speed = SwimSpeed(playerSize) * speedFactor * _stats.Speed;
+        _kindSpeed = speedFactor;
+        MatchSpeed(playerSize);
+    }
+
+    private float _kindSpeed = 1f;
+
+    /// <summary>Sets the speed for the current player size, a giant that rose from the depth catches up with the grown player.</summary>
+    /// <param name="playerSize">(Required) Current Player.BodySize().</param>
+    public void MatchSpeed(float playerSize)
+    {
+        _speed = SwimSpeed(playerSize) * _kindSpeed * _stats.Speed;
     }
 
     /// <summary>Sets the size of the whole body, every cell of a cluster gets its share (CellBody.ClusterExtent).</summary>
@@ -133,7 +148,7 @@ public partial class Critter : CellBody
 
     private float FullHp()
     {
-        return BodySize() * 1.5f * _stats.Health;
+        return BodySize() * 1.5f;
     }
 
     // ===========================================================================
@@ -147,8 +162,7 @@ public partial class Critter : CellBody
     //   ContactDamageToward   Spike and jaw damage dealt towards a world direction (CellStats).
     //   StingToward           Nematocyst damage of one shot towards a world direction, StingReload between shots.
     //   SuckerDrainToward     Damage per second of its suckers towards a world direction.
-    //   Camouflage            Its pigment: other cells notice it later.
-    //   DamageFactorFrom      Share of the damage taken from a world direction, plates halve it.
+    //   Stats                 Its traits from the parts (spikes, jaws, plates, stings, suckers).
     //
 
     /// <summary>Whether this critter can eat something of the given radius. Bacteria never eat.</summary>
@@ -166,19 +180,12 @@ public partial class Critter : CellBody
         return _stats.ContactDamageToward(worldAngle - Facing);
     }
 
-    /// <summary>Share of the damage taken from a world direction, armor plates halve it.</summary>
-    /// <param name="worldAngle">(Required) Direction from the critter to the attacker.</param>
-    public float DamageFactorFrom(float worldAngle)
-    {
-        return _stats.DamageFactorFrom(worldAngle - Facing);
-    }
-
     /// <summary>Grows after a meal and pauses hunting for the sated time.</summary>
     /// <param name="eatenRadius">(Required) Radius of the eaten cell.</param>
     /// <param name="maxRadius">(Required) Upper limit of the body size, keeps critters relative to the player.</param>
     public void Devour(float eatenRadius, float maxRadius)
     {
-        float digested = eatenRadius * eatenRadius * 0.35f * _stats.DigestAll * _stats.DigestMeat;
+        float digested = eatenRadius * eatenRadius * 0.35f;
         float size     = BodySize();
         SetBodySize(Mathf.Min(Mathf.Sqrt(size * size + digested), maxRadius));
         Hp     += eatenRadius * 0.75f;
@@ -202,20 +209,32 @@ public partial class Critter : CellBody
     /// <param name="worldAngle">(Required) Direction from the critter to the target.</param>
     public float SuckerDrainToward(float worldAngle)
     {
-        return _stats.CanSuckToward(worldAngle - Facing) ? Balance.Current.Cell.Combat.SuckerDamage * _stats.Toxin : 0f;
+        return _stats.CanSuckToward(worldAngle - Facing) ? Balance.Current.Cell.Combat.SuckerDamage : 0f;
     }
 
-    /// <summary>Multiplier on the range other cells notice this one (camouflage pigment), 1 without.</summary>
-    public float Camouflage => _stats.Camouflage;
+    /// <summary>Its traits from the parts, the abilities read the directions of jaws and plates.</summary>
+    public CellStats Stats => _stats;
+
+    /// <summary>Heals up to a fresh body of its size, e.g. from what its suckers drain.</summary>
+    /// <param name="amount">(Required) Hit points, below 0 counts as 0.</param>
+    public void Heal(float amount)
+    {
+        Hp = Mathf.Min(FullHp(), Hp + Mathf.Max(amount, 0f));
+    }
 
     /// <summary>Takes damage and pops at zero health, Main turns the pop into food. A colony loses cells first.</summary>
-    /// <param name="amount">(Required) Damage in hit points before armor.</param>
-    /// <param name="from">(Optional) Plane point of the attacker, armor plates towards it halve the damage. Defaults to no armor.</param>
-    public void Hurt(float amount, Vector2? from = null)
+    /// <param name="amount">(Required) Damage in hit points.</param>
+    /// <param name="from">(Optional) Plane point of the attacker, a charged armor plate towards it blocks the hit (AbilitySet.TryBlock). Defaults to no plate.</param>
+    /// <param name="isSteady">(Optional) Damage per frame (sucker, cloud, digestion): no plate catches it. Defaults to false.</param>
+    public void Hurt(float amount, Vector2? from = null, bool isSteady = false)
     {
-        float factor = from is Vector2 attacker ? DamageFactorFrom((attacker - GlobalPosition).Angle()) : 1f;
-        Hp        -= amount * factor;
+        if (!isSteady && from is Vector2 attacker && _stats.IsPlatedToward((attacker - GlobalPosition).Angle() - Facing) && Abilities.TryBlock())
+        {
+            return;
+        }
+        Hp        -= amount;
         HurtFlash  = 1f;
+        WasHit     = true;
         if (Hp > 0f || IsQueuedForDeletion())
         {
             return;
@@ -341,6 +360,14 @@ public partial class Critter : CellBody
             return;
         }
 
+        // A giant in the background senses nothing, it drifts calmly along its course (Game/Deep/DeepKeeper.cs)
+        if (Drift is Vector2 drift)
+        {
+            Velocity  = Velocity.Lerp(drift * _speed * Tune.WanderSpeed, Mathf.Clamp(dt, 0f, 1f));
+            Position += Velocity * dt;
+            return;
+        }
+
         // ---------------------------------------------------------------------------
         // Senses
         //   Collects threats, the closest prey, the closest food and too close neighbors.
@@ -357,7 +384,7 @@ public partial class Critter : CellBody
             Vector2 toPlayer   = Target.GlobalPosition - GlobalPosition;
             float   playerSize = Target.BodySize();
             float   distance   = toPlayer.Length();
-            bool    isInSense  = distance < _sense * Target.CellTraits.Camouflage + playerSize;   // pigment hides the player
+            bool    isInSense  = distance < _sense * Target.SenseFactor + playerSize;   // chromatophores hide the player
             if (isInSense && Target.Stage >= 1 && playerSize > BodySize() * Tune.EatRatio)
             {
                 flee -= toPlayer / Mathf.Max(distance, 1f);
@@ -380,7 +407,7 @@ public partial class Critter : CellBody
             Vector2 toOther   = other.Position - Position;
             float   distance  = toOther.Length();
             float   otherSize = other.BodySize();
-            if (distance > _sense * other.Camouflage + otherSize)   // pigment hides the other
+            if (distance > _sense * other.SenseFactor + otherSize)   // chromatophores hide the other
             {
                 continue;
             }
@@ -460,8 +487,8 @@ public partial class Critter : CellBody
         // While it swallows something (EngulfReach set by Main) it nearly stops, prey can still wriggle free
         float speed = EngulfReach > 0f ? _speed * ENGULF_SLOWDOWN : _speed;
         // A sting paralyses it for a while (CellBody.Stun)
-        speed *= StunFactor;
-        Velocity  = Velocity.Lerp(desired * speed, Mathf.Clamp(dt * 2f * _stats.Acceleration, 0f, 1f));
+        speed *= StunFactor * SlowFactor;
+        Velocity  = Velocity.Lerp(desired * speed, Mathf.Clamp(dt * 2f, 0f, 1f));
         Position += Velocity * dt;
     }
 }

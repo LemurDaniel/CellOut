@@ -1,8 +1,11 @@
 // NOTE:
-//   Traits a cell gets from its placed editor parts: one formula for the Player and the
-//   NPC cells (Critter), like CreatureStats for organisms. Directions of spikes, jaws and
-//   plates are part angles relative to the facing (0 = forward). The numbers come from
-//   data/balance.json (Core/Balance.cs).
+//   What a cell gets from its placed editor parts, one formula for the Player and the NPC
+//   cells (Critter), like CreatureStats for organisms. Parts are abilities (decision of the
+//   user 2026-11-17), so only little stays here: the thrust of the flagella, the light of
+//   the sails, the pull of the filter mouths and the directions of spikes, jaws, plates,
+//   nematocysts and suckers. Cooldowns and the abilities themselves live in
+//   Cell/Abilities/AbilitySet.cs and Game/Abilities/AbilityResolver.cs. Directions are
+//   part angles relative to the facing (0 = forward), numbers from data/balance.json.
 //
 //   CellStats stats = CellStats.From(design);
 //   float hit = stats.ContactDamageToward(0f);   // spike and jaw damage straight ahead
@@ -10,9 +13,9 @@
 
 //
 //   Chapters:
-//     TRAITS       Multipliers, bonuses and the part directions.
-//     FROM DESIGN  The effect of every part.
-//     DIRECTIONS   Contact damage, bite, sting, sucker and armor towards a direction.
+//     TRAITS       Thrust, light, pull and the part directions.
+//     FROM DESIGN  What every part adds.
+//     DIRECTIONS   Contact damage, bite, sting, sucker and plates towards a direction.
 //
 
 using System.Collections.Generic;
@@ -26,35 +29,17 @@ public sealed class CellStats
     // ===============================   TRAITS   ================================
     // ===========================================================================
     //
-    //   Speed           Swim speed multiplier (flagella pushing best from the back, mitochondria, starch).
-    //   Acceleration    Steering multiplier (cilia, mitochondria).
-    //   Health          Health multiplier (armor plates).
-    //   Regen           Multiplier on the base regeneration (starch granules).
-    //   DamageTaken     Share of every hit that gets through, from all sides (slime coat).
-    //   Knockback       Multiplier on the push back of a hit (pili).
-    //   Camouflage      Multiplier on the range NPC cells notice the cell (pigment).
-    //   MagnetBonus     Food pull range bonus in body sizes (filter mouth, eyespot, pseudopod).
-    //   SightBonus      Sense range bonus of NPC cells, share of the base range (eyespot).
-    //   Digest*         Biomass multipliers for every meal, plants and meat.
-    //   Photosynthesis  Light biomass per second at REFERENCE_SIZE (chloroplasts).
-    //   Toxin           Multiplier on spike, jaw, sting and sucker damage.
+    //   Speed           Swim speed multiplier, flagella push best from the back.
+    //   Photosynthesis  Light biomass per second at REFERENCE_SIZE (light sails, all the time).
+    //   MagnetBonus     Food pull range bonus in body sizes (the vortex of filter mouths).
+    //   VortexPull      Body sizes per second the vortex drags food, 0 without a filter mouth.
     //   *Angles         Directions of spikes, jaws, plates, nematocysts and suckers relative to the facing.
     //
 
     public float Speed { get; private set; } = 1f;
-    public float Acceleration { get; private set; } = 1f;
-    public float Health { get; private set; } = 1f;
-    public float Regen { get; private set; } = 1f;
-    public float DamageTaken { get; private set; } = 1f;
-    public float Knockback { get; private set; } = 1f;
-    public float Camouflage { get; private set; } = 1f;
-    public float MagnetBonus { get; private set; }
-    public float SightBonus { get; private set; }
-    public float DigestAll { get; private set; } = 1f;
-    public float DigestPlant { get; private set; } = 1f;
-    public float DigestMeat { get; private set; } = 1f;
     public float Photosynthesis { get; private set; }
-    public float Toxin { get; private set; } = 1f;
+    public float MagnetBonus { get; private set; }
+    public float VortexPull { get; private set; }
     public List<float> SpikeAngles { get; } = new();
     public List<float> JawAngles { get; } = new();
     public List<float> PlateAngles { get; } = new();
@@ -67,83 +52,57 @@ public sealed class CellStats
     // ============================   FROM DESIGN   ==============================
     // ===========================================================================
     //
-    //   From   Adds up the effect of every placed part, slime and pigment down to their floor.
+    //   From   Adds up what every placed part brings, the rest of a part is its ability.
     //
 
-    /// <summary>Traits of a design, every part adds its effect.</summary>
+    /// <summary>Traits of a design, every part adds its share.</summary>
     /// <param name="design">(Required) The placed parts.</param>
     /// <example><code>CellStats.From(new CellDesign()).Speed   // 1, no parts</code></example>
     public static CellStats From(CellDesign design)
     {
         var stats = new CellStats();
-        CellEffectsBalance effects = Balance.Current.Cell.Effects;
+        CellEffectsBalance effects   = Balance.Current.Cell.Effects;
+        IReadOnlyDictionary<PartKind, AbilityBalance> abilities = Balance.Current.Cell.Abilities;
         foreach (PlacedPart part in design.Parts)
         {
             switch (part.Kind)
             {
-                // Herbivore
-                case PartKind.Chloroplast:
-                    stats.Photosynthesis += effects.ChloroplastLight;
-                    break;
-                case PartKind.FilterMouth:
-                    stats.MagnetBonus += effects.FilterMouthMagnet;
-                    stats.DigestPlant *= effects.FilterMouthDigestPlant;
-                    break;
-                case PartKind.ArmorPlate:
-                    stats.Health *= effects.ArmorPlateHealth;
-                    stats.PlateAngles.Add(part.Angle);
-                    break;
-                case PartKind.Mitochondrion:
-                    stats.Speed        *= 1f + effects.MitochondrionSpeed;
-                    stats.Acceleration *= effects.MitochondrionAcceleration;
-                    break;
-                case PartKind.StarchGranule:
-                    stats.Regen += effects.StarchRegen;
-                    stats.Speed *= effects.StarchSpeed;
-                    break;
-                case PartKind.SlimeCoat:
-                    stats.DamageTaken = Mathf.Max(stats.DamageTaken * effects.SlimeDamage, effects.SlimeMinDamage);
-                    break;
-                // Omnivore: a flagellum pushes with FlagellumFrontThrust from the front up to 100% from the back
+                // A flagellum pushes with FlagellumFrontThrust from the front up to 100% from the back, its dash is an ability
                 case PartKind.Flagellum:
                     float thrust = Mathf.Lerp(effects.FlagellumFrontThrust, 1f, (1f - Mathf.Cos(part.Angle)) * 0.5f);
                     stats.Speed *= 1f + effects.FlagellumSpeed * thrust;
                     break;
-                case PartKind.Eyespot:
-                    stats.MagnetBonus += effects.EyespotMagnet;
-                    stats.SightBonus  += effects.EyespotSight;
+                case PartKind.LightSail:
+                    stats.Photosynthesis += abilities[PartKind.LightSail].Power;
                     break;
-                case PartKind.Vacuole:
-                    stats.DigestAll *= effects.VacuoleDigest;
+                case PartKind.FilterMouth:
+                    stats.MagnetBonus += abilities[PartKind.FilterMouth].Reach;
+                    stats.VortexPull   = Mathf.Max(stats.VortexPull, abilities[PartKind.FilterMouth].Power);
                     break;
-                case PartKind.Cilia:
-                    stats.Acceleration *= effects.CiliaAcceleration;
+                case PartKind.ArmorPlate:
+                    stats.PlateAngles.Add(part.Angle);
                     break;
-                case PartKind.Pseudopod:
-                    stats.MagnetBonus += effects.PseudopodMagnet;
-                    break;
-                case PartKind.Pili:
-                    stats.Knockback *= effects.PiliKnockback;
-                    break;
-                case PartKind.Camouflage:
-                    stats.Camouflage = Mathf.Max(stats.Camouflage * effects.CamouflageSense, effects.CamouflageMinSense);
-                    break;
-                // Carnivore
                 case PartKind.Spike:
                     stats.SpikeAngles.Add(part.Angle);
                     break;
                 case PartKind.Jaw:
                     stats.JawAngles.Add(part.Angle);
-                    stats.DigestMeat *= effects.JawDigestMeat;
-                    break;
-                case PartKind.Toxin:
-                    stats.Toxin *= effects.ToxinDamage;
                     break;
                 case PartKind.Nematocyst:
                     stats.StingAngles.Add(part.Angle);
                     break;
                 case PartKind.Sucker:
                     stats.SuckerAngles.Add(part.Angle);
+                    break;
+                // Abilities only (AbilitySet), the eyespot only looks
+                case PartKind.SlimeGland:
+                case PartKind.Eyespot:
+                case PartKind.JetNozzle:
+                case PartKind.Cilia:
+                case PartKind.Pseudopod:
+                case PartKind.Chromatophore:
+                case PartKind.ToxinGland:
+                case PartKind.Electrocyte:
                     break;
                 default:
                     throw new System.ArgumentOutOfRangeException(nameof(design), $"design must hold known PartKinds only, got '{part.Kind}'.");
@@ -160,19 +119,17 @@ public sealed class CellStats
     //   ContactDamage   Spike and jaw damage towards a local direction, any angle lists.
     //   CanBite         Whether a jaw of an angle list points towards a local direction.
     //   IsAnyWithin     Whether any angle of a list covers a local direction.
-    //   DamageFactor    Share of the damage that gets past the plates of an angle list.
     //   IsWithin        Whether a local direction lies within the arc of a part angle.
-    //   *Toward/From    The same for the parts of this design, stings and suckers included.
+    //   *Toward         The same for the parts of this design, stings, suckers and plates included.
     //
 
-
-    /// <summary>Arcs (half angles in radians) and damage (at REFERENCE_SIZE) of spikes, jaws and plates.</summary>
+    /// <summary>Arcs (half angles in radians) and damage (at REFERENCE_SIZE) of spikes, jaws, plates, stings and suckers.</summary>
     private static CellCombatBalance Combat => Balance.Current.Cell.Combat;
 
     /// <summary>Spike and jaw damage dealt towards a local direction, times the toxin.</summary>
     /// <param name="spikes">(Required) Spike angles relative to the facing.</param>
     /// <param name="jaws">(Required) Jaw angles relative to the facing.</param>
-    /// <param name="toxin">(Required) Damage multiplier.</param>
+    /// <param name="toxin">(Required) Damage multiplier, 1 for a cell (its toxin is a cloud now).</param>
     /// <param name="localAngle">(Required) Direction relative to the facing.</param>
     public static float ContactDamage(IEnumerable<float> spikes, IEnumerable<float> jaws, float toxin, float localAngle)
     {
@@ -199,15 +156,11 @@ public sealed class CellStats
         return false;
     }
 
-    /// <summary>Share of the damage taken from a local direction, a plate towards it lets only part through.</summary>
-    /// <example><code>CellStats.DamageFactor(new[] { 0f }, Mathf.Pi)   // 1, the plate faces away</code></example>
+    /// <summary>Share of the damage taken from a local direction, a creature shell towards it lets only part through.</summary>
+    /// <example><code>CellStats.DamageFactor(new[] { 0f }, Mathf.Pi)   // 1, the shell faces away</code></example>
     public static float DamageFactor(IEnumerable<float> plates, float localAngle)
     {
-        foreach (float angle in plates)
-        {
-            if (IsWithin(localAngle, angle, Combat.PlateArc)) return Combat.PlateDamageFactor;
-        }
-        return 1f;
+        return IsAnyWithin(plates, localAngle, Combat.PlateArc) ? Combat.PlateDamageFactor : 1f;
     }
 
     /// <summary>Whether any part angle of a list covers a local direction within arc.</summary>
@@ -230,7 +183,7 @@ public sealed class CellStats
     /// <summary>Spike and jaw damage of this design towards a local direction.</summary>
     public float ContactDamageToward(float localAngle)
     {
-        return ContactDamage(SpikeAngles, JawAngles, Toxin, localAngle);
+        return ContactDamage(SpikeAngles, JawAngles, 1f, localAngle);
     }
 
     /// <summary>Whether a jaw of this design points towards a local direction.</summary>
@@ -239,17 +192,17 @@ public sealed class CellStats
         return CanBite(JawAngles, localAngle);
     }
 
-    /// <summary>Share of the damage taken from a local direction: plates halve it, slime lets less through everywhere.</summary>
-    public float DamageFactorFrom(float localAngle)
+    /// <summary>Whether an armor plate of this design covers a local direction (its shield, AbilitySet.TryBlock).</summary>
+    public bool IsPlatedToward(float localAngle)
     {
-        return DamageFactor(PlateAngles, localAngle) * DamageTaken;
+        return IsAnyWithin(PlateAngles, localAngle, Combat.PlateArc);
     }
 
-    /// <summary>Damage of one sting towards a local direction (nematocysts, times the toxin), 0 when none points there.</summary>
+    /// <summary>Damage of one sting towards a local direction (nematocysts), 0 when none points there.</summary>
     /// <example><code>stats.StingToward(0f)   // 5 with one nematocyst in front</code></example>
     public float StingToward(float localAngle)
     {
-        return IsAnyWithin(StingAngles, localAngle, Combat.StingArc) ? Combat.StingDamage * Toxin : 0f;
+        return IsAnyWithin(StingAngles, localAngle, Combat.StingArc) ? Combat.StingDamage : 0f;
     }
 
     /// <summary>Whether a sucker points towards a local direction and holds a cell there.</summary>

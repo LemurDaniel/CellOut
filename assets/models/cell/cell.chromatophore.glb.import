@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://bfjqk8s1ovto5"
-path="res://.godot/imported/cell.pili.glb-f1a30b86c645721ee73e9d2fff1bd4cb.scn"
+uid="uid://wo73kljjk2px"
+path="res://.godot/imported/cell.chromatophore.glb-8373c4e168233d3c312aa516fee437b0.scn"
 
 [deps]
 
-source_file="res://assets/models/cell/cell.pili.glb"
-dest_files=["res://.godot/imported/cell.pili.glb-f1a30b86c645721ee73e9d2fff1bd4cb.scn"]
+source_file="res://assets/models/cell/cell.chromatophore.glb"
+dest_files=["res://.godot/imported/cell.chromatophore.glb-8373c4e168233d3c312aa516fee437b0.scn"]
 
 [params]
 

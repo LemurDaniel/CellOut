@@ -17,6 +17,7 @@ uniform float flash = 0.0;        // hit flash 0..1
 uniform vec2 engulf_dir = vec2(1.0, 0.0);   // towards a cell being swallowed, unit plane (x, z)
 uniform float engulf = 0.0;       // 0 smooth .. 1 pseudopods fully around the prey
 uniform float core_alpha = 0.45;  // transparency in the middle
+uniform float haze = 0.0;         // 0 on the plane .. 1 deep in the background (CellBody.Fade)
 uniform float shape[8];           // unset (all 0) means round, see shape_radius
 uniform float heights[8];         // unset (all 0) keeps the mesh height, see height_scale
 
@@ -100,14 +101,18 @@ void fragment() {
 	// Lipid heads: faint speckle drifting slowly over the surface
 	float speck = smoothstep(0.62, 0.8, noise(local_pos * 18.0 + vec3(TIME * 0.15, 0.0, seed)));
 
+	// Haze: a giant deep in the background, grey, dark, dull and faint (Game/Deep/DeepRule.cs)
+	float grey = dot(col, vec3(0.299, 0.587, 0.114));
+	col = mix(col, vec3(grey) * 0.45, haze * 0.9);
+
 	ALBEDO = col;
-	ROUGHNESS = 0.15;
-	SPECULAR = 0.75;
-	EMISSION = col * 0.16
+	ROUGHNESS = mix(0.15, 1.0, haze);
+	SPECULAR = 0.75 * (1.0 - haze);
+	EMISSION = (col * 0.16
 			+ light * fres * 0.35
 			+ light * inner_line * 0.35
 			+ light * outer_edge * 0.25
-			+ light * speck * 0.06
+			+ light * speck * 0.06) * (1.0 - haze * 0.85)
 			+ vec3(1.0, 0.3, 0.3) * flash * 0.6;
-	ALPHA = clamp(mix(core_alpha, 1.0, fres) + inner_line * 0.25 + speck * 0.05, 0.0, 1.0) * body_color.a;
+	ALPHA = clamp(mix(core_alpha, 1.0, fres) + inner_line * 0.25 + speck * 0.05, 0.0, 1.0) * body_color.a * (1.0 - haze * 0.6);
 }

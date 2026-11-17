@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://2522ihys04y1"
-path="res://.godot/imported/cell.mitochondrion.glb-e0acd4ebbaf04119f895775989a359cf.scn"
+uid="uid://dbrwg8d2kyxib"
+path="res://.godot/imported/cell.slimegland.glb-069267b75901b526ef84f0f630eca16b.scn"
 
 [deps]
 
-source_file="res://assets/models/cell/cell.mitochondrion.glb"
-dest_files=["res://.godot/imported/cell.mitochondrion.glb-e0acd4ebbaf04119f895775989a359cf.scn"]
+source_file="res://assets/models/cell/cell.slimegland.glb"
+dest_files=["res://.godot/imported/cell.slimegland.glb-069267b75901b526ef84f0f630eca16b.scn"]
 
 [params]
 

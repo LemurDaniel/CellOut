@@ -71,7 +71,7 @@ public sealed class CellDesign
     //   Lean        Cost weighted diet lean of all parts, 0 without parts.
     //   Count        Number of parts of one kind.
     //   CopyFrom     Replaces every part with the parts of another design.
-    //   ForCritter   A random design for an NPC cell, parts by kind, more with the stage.
+    //   ForCritter   A random design for an NPC cell: a body form of its kind (CellForms), parts by kind, more with the stage.
     //   PlaceRandom  One part at a random spot that suits it.
     //
 
@@ -314,15 +314,17 @@ public sealed class CellDesign
 
     /*
       NPC cells carry the same parts as the player, picked by their kind:
-      - Bacterium:  a flagellum at the back, extras: chloroplast, filter mouth, cilia, vacuole, flagellum,
-                    mitochondrion, camouflage pigment
-      - Amoeba:     cilia, extras: vacuole, eyespot, filter mouth, armor plate, flagellum, cilia,
-                    pseudopod (twice), slime coat
-      - Hunter:     a spike in front, extras: jaw, toxin, spike, flagellum, eyespot, armor plate,
-                    nematocyst, sucker
+      - Bacterium:  a flagellum at the back, extras: light sail, filter mouth, cilia, jet nozzle, flagellum,
+                    chromatophores, slime gland
+      - Amoeba:     cilia, extras: jet nozzle, eyespot, filter mouth, armor plate, flagellum,
+                    pseudopod (twice), slime gland, toxin gland
+      - Hunter:     a spike in front, extras: jaw, toxin gland, spike, flagellum, eyespot, armor plate,
+                    nematocyst, sucker, electrocyte
       - Colony:     cilia (every cell of the cluster carries them), extras: spike, jaw, armor plate,
-                    flagellum, eyespot, spike, slime coat, nematocyst
+                    flagellum, eyespot, spike, slime gland, nematocyst, electrocyte
+      Every part brings its ability, the NPC cells use them like the player (Game/Abilities/).
       Extras: one per stage of the player (up to MAX_CRITTER_EXTRAS) plus a coin flip for one more.
+      Form: a base form of the kind, wobbled (Cell/CellForms.cs), set before the parts.
       Organisms carry no cell parts, their creature body counts.
     */
     /// <summary>A random design for an NPC cell, its parts work like the player's (CellStats).</summary>
@@ -339,12 +341,18 @@ public sealed class CellDesign
 
         (PartKind signature, PartKind[] extras) = kind switch
         {
-            CritterKind.Bacterium => (PartKind.Flagellum, new[] { PartKind.Chloroplast, PartKind.FilterMouth, PartKind.Cilia, PartKind.Vacuole, PartKind.Flagellum, PartKind.Mitochondrion, PartKind.Camouflage }),
-            CritterKind.Amoeba    => (PartKind.Cilia, new[] { PartKind.Vacuole, PartKind.Eyespot, PartKind.FilterMouth, PartKind.ArmorPlate, PartKind.Flagellum, PartKind.Cilia, PartKind.Pseudopod, PartKind.Pseudopod, PartKind.SlimeCoat }),
-            CritterKind.Hunter    => (PartKind.Spike, new[] { PartKind.Jaw, PartKind.Toxin, PartKind.Spike, PartKind.Flagellum, PartKind.Eyespot, PartKind.ArmorPlate, PartKind.Nematocyst, PartKind.Sucker }),
-            CritterKind.Colony    => (PartKind.Cilia, new[] { PartKind.Spike, PartKind.Jaw, PartKind.ArmorPlate, PartKind.Flagellum, PartKind.Eyespot, PartKind.Spike, PartKind.SlimeCoat, PartKind.Nematocyst }),
+            CritterKind.Bacterium => (PartKind.Flagellum, new[] { PartKind.LightSail, PartKind.FilterMouth, PartKind.Cilia, PartKind.JetNozzle, PartKind.Flagellum, PartKind.Chromatophore, PartKind.SlimeGland }),
+            CritterKind.Amoeba    => (PartKind.Cilia, new[] { PartKind.JetNozzle, PartKind.Eyespot, PartKind.FilterMouth, PartKind.ArmorPlate, PartKind.Flagellum, PartKind.Pseudopod, PartKind.Pseudopod, PartKind.SlimeGland, PartKind.ToxinGland }),
+            CritterKind.Hunter    => (PartKind.Spike, new[] { PartKind.Jaw, PartKind.ToxinGland, PartKind.Spike, PartKind.Flagellum, PartKind.Eyespot, PartKind.ArmorPlate, PartKind.Nematocyst, PartKind.Sucker, PartKind.Electrocyte }),
+            CritterKind.Colony    => (PartKind.Cilia, new[] { PartKind.Spike, PartKind.Jaw, PartKind.ArmorPlate, PartKind.Flagellum, PartKind.Eyespot, PartKind.Spike, PartKind.SlimeGland, PartKind.Nematocyst, PartKind.Electrocyte }),
             _ => throw new System.ArgumentOutOfRangeException(nameof(kind), $"kind must be a known CritterKind, got '{kind}'."),
         };
+
+        // A body form of its kind first, the parts then sit on that outline (Cell/CellForms.cs)
+        CellForm form = CellForms.For(kind, new System.Random(Rand.Index(int.MaxValue)));
+        design.SetShape(form.Shape);
+        design.SetHeights(form.Heights);
+
         design.PlaceRandom(signature);
         int count = Mathf.Min(stage, MAX_CRITTER_EXTRAS) + (Rand.Chance(0.5f) ? 1 : 0);
         for (int i = 0; i < count; i++)

@@ -82,10 +82,36 @@ public partial class CellBody : Node2D
     {
         Stunned = Mathf.Max(Stunned, seconds);
     }
+    // Abilities of the parts (Cell/Abilities/AbilitySet.cs), Game/Abilities/AbilityResolver.cs drives them
+    public AbilitySet Abilities { get; set; } = new();
+    public Vector2 Push { get; set; }         // shove of a dash, dodge, snap or blast, plane units per second, fades out
+    public float SlowFactor { get; set; } = 1f;    // share of the speed left in slime or poison, renewed every frame
+    public bool IsCloaked { get; set; }       // chromatophores: other cells barely notice it
+    public bool WasHit { get; set; }          // took damage since the abilities last looked (toxin gland)
+
+    /// <summary>Multiplier on the range other cells notice this one: a cloaked body is nearly invisible.</summary>
+    public float SenseFactor => IsCloaked ? CLOAK_SENSE : 1f;
+
+    private const float CLOAK_SENSE = 0.08f;
+
     public bool IsHidden { get; set; }        // not rendered at all, e.g. the player during the title menu
     public bool IsPartsOnly { get; set; }     // renders only the placed parts, no core cell (editor drag icon and ghost)
     public bool IsOnLand { get; set; }        // set by Main at the coast, creatures walk or crawl there
     public float GroundLift { get; set; }     // set by Main on land: the hill below the body, in world units
+    public float Depth { get; set; }          // world units below the plane: a giant in the background (Game/Deep/DeepKeeper.cs)
+    public float HeightScale { get; set; } = 1f;   // squashes the body upright, a deep giant fits between plane and sea floor
+    public float Fade { get; set; }           // 0 fully visible .. 1 gone, a deep giant is a faint shape in the water
+
+    private float _fadeInRate;                // Fade lost per second while fading in, 0 otherwise
+
+    /// <summary>Starts invisible and fades in, a cell spawned in sight never pops into view.</summary>
+    /// <param name="seconds">(Required) Time until it is fully visible.</param>
+    /// <example><code>critter.FadeIn(1.2f);</code></example>
+    public void FadeIn(float seconds)
+    {
+        Fade        = 1f;
+        _fadeInRate = 1f / Mathf.Max(seconds, 0.001f);
+    }
     public Vector2 EngulfPoint { get; set; }  // prey being swallowed, on the plane (Main, ENGULF)
     public float EngulfReach { get; set; }    // 0 smooth membrane .. 1 pseudopods fully around the prey
 
@@ -178,6 +204,11 @@ public partial class CellBody : Node2D
         float dt = (float)delta;
         HurtFlash = Mathf.Max(0f, HurtFlash - dt * HURT_FLASH_DECAY);
         Stunned   = Mathf.Max(0f, Stunned - dt);
+        if (_fadeInRate > 0f)
+        {
+            Fade        = Mathf.Max(0f, Fade - dt * _fadeInRate);
+            _fadeInRate = Fade > 0f ? _fadeInRate : 0f;
+        }
         if (Velocity.LengthSquared() > 4f)
         {
             Facing = Mathf.LerpAngle(Facing, Velocity.Angle(), Mathf.Clamp(dt * FACING_SPEED, 0f, 1f));

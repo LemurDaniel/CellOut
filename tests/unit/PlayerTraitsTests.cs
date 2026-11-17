@@ -77,7 +77,7 @@ public class PlayerTraitsTests
 
         Assert.True(traits.HasThorns);
         Assert.True(traits.ContactDamage(0f) > 0f);
-        Assert.Equal(CellStats.ContactDamage(cell.SpikeAngles, cell.JawAngles, cell.Toxin, 0f), traits.ContactDamage(0f));
+        Assert.Equal(CellStats.ContactDamage(cell.SpikeAngles, cell.JawAngles, 1f, 0f), traits.ContactDamage(0f));
         Assert.Equal(0f, traits.ContactDamage(Mathf.Pi));
     }
 
@@ -96,6 +96,6 @@ public class PlayerTraitsTests
         Assert.Equal(2 + stats.EpPerLevelBonus, traits.EpPerLevel);
         Assert.Equal(1.6f + stats.MagnetBonus, traits.MagnetRange, PRECISION);
         Assert.Equal(1f, traits.DigestAll);
-        Assert.Equal(1f, traits.Cell.Regen);
+        Assert.Equal(0f, traits.Cell.Photosynthesis);
     }
 }
