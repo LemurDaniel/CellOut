@@ -731,7 +731,7 @@ public partial class Main : Node2D
             case CheatTarget.Organism:
                 CheatTo(CheatTarget.FullCluster);
                 CloseCheatEditors();
-                StartEvolve();
+                StartEvolve(isInstant: true);       // jumps skip the evolve cutscene too, the creature editor opens right away
                 return;
             case CheatTarget.Coast:
                 if (!Player.IsOrganism)

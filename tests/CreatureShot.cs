@@ -38,6 +38,7 @@ public partial class CreatureShot : Node
 
     public override void _Ready()
     {
+        TestFiles.KeepAwayFromPlayer();
         string key = OS.GetEnvironment("CELLOUT_SHOT_TEMPLATE");
         // Only the file of this template is read: a broken file of another animal must not stop the shot
         string file = $"{CreatureTemplates.FOLDER_PATH}/{key.ToLowerInvariant()}.json";

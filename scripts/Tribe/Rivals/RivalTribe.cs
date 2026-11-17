@@ -193,16 +193,18 @@ public partial class RivalTribe : Node2D
         {
             return;
         }
-        PutUp(BuildingKind.Hall, Fire);
+        PutUp(BuildingKind.Hall, Fire, isSqueezed: true);
         Nest.GiveWayToHall();
         Log.Verbose("RivalTribe", $"Faction {Faction} raised its headquarters at {Fire}.");
     }
 
-    /// <summary>A building of a function from a random template at a spot: leveled ground, it blocks the way.</summary>
-    private void PutUp(BuildingKind kind, Vector2 spot)
+    /// <summary>A building of a function from a random template at a spot: leveled ground, it blocks the way; squeezed it shrinks to fit between the others.</summary>
+    private void PutUp(BuildingKind kind, Vector2 spot, bool isSqueezed = false)
     {
-        var hut = new Hut { Position = spot, Size = _coast.Unit * Hut.SCALE, GroundHeight = _coast.GroundHeight(spot) * _size };
-        hut.Setup(BuildingTemplates.Build(kind, Rand.Index(BuildingTemplates.Count(kind))), Faction);
+        BuildingDesign design = BuildingTemplates.Build(kind, Rand.Index(BuildingTemplates.Count(kind)));
+        float          share  = isSqueezed ? Hut.FitShare(design, _coast.Unit * Hut.SCALE, spot, _huts, _coast.Unit) : 1f;
+        var hut = new Hut { Position = spot, Size = _coast.Unit * Hut.SCALE * share, GroundHeight = _coast.GroundHeight(spot) * _size };
+        hut.Setup(design, Faction);
         _coast.AddPad(spot, hut.FoundationRadius);
         hut.Destroyed += () => _huts.Remove(hut);
         hut.BlockOn(_coast);
@@ -256,6 +258,7 @@ public partial class RivalTribe : Node2D
     //   SpawnKin      One grown kin of the tribe at a spot with a role.
     //   SendTrader    A trader walks from the entry point to the player's fire.
     //   SendRaiders   Raiders walk from the entry point towards the player's village.
+    //   ForgetGone    Drops animals freed since the last frame from Kin.
     //   Update        Steers every kin, frees the ones that left, keeps fire, huts and a landed ship in place.
     //   HasShips      The tribe sails (from the player's city on): its people land by ship.
     //   LandShip      A ship off the entry while traders or raiders from over the sea are ashore.
@@ -311,6 +314,12 @@ public partial class RivalTribe : Node2D
     /// <summary>One physics frame of the tribe.</summary>
     /// <param name="dt">(Required) Frame time in seconds.</param>
     /// <param name="playerSize">(Required) Player.BodySize(), the ground scales with it.</param>
+    /// <summary>Forgets the animals that are gone (freed at the end of the last frame), before anyone reads Kin this frame.</summary>
+    public void ForgetGone()
+    {
+        _kin.RemoveAll(kin => !IsInstanceValid(kin));
+    }
+
     public void Update(float dt, float playerSize)
     {
         _kin.RemoveAll(kin => !IsInstanceValid(kin) || kin.IsQueuedForDeletion());

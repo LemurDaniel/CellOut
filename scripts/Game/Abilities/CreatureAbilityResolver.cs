@@ -245,6 +245,10 @@ public partial class CreatureAbilityResolver : Node
         Player.Heal(tune.Power);
         foreach (Kin kin in _pack.Kin)
         {
+            if (!GodotObject.IsInstanceValid(kin))
+            {
+                continue;       // freed since the last physics frame, read here outside of it
+            }
             if (KinMode.Wild != kin.Mode && kin.GlobalPosition.DistanceTo(Player.GlobalPosition) <= size * tune.Reach)
             {
                 kin.Heal(kin.MaxHp * tune.Power);
@@ -356,6 +360,10 @@ public partial class CreatureAbilityResolver : Node
         {
             foreach (Kin kin in rival.Kin)
             {
+                if (!GodotObject.IsInstanceValid(kin))
+                {
+                    continue;       // freed since the last physics frame, read here outside of it
+                }
                 if (!kin.IsQueuedForDeletion() && kin.GlobalPosition.DistanceTo(center) - kin.Radius <= range)
                 {
                     strangers.Add(kin);

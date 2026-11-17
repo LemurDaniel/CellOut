@@ -41,11 +41,11 @@ public partial class BuildingPalette : VBoxContainer
     public event Action HoverChanged;
 
     private const int WIDTH = 288;
-    private const int GROUP_COLUMNS = 3;
-    private const int GROUP_ICON_PIXELS = 60;
-    private const int TILE_HEIGHT = 86;              // six group icons and three tiles fit a 720 pixel screen
+    private const int GROUP_COLUMNS = 4;             // seven groups in two rows: the tiles below still fit a 720 pixel screen
+    private const int GROUP_ICON_PIXELS = 50;
+    private const int TILE_HEIGHT = 86;              // two rows of group icons and three tiles fit a 720 pixel screen
     private const int TILE_ICON_PIXELS = 78;
-    private static readonly Vector2 GROUP_SIZE = new(88, 68);
+    private static readonly Vector2 GROUP_SIZE = new(66, 62);
     private static readonly Color ACCENT = new(0.8f, 0.6f, 0.4f);
     private static readonly Color GROUP_ACCENT = new(0.6f, 0.7f, 0.9f);
 
@@ -66,7 +66,7 @@ public partial class BuildingPalette : VBoxContainer
 
         // Group icons: the first block of each group stands for it
         var groups = new GridContainer { Columns = GROUP_COLUMNS };
-        groups.AddThemeConstantOverride("h_separation", 12);
+        groups.AddThemeConstantOverride("h_separation", 8);
         groups.AddThemeConstantOverride("v_separation", 8);
         AddChild(groups);
         foreach (BlockGroup group in Enum.GetValues<BlockGroup>())

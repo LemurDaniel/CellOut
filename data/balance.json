@@ -363,7 +363,7 @@
       "tradeWood": 3,
       "raidInterval": 60,
       "raiders": 3,
-      "raidDamage": 5,
+      "raidDamage": 1.5,
       "defenseScale": 40,
       "raidSeconds": 25,
       "relationPerTrade": 0.08,

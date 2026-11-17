@@ -51,6 +51,7 @@ public partial class CutsceneReel : Node
 
     public override void _Ready()
     {
+        TestFiles.KeepAwayFromPlayer();
         ProcessMode = ProcessModeEnum.Always;
         _main = GD.Load<PackedScene>("res://scenes/main.tscn").Instantiate<Main>();
         GetTree().Root.CallDeferred(Node.MethodName.AddChild, _main);

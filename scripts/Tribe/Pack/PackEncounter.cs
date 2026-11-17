@@ -205,8 +205,12 @@ public partial class PackEncounter : Node
             }
             foreach (Kin animal in rival.Kin)
             {
+                if (!IsInstanceValid(animal) || animal.IsQueuedForDeletion())
+                {
+                    continue;
+                }
                 float d = animal.GlobalPosition.DistanceTo(Player.GlobalPosition) - animal.Radius;
-                if (!animal.IsQueuedForDeletion() && d < distance)
+                if (d < distance)
                 {
                     closest  = animal;
                     pack     = rival;
@@ -282,6 +286,10 @@ public partial class PackEncounter : Node
         var   theirs = new List<Kin>();
         foreach (Kin other in pack.Kin)
         {
+            if (!GodotObject.IsInstanceValid(other))
+            {
+                continue;       // freed since the last physics frame, read here outside of it
+            }
             if (other.GlobalPosition.DistanceTo(animal.GlobalPosition) <= range)
             {
                 theirs.Add(other);
@@ -335,6 +343,10 @@ public partial class PackEncounter : Node
         }
         foreach (Kin other in pack.Kin)
         {
+            if (!GodotObject.IsInstanceValid(other))
+            {
+                continue;       // freed since the last physics frame, read here outside of it
+            }
             if (other.GlobalPosition.DistanceTo(animal.GlobalPosition) <= size * Tune.DisplayRange)
             {
                 other.OrderAttack(Player);
@@ -392,6 +404,10 @@ public partial class PackEncounter : Node
         var members = new List<Kin>();
         foreach (Kin kin in _pack.Kin)
         {
+            if (!GodotObject.IsInstanceValid(kin))
+            {
+                continue;       // freed since the last physics frame, read here outside of it
+            }
             if (KinMode.Wild != kin.Mode && !kin.IsPup && !kin.IsQueuedForDeletion() && kin.GlobalPosition.DistanceTo(point) <= range)
             {
                 members.Add(kin);

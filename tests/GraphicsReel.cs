@@ -21,6 +21,8 @@
 //   $env:CELLOUT_REEL_SAIL = '1'      # optional, with CELLOUT_REEL_CIV: instead of the tech tree the chieftain stands in the sea with its retinue: the ship (last frame)
 //   (CELLOUT_REEL_WIDE = '1' with CELLOUT_REEL_CIV: the chieftain looks at the headquarters from afar, zoomed out, no HUD)
 //   $env:CELLOUT_REEL_LANDING = '1'   # optional, with CELLOUT_REEL_CIV: raiders from over the sea land by ship, the chieftain watches from the shore
+//   $env:CELLOUT_REEL_HALL = '1'      # optional, with CELLOUT_REEL_CIV: instead of the tech tree the builder shows the headquarters with the antique blocks
+//   $env:CELLOUT_REEL_VISIT = '1'     # optional, with CELLOUT_REEL_CIV: instead of the tech tree the chieftain visits a neighbor over the sea
 //   $env:CELLOUT_REEL_WIDE = '1'      # optional, while rushing: the camera zooms all the way out and the HUD hides, for looking at the scenery
 //   $env:CELLOUT_REEL_MAP = '1'       # optional: the tribe opens the world map (rushing: still 198)
 //   $env:CELLOUT_REEL_MENU = '1'      # optional: the tribe opens the build menu (rushing: still 198)
@@ -84,6 +86,8 @@ public partial class GraphicsReel : Node
     private static readonly bool IS_SHOWING_CIV = "1" == OS.GetEnvironment("CELLOUT_REEL_CIV");
     private static readonly bool IS_SAILING = "1" == OS.GetEnvironment("CELLOUT_REEL_SAIL");
     private static readonly bool IS_LANDING = "1" == OS.GetEnvironment("CELLOUT_REEL_LANDING");
+    private static readonly bool IS_SHOWING_HALL = "1" == OS.GetEnvironment("CELLOUT_REEL_HALL");
+    private static readonly bool IS_VISITING = "1" == OS.GetEnvironment("CELLOUT_REEL_VISIT");
     private static readonly StartPhase? START_PHASE = System.Enum.TryParse(OS.GetEnvironment("CELLOUT_REEL_PHASE"), true, out StartPhase phase) ? phase : null;
     private static readonly string TEMPLATE_KEY = OS.GetEnvironment("CELLOUT_REEL_TEMPLATE");
     private static readonly bool IS_SHOWING_ABILITIES = "1" == OS.GetEnvironment("CELLOUT_REEL_ABILITIES");
@@ -100,6 +104,7 @@ public partial class GraphicsReel : Node
 
     public override void _Ready()
     {
+        TestFiles.KeepAwayFromPlayer();
         ProcessMode = ProcessModeEnum.Always;
         if (!string.IsNullOrEmpty(GALAXY_PLANET))
         {
@@ -506,6 +511,23 @@ public partial class GraphicsReel : Node
                 {
                     _main.Civ.Research(kind);
                 }
+                break;
+            case CITY_TREE when IS_VISITING:
+                // A neighbor over the sea: the chieftain stands in front of its headquarters
+                RivalTribe far = _main.Rivals.Rivals.FirstOrDefault(rival => rival.IsSettled && !rival.Entry.IsEqualApprox(rival.Fire));
+                if (null != far)
+                {
+                    Hut farHall = far.Huts.FirstOrDefault(hut => BuildingKind.Hall == hut.Design.Kind);
+                    float back  = (null == farHall ? 0f : farHall.BlockRadius) + _main.Player.BodySize() * 6f;
+                    _main.Player.GlobalPosition = far.Fire + Vector2.Right.Rotated(2.4f) * back;
+                    _main.Player.Facing = (far.Fire - _main.Player.GlobalPosition).Angle();
+                }
+                break;
+            case CITY_TREE when IS_SHOWING_HALL:
+                // The builder on the headquarters, the antique blocks picked
+                _main.OpenBuildingEditor();
+                _main.BuildingEditor.Session.ShowKind(BuildingKind.Hall);
+                _main.BuildingEditor.Session.ShowGroup(BlockGroup.Antique);
                 break;
             case CITY_TREE when !IS_SAILING:
                 _main.TechTree.Toggle();

@@ -211,6 +211,10 @@ public partial class WorldMap : Control
         }
         foreach (Kin kin in _pack.Kin)
         {
+            if (!GodotObject.IsInstanceValid(kin))
+            {
+                continue;       // freed since the last physics frame, read here outside of it
+            }
             if (KinMode.Wild != kin.Mode && !kin.IsQueuedForDeletion())
             {
                 DrawCircle(ToMap(kin.Position), dot * 0.55f, _session.Player.BodyColor);

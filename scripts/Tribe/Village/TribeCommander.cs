@@ -159,6 +159,10 @@ public partial class TribeCommander : Node3D
         var villagers = new List<Kin>();
         foreach (Kin kin in _pack.Kin)
         {
+            if (!GodotObject.IsInstanceValid(kin))
+            {
+                continue;       // freed since the last physics frame, read here outside of it
+            }
             if (KinMode.Villager == kin.Mode && !kin.IsQueuedForDeletion())
             {
                 villagers.Add(kin);
@@ -312,6 +316,7 @@ public partial class TribeCommander : Node3D
     }
 
     private const int HUT_TRIES = 12;
+    private const float WALL_SHARE = 0.5f;           // share of BuildSpacing a new building keeps to the walls of a big one
     private const float SECONDS_PER_MINUTE = 60f;
 
     private float _farmFood;                         // food of the fields not yet whole
@@ -322,7 +327,7 @@ public partial class TribeCommander : Node3D
       A building may stand where all of this holds:
       > The tribe exists and the spot is on land.
       > It lies within BuildRadius of the fire, but not on the fire itself.
-      > It keeps BuildSpacing to every standing building.
+      > It keeps BuildSpacing to every standing building, and half of it to the walls of a big one.
     */
     /// <summary>Whether a building may stand at a spot: on land, within BuildRadius of the fire, BuildSpacing clear of the fire and of other buildings.</summary>
     /// <param name="spot">(Required) Plane point of its center.</param>
@@ -340,7 +345,9 @@ public partial class TribeCommander : Node3D
         }
         foreach (Hut hut in _huts)
         {
-            if (!hut.IsQueuedForDeletion() && hut.Position.DistanceTo(spot) < Tune.BuildSpacing * unit)
+            // Clear of its middle and of its walls: a big headquarters reaches further than the spacing
+            float clear = Mathf.Max(Tune.BuildSpacing * unit, hut.BlockRadius + Tune.BuildSpacing * unit * WALL_SHARE);
+            if (!hut.IsQueuedForDeletion() && hut.Position.DistanceTo(spot) < clear)
             {
                 return false;
             }
@@ -374,7 +381,8 @@ public partial class TribeCommander : Node3D
         {
             return false;
         }
-        PutUp(design, _pack.Nest.Position, turn: 0f);
+        float share = Hut.FitShare(design, Coast.Unit * Hut.SCALE, _pack.Nest.Position, _huts, Coast.Unit);     // squeezed between the buildings around the old fire
+        PutUp(design, _pack.Nest.Position, turn: 0f, share);
         _pack.Nest.GiveWayToHall();
         return true;
     }
@@ -385,9 +393,9 @@ public partial class TribeCommander : Node3D
     public bool HasHall => null != Hall;
 
     /// <summary>A paid building goes up: on a flat foundation at the height of its middle, where the preview stood.</summary>
-    private Hut PutUp(BuildingDesign design, Vector2 spot, float? turn)
+    private Hut PutUp(BuildingDesign design, Vector2 spot, float? turn, float share = 1f)
     {
-        var hut = new Hut { Position = spot, Size = Coast.Unit * Hut.SCALE, GroundHeight = Coast.GroundHeight(spot) * Player.BodySize(), Turn = turn };
+        var hut = new Hut { Position = spot, Size = Coast.Unit * Hut.SCALE * share, GroundHeight = Coast.GroundHeight(spot) * Player.BodySize(), Turn = turn };
         hut.Setup(design, faction: 0);
         Coast.AddPad(spot, hut.FoundationRadius);
         hut.Destroyed += () => EmitSignal(SignalName.Changed);
@@ -457,11 +465,14 @@ public partial class TribeCommander : Node3D
             BuildingDesign loaded = SaveData.ToBuilding(design);
             DesignOf(loaded.Kind).CopyFrom(loaded);
         }
-        foreach (SaveHut saved in save.Huts)
+        // The headquarters last: it is squeezed between the others as when it was built
+        foreach (SaveHut saved in save.Huts.OrderBy(saved => SaveData.ToBuilding(saved.Design).Kind == BuildingKind.Hall ? 1 : 0))
         {
-            Vector2 spot = SaveData.ToVector2(saved.Position);
-            var     hut  = new Hut { Position = spot, Size = Coast.Unit * Hut.SCALE, GroundHeight = Coast.GroundHeight(spot) * Player.BodySize(), Turn = saved.Turn };
-            hut.Setup(SaveData.ToBuilding(saved.Design), faction: 0);
+            Vector2        spot   = SaveData.ToVector2(saved.Position);
+            BuildingDesign design = SaveData.ToBuilding(saved.Design);
+            float          share  = BuildingKind.Hall == design.Kind ? Hut.FitShare(design, Coast.Unit * Hut.SCALE, spot, _huts, Coast.Unit) : 1f;
+            var            hut    = new Hut { Position = spot, Size = Coast.Unit * Hut.SCALE * share, GroundHeight = Coast.GroundHeight(spot) * Player.BodySize(), Turn = saved.Turn };
+            hut.Setup(design, faction: 0);
             hut.BlockOn(Coast);
             hut.Destroyed += () => EmitSignal(SignalName.Changed);
             _huts.Add(hut);

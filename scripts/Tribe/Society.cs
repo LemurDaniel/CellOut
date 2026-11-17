@@ -214,6 +214,7 @@ public partial class Society : Node
     /// <param name="dt">(Required) Frame time in seconds.</param>
     public void Update(float dt)
     {
+        Rivals.ForgetGone();      // animals freed at the end of the last frame, before the encounter looks at them
         Pack.Update(dt);
         Encounter.Update(dt);
         Tribe.Update(dt);

@@ -110,7 +110,7 @@ public partial class PackKeeper : Node2D
             int count = 0;
             foreach (Kin kin in _kin)
             {
-                if (KinMode.Wild != kin.Mode)
+                if (KinMode.Wild != kin.Mode && IsInstanceValid(kin))
                 {
                     count++;
                 }
@@ -478,7 +478,7 @@ public partial class PackKeeper : Node2D
             int count = 0;
             foreach (Kin kin in _kin)
             {
-                count += KinMode.Following == kin.Mode && !kin.IsPup ? 1 : 0;
+                count += KinMode.Following == kin.Mode && !kin.IsPup && IsInstanceValid(kin) ? 1 : 0;
             }
             return count;
         }
@@ -615,7 +615,7 @@ public partial class PackKeeper : Node2D
             Nest        = null == Nest ? null : SaveData.Of(Nest.Position),
             NestBiomass = NestBiomass,
             IsStaying   = IsStaying,
-            Kin         = _kin.Where(kin => KinMode.Wild != kin.Mode).Select(kin => new SaveKin(SaveData.Of(kin.Position), kin.Mode.ToString(), kin.IsPup)).ToList(),
+            Kin         = _kin.Where(kin => IsInstanceValid(kin) && !kin.IsQueuedForDeletion() && KinMode.Wild != kin.Mode).Select(kin => new SaveKin(SaveData.Of(kin.Position), kin.Mode.ToString(), kin.IsPup)).ToList(),
         };
     }
 

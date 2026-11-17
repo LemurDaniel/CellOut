@@ -98,62 +98,106 @@ public partial class CoastSurface : Node3D
     }
 
     /*
-      Rings at a land depth d (in Unit), from the deep in to the middle: coarse in the deep,
-      every 0.5 Unit around the shore, coarser on the meadow, then one center vertex. A ring
-      vertex lies at IslandShape.Radius(angle) - d from the center, so the rings follow the
-      outline. Heights from GroundHeight (all islands), so overlapping skirts of two
-      islands agree. Winding: inwards x around gives an upward normal (drawn two sided).
+      Rings from the deep in to the middle, heights from GroundHeight (all islands), so
+      overlapping skirts of two islands agree:
+        > Depth rings   at a land depth d (in Unit): coarse in the deep, every 0.5 Unit around
+                        the shore, MEADOW_ROW on the meadow. A vertex lies at
+                        IslandShape.Radius(angle) - d, so the rings follow the outline. They stop
+                        where the narrowest side of the outline would turn inside out.
+        > Core rings    shrink the last depth ring towards the middle, MEADOW_ROW apart, with
+                        fewer columns the smaller they get (SEGMENT_LENGTH apart), then the middle.
+                        Without them the middle of the island (village, hills) was one fan of
+                        triangles and bodies, grass and foundations stood off its surface.
+      Neighboring rings with different column counts are zipped by angle (Stitch).
+      Winding: inwards x around gives an upward normal (drawn two sided).
     */
     private ArrayMesh BuildGround(Coast.Island island)
     {
         float unit  = _terrain.Unit;
         float inner = island.Radius * (2f - IslandShape.MAX_BULGE) / unit * 0.9f;
-        var   rows  = new List<float>();
-        for (float d = -30f; d < -16f; d += 2f) rows.Add(d);
-        for (float d = -16f; d < Mathf.Min(16f, inner); d += 0.5f) rows.Add(d);
-        for (float d = 16f; d < inner; d += MEADOW_ROW) rows.Add(d);
+        var   depths = new List<float>();
+        for (float d = -30f; d < -16f; d += 2f) depths.Add(d);
+        for (float d = -16f; d < Mathf.Min(16f, inner); d += 0.5f) depths.Add(d);
+        for (float d = 16f; d < inner; d += MEADOW_ROW) depths.Add(d);
+        float lastDepth = depths[^1];
 
         // Columns by the circumference of the bulging outline, so the shore and the hills stay smooth on big islands
         int segments = Mathf.Clamp(Mathf.CeilToInt(Mathf.Tau * island.Radius * IslandShape.MAX_BULGE / (SEGMENT_LENGTH * unit) / 64f) * 64, MIN_SEGMENTS, MAX_SEGMENTS);
+
+        // Rings as (share of the last depth ring or -1 for a depth ring, depth, columns)
+        var rings = new List<(float Share, float Depth, int Columns)>();
+        foreach (float d in depths)
+        {
+            rings.Add((-1f, d, segments));
+        }
+        float coreReach = island.Radius * IslandShape.MAX_BULGE - lastDepth * unit;
+        int   coreRings = Mathf.CeilToInt(coreReach / (MEADOW_ROW * unit));
+        for (int k = coreRings - 1; k >= 1; k--)
+        {
+            float share   = (float)k / coreRings;
+            int   columns = Mathf.Clamp(Mathf.CeilToInt(Mathf.Tau * coreReach * share / (SEGMENT_LENGTH * unit)), 8, segments);
+            rings.Add((share, lastDepth, columns));
+        }
+
         var surface = new SurfaceTool();
         surface.Begin(Mesh.PrimitiveType.Triangles);
-        foreach (float d in rows)
+        var starts = new List<int>();
+        int count  = 0;
+        foreach ((float share, float depth, int columns) in rings)
         {
-            for (int j = 0; j < segments; j++)
+            starts.Add(count);
+            for (int j = 0; j < columns; j++)
             {
-                float   angle  = j * Mathf.Tau / segments;
-                Vector2 local  = Vector2.FromAngle(angle) * (IslandShape.Radius(island, angle) - d * unit);
+                float   angle  = j * Mathf.Tau / columns;
+                float   reach  = IslandShape.Radius(island, angle) - depth * unit;
+                Vector2 local  = Vector2.FromAngle(angle) * (share < 0f ? reach : reach * share);
                 surface.AddVertex(Plane3D.To3D(local, _terrain.GroundHeight(island.Center + local)));
             }
+            count += columns;
         }
-        int center = rows.Count * segments;
+        int center = count;
         surface.AddVertex(Plane3D.To3D(Vector2.Zero, _terrain.GroundHeight(island.Center)));
 
-        for (int i = 0; i < rows.Count; i++)
+        for (int i = 0; i < rings.Count - 1; i++)
         {
-            for (int j = 0; j < segments; j++)
-            {
-                int a = i * segments + j;
-                int b = i * segments + (j + 1) % segments;
-                if (i == rows.Count - 1)
-                {
-                    surface.AddIndex(a);
-                    surface.AddIndex(b);
-                    surface.AddIndex(center);
-                    continue;
-                }
-                int c = a + segments;
-                int e = b + segments;
-                surface.AddIndex(a);
-                surface.AddIndex(b);
-                surface.AddIndex(c);
-                surface.AddIndex(b);
-                surface.AddIndex(e);
-                surface.AddIndex(c);
-            }
+            Stitch(surface, starts[i], rings[i].Columns, starts[i + 1], rings[i + 1].Columns);
+        }
+        int last = rings.Count - 1;
+        for (int j = 0; j < rings[last].Columns; j++)
+        {
+            surface.AddIndex(starts[last] + j);
+            surface.AddIndex(starts[last] + (j + 1) % rings[last].Columns);
+            surface.AddIndex(center);
         }
         surface.GenerateNormals();
         return surface.Commit();
+    }
+
+    /// <summary>Zips an outer ring to the next inner one by angle, both start at angle 0 and go around evenly.</summary>
+    private static void Stitch(SurfaceTool surface, int outer, int outerCount, int inner, int innerCount)
+    {
+        int i = 0;
+        int k = 0;
+        while (i < outerCount || k < innerCount)
+        {
+            // Advance on the ring whose next column comes first around the circle
+            float nextOuter = (i + 1f) / outerCount;
+            float nextInner = (k + 1f) / innerCount;
+            int   a = outer + i % outerCount;
+            int   c = inner + k % innerCount;
+            if (k >= innerCount || (i < outerCount && nextOuter <= nextInner))
+            {
+                surface.AddIndex(a);
+                surface.AddIndex(outer + (i + 1) % outerCount);
+                surface.AddIndex(c);
+                i++;
+                continue;
+            }
+            surface.AddIndex(a);
+            surface.AddIndex(inner + (k + 1) % innerCount);
+            surface.AddIndex(c);
+            k++;
+        }
     }
 
     // ===========================================================================

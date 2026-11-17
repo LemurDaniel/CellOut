@@ -671,6 +671,7 @@ public partial class RivalKeeper : Node2D
     // ===========================================================================
     //
     //   BuildHalls  The civilization reaches the neighbors: a headquarters on every fire.
+    //   ForgetGone  Every neighbor drops its freed animals, first in a frame.
     //   Save      Relation, respect and defeat of every neighbor in order.
     //   Restore   The neighbors of a save: the packs settle around the nest again (new dens),
     //             from the tribe on they become tribes, then every one takes its saved standing;
@@ -681,6 +682,15 @@ public partial class RivalKeeper : Node2D
     public List<SaveRival> Save()
     {
         return _rivals.Select(rival => new SaveRival(rival.Relation, rival.Respect, rival.IsDefeated)).ToList();
+    }
+
+    /// <summary>Every neighbor forgets its animals that were freed since the last frame; Society calls it first in a frame.</summary>
+    public void ForgetGone()
+    {
+        foreach (RivalTribe rival in _rivals)
+        {
+            rival.ForgetGone();
+        }
     }
 
     /// <summary>The player founded the city: every settled neighbor raises its own headquarters on its fire and sails from now on.</summary>

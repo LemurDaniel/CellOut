@@ -151,6 +151,7 @@ public partial class PlanetView : Control
     private const float GLOBE_SIZE = 105f;
     private static readonly Vector2 GLOBE_CENTER = new(0.28f, 0.5f);   // middle of the left part (AnchorRight 0.56), share of the screen
     private const float PANEL_WIDTH = 470f;
+    private const int PHASE_COLUMNS = 3;             // nine phases in three rows: the panel stays clear of the settings buttons
     private const float GLOBE_SHARE = 0.8f;          // shaders/planet_globe.gdshader radius: the globe fills this much of its rect
     private static readonly Color START_ACCENT = new(0.55f, 0.85f, 0.95f);
     private static readonly Color PHASE_ACCENT = new(0.75f, 0.7f, 0.95f);
@@ -217,7 +218,7 @@ public partial class PlanetView : Control
 
         _phaseTitle = NewLabel(20);
         column.AddChild(_phaseTitle);
-        var grid = new GridContainer { Columns = 2 };
+        var grid = new GridContainer { Columns = PHASE_COLUMNS };
         grid.AddThemeConstantOverride("h_separation", 8);
         grid.AddThemeConstantOverride("v_separation", 8);
         column.AddChild(grid);
@@ -255,7 +256,7 @@ public partial class PlanetView : Control
     {
         var button = new Button
         {
-            CustomMinimumSize = new Vector2((PANEL_WIDTH - 58f) * 0.5f, 40),
+            CustomMinimumSize = new Vector2((PANEL_WIDTH - 66f) / PHASE_COLUMNS, 40),
             FocusMode         = FocusModeEnum.None,
             ToggleMode        = true,
             AutoTranslateMode = AutoTranslateModeEnum.Disabled,
@@ -270,10 +271,11 @@ public partial class PlanetView : Control
             {
                 return;
             }
-            var at    = new Vector2(button.Size.X - 22f, button.Size.Y * 0.5f);
+            // A small badge in the top right corner, clear of the centered name
+            var at    = new Vector2(button.Size.X - 9f, 10f);
             var color = new Color(1f, 1f, 1f, 0.55f);
-            button.DrawArc(at + new Vector2(0f, -3f), 5f, Mathf.Pi, Mathf.Tau, 10, color, 2f, true);
-            button.DrawRect(new Rect2(at + new Vector2(-7f, -3f), new Vector2(14f, 10f)), color);
+            button.DrawArc(at + new Vector2(0f, -1f), 3f, Mathf.Pi, Mathf.Tau, 8, color, 1.5f, true);
+            button.DrawRect(new Rect2(at + new Vector2(-4.5f, -1f), new Vector2(9f, 6.5f)), color);
         };
         _phaseButtons.Add(button);
         return button;

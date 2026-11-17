@@ -39,6 +39,7 @@ public partial class Hut : Node2D
     //   FoundationRadius   World units of flat ground it needs (Coast.AddPad).
     //   BlockRadius / ContactRadius   Nobody walks through it; how close counts as at it.
     //   BlockOn         Registers it as an obstacle on the coast.
+    //   FitShare        How much of its size a new building may have between the others.
     //   Destroyed       Zero health: the hut is gone, its keeper forgets it.
     //   Setup           Blueprint and faction, before AddChild.
     //   Raise           Counts down to the next villager, true when one is born.
@@ -78,6 +79,30 @@ public partial class Hut : Node2D
 
     /// <summary>World units from the middle a body counts as at the building: raiders hurt it, razers tear it down, from there.</summary>
     public float ContactRadius => Mathf.Max(BlockRadius, Size * RADIUS) * CONTACT_REACH;
+
+    private const float FIT_MIN = 0.55f;             // a building squeezed between others shrinks to at most this share
+    private const float FIT_GAP = 0.5f;              // world units it keeps to the walls of its neighbors, in coast units
+
+    /// <summary>The share of its full size a new building may have so its walls stay clear of the buildings around (the headquarters on the old fire).</summary>
+    /// <param name="design">(Required) The blueprint of the new building.</param>
+    /// <param name="size">(Required) Its full Size (coast unit times SCALE).</param>
+    /// <param name="spot">(Required) Plane point of its middle.</param>
+    /// <param name="others">(Required) The buildings standing around.</param>
+    /// <param name="unit">(Required) World units of one coast unit.</param>
+    /// <returns>1 when it fits, down to FIT_MIN.</returns>
+    public static float FitShare(BuildingDesign design, float size, Vector2 spot, IEnumerable<Hut> others, float unit)
+    {
+        float full = Mathf.Max(design.FootprintRadius, MIN_FOOTPRINT) * BuildingVisual3D.CELL * BLOCK_SHARE * size;
+        float room = float.MaxValue;
+        foreach (Hut other in others)
+        {
+            if (IsInstanceValid(other) && !other.IsQueuedForDeletion())
+            {
+                room = Mathf.Min(room, other.Position.DistanceTo(spot) - other.BlockRadius - FIT_GAP * unit);
+            }
+        }
+        return Mathf.Clamp(room / Mathf.Max(full, 0.001f), FIT_MIN, 1f);
+    }
 
     /// <summary>Blocks the way on the coast from now on, until the building is gone.</summary>
     /// <param name="coast">(Required) The coast its keeper builds on.</param>
