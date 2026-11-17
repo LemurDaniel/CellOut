@@ -190,7 +190,14 @@ public sealed record SaveSociety
 {
     public SavePack Pack { get; init; }
     public SaveTribe Tribe { get; init; }
+    public SaveCiv Civ { get; init; }                 // from the civilization on
     public List<SaveRival> Rivals { get; init; } = new();
+}
+
+public sealed record SaveCiv
+{
+    public float Knowledge { get; init; }
+    public List<string> Techs { get; init; } = new();
 }
 
 public sealed record SavePack

@@ -58,7 +58,7 @@ public partial class PhaseStart : Node
             return;
         }
         CheatTarget target = _target.Value;
-        bool needsCreature = target is CheatTarget.LandAnimal or CheatTarget.Pack or CheatTarget.Tribe;
+        bool needsCreature = target is CheatTarget.LandAnimal or CheatTarget.Pack or CheatTarget.Tribe or CheatTarget.Civilization;
         if (needsCreature && !Main.Player.IsOrganism)
         {
             Main.CheatTo(CheatTarget.Organism);

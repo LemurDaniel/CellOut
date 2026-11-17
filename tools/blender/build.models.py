@@ -71,9 +71,12 @@ import models.trees
 import models.plants
 import models.village
 import models.buildings
+import models.antique
+import models.ships
+import models.city
 
 # Inside a running Blender the modules stay loaded between runs: reload, helpers first
-for module in (models.helpers, models.limbs, models.organs, models.fins, models.mouths, models.defense, models.cells, models.new_abilities, models.trees, models.plants, models.village, models.buildings):
+for module in (models.helpers, models.limbs, models.organs, models.fins, models.mouths, models.defense, models.cells, models.new_abilities, models.trees, models.plants, models.village, models.buildings, models.antique, models.ships, models.city):
     importlib.reload(module)
 
 from models.buildings import (
@@ -329,6 +332,12 @@ PARTS = {
     'building/building.door.glb':          build_door,
     'building/building.totem.glb':         build_totem,
     'building/building.horns.glb':         build_horns,
+    'building/building.column.glb':       models.antique.build_column,
+    'building/building.steps.glb':        models.antique.build_steps,
+    'building/building.pediment.glb':     models.antique.build_pediment,
+    'civ/civ.ship.glb':                  models.ships.build_ship,
+    'civ/civ.field.glb':                 models.city.build_field,
+    'civ/civ.pier.glb':                  models.city.build_pier,
 }
 
 

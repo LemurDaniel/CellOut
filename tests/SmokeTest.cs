@@ -78,6 +78,7 @@ public partial class SmokeTest : Node
     private bool _isPackOk;
     private bool _isTribeOk;
     private bool _isSaveOk;
+    private bool _isCityOk;
     private bool _isThirdPersonOk;       // probed before the tribe, the strategy view takes the chase camera over
     private bool _isFoodHabitatsOk;      // probed at the shore before the pack cheat moves the player inland, where no patch finds the sea
     private bool _hasFoodSpawned;
@@ -230,6 +231,7 @@ public partial class SmokeTest : Node
             _isThirdPersonOk = ProbeThirdPerson();
             _isTribeOk       = ProbeTribe(player);
             _isSaveOk        = ProbeSave(player);
+            _isCityOk        = ProbeCity(player);
         }
         _hasFoodSpawned = _hasFoodSpawned || _main.FoodLayer.GetChildCount() > 0;
         // The creatures pop up in real time after the evolution, the check waits for them (at most CHECK_DEADLINE)
@@ -666,6 +668,7 @@ public partial class SmokeTest : Node
             ("Rudel", _isPackOk),
             ("Stamm", _isTribeOk),
             ("Speichern", _isSaveOk),
+            ("Zivilisation", _isCityOk),
             ("Teil-Modelle", ProbeModels()),
             ("Grafikstufen", ProbeGraphicsTiers()),
             ("Wasserfarben", ProbeWater()),
@@ -717,6 +720,8 @@ public partial class SmokeTest : Node
     //   ProbePack             Cheat to the pack: stage 6, nest, members, pups, a takeover instead of game over.
     //   ProbeEncounter        The foreign packs and the three ways court, display and hunt on one of their animals.
     //   ProbeSave             The tribe saved and its JSON read back: world, society and creature complete, the player restored unchanged.
+    //   ProbeCity             The city founded at the fire: the headquarters stands and blocks the way, the chieftain outside, research with and without
+    //                         knowledge, a closed tech refused, the bonus reaches the tribe, knowledge grows, tree view, save.
     //   ProbeTribe            Cheat to the tribe: stage 7, fire, the retinue, a hut from a full stock, the packs became tribes on the path of the diet.
     //   ProbeModels           Every entry of CreatureVisual3D.MODELS and CellVisual3D.CELL_MODELS: meshes and
     //                         the named animation, every editor part has a cell model.
@@ -848,6 +853,54 @@ public partial class SmokeTest : Node
         bool isRestored = Player.TRIBE_STAGE == player.Stage && Mathf.IsEqualApprox(biomass, player.Biomass)
             && points == player.EvolutionPoints && parts == player.Creature.Parts.Count && player.IsOrganism;
         return isComplete && isRestored;
+    }
+
+    private bool ProbeCity(Player player)
+    {
+        CivKeeper civ = _main.Civ;
+        // At the fire the tribe hears what its city still needs
+        player.GlobalPosition = _main.Tribe.Fire + Vector2.Right * player.BodySize();
+        bool isHinted = null != civ.FoundHint();
+        _main.CheatTo(CheatTarget.Civilization);
+        Hut  hall   = _main.Tribe.Hall;
+        bool isCity = Player.CIVILIZATION_STAGE == player.Stage && civ.IsCity && null != hall && BuildingKind.Hall == hall.Design.Kind
+            && player.GlobalPosition.DistanceTo(hall.Position) > hall.FoundationRadius;
+        bool isAntique = _main.Rivals.Rivals.Where(rival => rival.IsSettled && !rival.IsDefeated)
+            .All(rival => rival.Huts.Any(hut => BuildingKind.Hall == hut.Design.Kind));     // the neighbors raised their own headquarters
+
+        // Nobody walks through a building: a body inside the headquarters is pushed out of its walls
+        float   body    = player.BodySize();
+        Vector2 outside = _main.Coast.PushOutOfObstacles(hall.Position + Vector2.Right * body * 0.1f, body);
+        bool    isSolid = outside.DistanceTo(hall.Position) >= hall.BlockRadius + body - 0.01f;
+
+        // Research needs the knowledge, a tech whose row is not done yet stays closed even with plenty
+        bool isPoor = civ.Knowledge >= TechTree.CostOf(TechKind.Pottery) || !civ.Research(TechKind.Pottery);    // only checked while the city is poor
+        civ.CheatKnowledge(TechTree.CostOf(TechKind.Pottery));
+        bool isResearched = civ.Research(TechKind.Pottery) && civ.Researched.Contains(TechKind.Pottery) && _main.Tribe.Bonuses.FoodPerFruit > 0;
+        civ.CheatKnowledge(1000f);
+        bool isClosed = !civ.Research(TechKind.Navigation);
+
+        // Techs change the world: fields with Farming, a pier with Sailing
+        civ.Research(TechKind.Farming);
+        civ.Research(TechKind.Bronze);
+        civ.Research(TechKind.Sailing);
+        _main.Scenery.Update();
+        bool isScenery = _main.Scenery.Fields > 0 && _main.Scenery.HasPier;
+
+        // The hall and the villagers think: a minute brings knowledge
+        float before  = civ.Knowledge;
+        civ.Update(60f);
+        bool isThinking = civ.Knowledge > before && civ.KnowledgeRate > 0f;
+
+        // The tech tree opens and closes, the city survives a save
+        _main.TechTree.Toggle();
+        bool isTree = _main.TechTree.IsOpen;
+        _main.TechTree.Toggle();
+        SaveCiv save = civ.Save();
+        civ.Restore(save);
+        bool isSaved = civ.Researched.Count == save.Techs.Count && Mathf.IsEqualApprox(civ.Knowledge, save.Knowledge);
+        Log.Verbose("SmokeTest", $"City: hinted {isHinted} {isCity} antique {isAntique} scenery {isScenery} solid {isSolid} poor {isPoor} researched {isResearched} closed {isClosed} thinking {isThinking} tree {isTree} saved {isSaved}.");
+        return isHinted && isCity && isAntique && isScenery && isSolid && isPoor && isResearched && isClosed && isThinking && isTree && isSaved && !_main.TechTree.IsOpen;
     }
 
     private bool ProbeTribe(Player player)

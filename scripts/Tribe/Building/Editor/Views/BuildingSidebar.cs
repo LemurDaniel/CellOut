@@ -264,6 +264,7 @@ public partial class BuildingSidebar : VBoxContainer
             BuildingKind.Totem      => string.Format(Tr("BUILDING_TOTEM_EFFECT"), (int)Mathf.Round(draft.RelationBonus * 100f)),
             BuildingKind.Watchtower => string.Format(Tr("BUILDING_WATCHTOWER_EFFECT"), (int)draft.Defense),
             BuildingKind.Barracks   => string.Format(Tr("BUILDING_BARRACKS_EFFECT"), draft.Warriors),
+            BuildingKind.Hall       => string.Format(Tr("BUILDING_HALL_EFFECT"), (int)draft.Knowledge),
             _                       => "",
         };
     }

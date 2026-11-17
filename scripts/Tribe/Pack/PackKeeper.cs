@@ -37,7 +37,7 @@ namespace CellOut;
 //   PackOffer   The action Space (or the HUD button) performs right now.
 //
 
-public enum PackOffer { None, Call, Nest, FoundTribe }
+public enum PackOffer { None, Call, Nest, FoundTribe, FoundCity }
 
 public partial class PackKeeper : Node2D
 {
@@ -81,6 +81,7 @@ public partial class PackKeeper : Node2D
     //   Nest         The nest, null until built.
     //   Offer        What Space does right now, recomputed every frame.
     //   OfferHint    Translation key of what is missing for the next step, null when nothing is.
+    //   CanFoundCity / CityRequested   The founding of the city at the fire, decided and done by the CivKeeper.
     //   NestBiomass  Biomass at the nest, TribeBiomass the biomass that founds the tribe, TribeGrowth both since the nest.
     //   IsStaying    Whether the pack waits at the nest (F toggles).
     //   Update       Spawns wild kin, steers all, lets them eat, keeps the nest on the ground, computes the offer.
@@ -124,6 +125,12 @@ public partial class PackKeeper : Node2D
 
     /// <summary>Key in translations.csv naming what is missing for the next step (find kin, go inland, more kin, back to the nest), null with an offer or before the land.</summary>
     public string OfferHint { get; private set; }
+
+    /// <summary>(Optional) Whether the tribe may found its city right now (Civ/CivKeeper.cs), asked at the fire.</summary>
+    public System.Func<bool> CanFoundCity { get; set; }
+
+    /// <summary>The player founds the city at the fire, the CivKeeper builds it.</summary>
+    public event System.Action CityRequested;
 
     public bool IsStaying { get; private set; }
 
@@ -212,11 +219,17 @@ public partial class PackKeeper : Node2D
           - At the nest (NestRange) once the player gathered FoundTribeGrowth more biomass than
             it had when the nest was built (decision of the user 2026-11-17, no head count any
             more): FoundTribe, else the hint says to gather more or to go back to the nest.
+      > Tribe at its fire, while the CivKeeper says the city can be founded: FoundCity
       > Otherwise nothing
     */
     private PackOffer ComputeOffer(float size)
     {
         OfferHint = null;
+        if (Player.IsTribal && null != Nest)
+        {
+            bool isAtFire = Player.GlobalPosition.DistanceTo(Nest.Position) <= size * Tune.NestRange;
+            return Player.TRIBE_STAGE == Player.Stage && isAtFire && true == CanFoundCity?.Invoke() ? PackOffer.FoundCity : PackOffer.None;
+        }
         if (!Player.IsLandAnimal || Player.IsTribal || !Player.IsOnLand)
         {
             return PackOffer.None;
@@ -370,6 +383,10 @@ public partial class PackKeeper : Node2D
                 return true;
             case PackOffer.FoundTribe:
                 FoundTribe();
+                return true;
+            case PackOffer.FoundCity:
+                Offer = PackOffer.None;
+                CityRequested?.Invoke();
                 return true;
             default:
                 return false;

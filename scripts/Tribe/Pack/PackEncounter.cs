@@ -363,7 +363,7 @@ public partial class PackEncounter : Node
             }
             foreach (Hut hut in rival.Huts)
             {
-                float d = hut.Position.DistanceTo(Player.GlobalPosition) - hut.Size * Hut.RADIUS;
+                float d = hut.Position.DistanceTo(Player.GlobalPosition) - hut.BlockRadius;
                 if (!hut.IsQueuedForDeletion() && d < reach)
                 {
                     closest = hut;

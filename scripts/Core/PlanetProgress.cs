@@ -54,7 +54,7 @@ public static class PlanetProgress
     {
         if (IsAllOpen)
         {
-            return StartPhase.Tribe;
+            return StartPhase.Civilization;
         }
         string saved = (string)File.GetValue(PLANETS, planet, "");
         return Enum.TryParse(saved, out StartPhase phase) ? phase : StartPhase.RnaWorld;

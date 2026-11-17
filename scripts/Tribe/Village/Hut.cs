@@ -37,6 +37,8 @@ public partial class Hut : Node2D
     //   VillagersLeft   Villagers (or warriors, in a warrior hut) this building still raises.
     //   Progress        0..1 of the next villager, 0 once the hut raised them all.
     //   FoundationRadius   World units of flat ground it needs (Coast.AddPad).
+    //   BlockRadius / ContactRadius   Nobody walks through it; how close counts as at it.
+    //   BlockOn         Registers it as an obstacle on the coast.
     //   Destroyed       Zero health: the hut is gone, its keeper forgets it.
     //   Setup           Blueprint and faction, before AddChild.
     //   Raise           Counts down to the next villager, true when one is born.
@@ -68,6 +70,29 @@ public partial class Hut : Node2D
 
     private const float MIN_FOOTPRINT = 2f;          // cells, an empty blueprint still gets a small yard
     private const float FOUNDATION_YARD = 0.3f;      // model units of flat ground around the outermost block
+    private const float BLOCK_SHARE = 0.8f;          // the round blocker covers this much of the footprint circle: the square walls, not the corners
+    private const float CONTACT_REACH = 1.3f;        // a body this far out (in blocker radii, at least a room block) is at the building
+
+    /// <summary>World units of the round footprint nobody walks through (Coast.AddBlocker).</summary>
+    public float BlockRadius => Mathf.Max(Design.FootprintRadius, MIN_FOOTPRINT) * BuildingVisual3D.CELL * BLOCK_SHARE * Size;
+
+    /// <summary>World units from the middle a body counts as at the building: raiders hurt it, razers tear it down, from there.</summary>
+    public float ContactRadius => Mathf.Max(BlockRadius, Size * RADIUS) * CONTACT_REACH;
+
+    /// <summary>Blocks the way on the coast from now on, until the building is gone.</summary>
+    /// <param name="coast">(Required) The coast its keeper builds on.</param>
+    public void BlockOn(Coast coast)
+    {
+        Coast.Blocker blocker = coast.AddBlocker(Position, BlockRadius);
+        TreeExiting += () =>
+        {
+            // When the game shuts down the coast may be gone before its buildings
+            if (IsInstanceValid(coast))
+            {
+                coast.RemoveBlocker(blocker);
+            }
+        };
+    }
 
     private const int PUFFS = 3;
     private const float PUFF_RISE = 0.9f;            // in model units, how high a puff climbs over the roof

@@ -38,11 +38,13 @@ public partial class TribeCommander : Node3D
     //   DesignOf        The blueprint new buildings of a function are built from (BuildingEditor).
     //   TakeDesigns     Takes over the blueprints of a finished sitting in the editor.
     //   IsActive        From the tribe stage on, with a fire to build around.
+    //   Fire            Where the fire burns (or the headquarters stands).
     //   Path            Pacifist, territorial or warlike: the goal of the tribe (RivalDiplomacy).
     //   Defense         Defense of the village: the standing watchtowers.
     //   TradeBonus      Share more every trader brings: the standing markets.
     //   RelationBonus   Extra relation per trade: the standing totems.
     //   Setup           The session and the pack, before AddChild.
+    //   Bonuses         What the techs of the city do, read here and by the RivalKeeper.
     //   OnKinAte        A villager ate land food: gathered for the stock, more with a storehouse.
     //
 
@@ -52,6 +54,9 @@ public partial class TribeCommander : Node3D
     private static VillageBalance Tune => Balance.Current.Tribe.Village;
 
     public TribeEconomy Economy { get; } = new();
+
+    /// <summary>What the techs of the city do (Civ/CivKeeper.cs, Society hands them in): food per fruit, farms, damage, building health, trade.</summary>
+    public CivBonuses Bonuses { get; set; } = CivBonuses.NONE;
 
     private readonly Dictionary<BuildingKind, BuildingDesign> _designs = new();
 
@@ -87,6 +92,9 @@ public partial class TribeCommander : Node3D
 
     public bool IsActive => Player.IsTribal && null != _pack.Nest;
 
+    /// <summary>Plane point of the fire (of the headquarters on it in a city).</summary>
+    public Vector2 Fire => _pack.Nest.Position;
+
     /// <summary>The path of the tribe, locked when it was founded (Society): its goal and what a fallen enemy brings.</summary>
     public TribePath Path { get; set; } = TribePath.Warlike;
 
@@ -118,7 +126,7 @@ public partial class TribeCommander : Node3D
         {
             return;
         }
-        Economy.AddFood(Tune.FoodPerFruit + (int)Sum(hut => hut.Design.FoodPerFruit));
+        Economy.AddFood(Tune.FoodPerFruit + (int)Sum(hut => hut.Design.FoodPerFruit) + Bonuses.FoodPerFruit);
         EmitSignal(SignalName.Changed);
     }
 
@@ -246,6 +254,9 @@ public partial class TribeCommander : Node3D
     //   CanBuildAt    Whether a building may stand at a spot.
     //   TryBuildAt    Pays a building of a function and places it where the player chose.
     //   TryBuild      The same without a chosen spot: the next free slot around the fire.
+    //   TryBuildHall  The headquarters of the city on the fire (Civ/CivKeeper.cs).
+    //   Hall          The headquarters, HasHall whether it stands.
+    //   PutUp         Puts up a paid building.
     //
 
     private readonly List<Hut> _huts = new();
@@ -273,6 +284,15 @@ public partial class TribeCommander : Node3D
             }
         }
 
+        // Fields of the city (Farming): every villager brings food without any fruit
+        _farmFood += Villagers().Count * Bonuses.FarmFoodPerMinute * dt / SECONDS_PER_MINUTE;
+        if (_farmFood >= 1f)
+        {
+            Economy.AddFood((int)_farmFood);
+            _farmFood -= (int)_farmFood;
+            EmitSignal(SignalName.Changed);
+        }
+
         // The fire burns as high as the stock pays for a dwelling: a glimmer means gather, a roaring fire means build
         BuildingDesign dwelling = DesignOf(BuildingKind.Dwelling);
         float foodShare = (float)Economy.Food / Mathf.Max(dwelling.FoodCost, 1);
@@ -292,6 +312,9 @@ public partial class TribeCommander : Node3D
     }
 
     private const int HUT_TRIES = 12;
+    private const float SECONDS_PER_MINUTE = 60f;
+
+    private float _farmFood;                         // food of the fields not yet whole
     private const int HUTS_PER_RING = 6;             // slots around the fire before the next ring starts
     private static readonly float HUT_ANGLE = Mathf.Tau / HUTS_PER_RING;
 
@@ -338,15 +361,42 @@ public partial class TribeCommander : Node3D
         {
             return false;
         }
+        PutUp(design, spot, turn);
+        return true;
+    }
+
+    /// <summary>The headquarters of the city where nest and fire stood: pays the hall from the stock, the fire gives way.</summary>
+    /// <returns>True when it was built: a tribe without a hall whose stock pays for it.</returns>
+    public bool TryBuildHall()
+    {
+        BuildingDesign design = DesignOf(BuildingKind.Hall);
+        if (!IsActive || HasHall || !Economy.BuildHut(design))
+        {
+            return false;
+        }
+        PutUp(design, _pack.Nest.Position, turn: 0f);
+        _pack.Nest.GiveWayToHall();
+        return true;
+    }
+
+    /// <summary>The headquarters of the city, null while none stands.</summary>
+    public Hut Hall => _huts.FirstOrDefault(hut => IsInstanceValid(hut) && BuildingKind.Hall == hut.Design.Kind);
+
+    public bool HasHall => null != Hall;
+
+    /// <summary>A paid building goes up: on a flat foundation at the height of its middle, where the preview stood.</summary>
+    private Hut PutUp(BuildingDesign design, Vector2 spot, float? turn)
+    {
         var hut = new Hut { Position = spot, Size = Coast.Unit * Hut.SCALE, GroundHeight = Coast.GroundHeight(spot) * Player.BodySize(), Turn = turn };
         hut.Setup(design, faction: 0);
-        Coast.AddPad(spot, hut.FoundationRadius);       // flat foundation at the height of the middle, where the preview stood
+        Coast.AddPad(spot, hut.FoundationRadius);
         hut.Destroyed += () => EmitSignal(SignalName.Changed);
+        hut.BlockOn(Coast);
         _huts.Add(hut);
         AddChild(hut);
         EmitSignal(SignalName.Changed);
-        Log.Verbose("TribeCommander", $"{kind} built at {spot} (building {Economy.Huts}), {Economy.Food} food and {Economy.Wood} wood left.");
-        return true;
+        Log.Verbose("TribeCommander", $"{design.Kind} built at {spot} (building {Economy.Huts}), {Economy.Food} food and {Economy.Wood} wood left.");
+        return hut;
     }
 
     /// <summary>Builds without a chosen spot: the next free slot on a ring HutDistance around the fire (tests, the graphics reel).</summary>
@@ -412,9 +462,14 @@ public partial class TribeCommander : Node3D
             Vector2 spot = SaveData.ToVector2(saved.Position);
             var     hut  = new Hut { Position = spot, Size = Coast.Unit * Hut.SCALE, GroundHeight = Coast.GroundHeight(spot) * Player.BodySize(), Turn = saved.Turn };
             hut.Setup(SaveData.ToBuilding(saved.Design), faction: 0);
+            hut.BlockOn(Coast);
             hut.Destroyed += () => EmitSignal(SignalName.Changed);
             _huts.Add(hut);
             AddChild(hut);
+        }
+        if (HasHall)
+        {
+            _pack.Nest?.GiveWayToHall();    // the headquarters of a city stands on the old fire
         }
         EmitSignal(SignalName.Changed);
         Log.Verbose("TribeCommander", $"Tribe restored: {Path}, {_huts.Count} building(s), {Economy.Food} food, {Economy.Wood} wood.");

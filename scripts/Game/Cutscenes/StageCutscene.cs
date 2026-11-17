@@ -64,6 +64,7 @@ public partial class StageCutscene : Node3D
     private static readonly Color BUBBLE_COLOR = new(0.85f, 0.95f, 1f, 0.45f);
     private static readonly Color POLLEN_COLOR = new(1f, 0.92f, 0.55f);
     private static readonly Color EMBER_COLOR = new(1f, 0.55f, 0.2f);
+    private static readonly Color GOLD_COLOR = new(1f, 0.82f, 0.35f);     // the founding of the city: golden sparks
 
     // ===========================================================================
     // ================================   BUILD   ================================
@@ -113,6 +114,7 @@ public partial class StageCutscene : Node3D
             Player.LAND_STAGE          => CellVisual3D.Material(POLLEN_COLOR, 0.15f, 0.8f),
             Player.PACK_STAGE          => CellVisual3D.Material(POLLEN_COLOR, 0.15f, 0.8f),
             Player.TRIBE_STAGE         => CellVisual3D.Material(EMBER_COLOR, 1.6f, 0.6f),
+            Player.CIVILIZATION_STAGE  => CellVisual3D.Material(GOLD_COLOR, 2f, 0.8f),
             _                          => CellVisual3D.Material(NUTRIENT_COLORS[index % NUTRIENT_COLORS.Length], 0.15f),
         };
     }
@@ -161,6 +163,7 @@ public partial class StageCutscene : Node3D
                 Player.LAND_STAGE          => Pollen(mote, life),
                 Player.PACK_STAGE          => Pollen(mote, life),
                 Player.TRIBE_STAGE         => Ember(mote, life),
+                Player.CIVILIZATION_STAGE  => Ember(mote, life),
                 _                          => Nutrient(mote, life),
             };
             mote.Mesh.Position = position * Size;

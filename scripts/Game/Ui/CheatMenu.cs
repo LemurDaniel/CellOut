@@ -26,7 +26,7 @@ namespace CellOut;
 //   CheatTarget   Stages, the coast and points, in menu order.
 //
 
-public enum CheatTarget { SingleCell, Multicellular, FullCluster, Organism, Coast, LandAnimal, Pack, Tribe, Points, Resources }
+public enum CheatTarget { SingleCell, Multicellular, FullCluster, Organism, Coast, LandAnimal, Pack, Tribe, Civilization, Points, Resources }
 
 public partial class CheatMenu : CanvasLayer
 {

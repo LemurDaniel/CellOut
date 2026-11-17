@@ -53,6 +53,7 @@ public sealed record Balance
     public required CritterBalance Critter { get; init; }
     public required CreatureBalance Creature { get; init; }
     public required TribeBalance Tribe { get; init; }
+    public required CivBalance Civ { get; init; }
     public required PreludeBalance Prelude { get; init; }
 
     private static Balance _current;
@@ -96,6 +97,7 @@ public sealed record Balance
         RequireEveryKind(balance.Creature.Parts, "creature.parts");
         RequireEveryKind(balance.Prelude.Mutations, "prelude.mutations");
         RequireEveryKind(balance.Tribe.Buildings, "tribe.buildings");
+        RequireEveryKind(balance.Civ.Techs, "civ.techs");
 
         return balance;
     }
@@ -482,6 +484,7 @@ public sealed record BuildingBalance
     public float TradeBonus { get; init; }                       // share more a trader brings (market)
     public float RelationBonus { get; init; }                    // extra relation per trade (totem)
     public int FoodPerFruit { get; init; }                       // extra food per gathered fruit while it stands (storehouse)
+    public float Knowledge { get; init; }                        // knowledge per minute while it stands (hall, academy)
 }
 
 public sealed record RivalsBalance
@@ -536,4 +539,17 @@ public sealed record MutationBalance
     public float Speed { get; init; } = 1f;
     public float Magnet { get; init; } = 1f;
     public float Digest { get; init; } = 1f;
+}
+
+public sealed record CivBalance
+{
+    public required int FoundBuildings { get; init; }            // standing buildings a tribe needs to found its city (the hall pays the rest)
+    public required float KnowledgePerVillager { get; init; }    // knowledge per minute and villager of the city
+    public required IReadOnlyDictionary<TechKind, TechBalance> Techs { get; init; }
+}
+
+public sealed record TechBalance
+{
+    public required int Cost { get; init; }                      // knowledge it takes to research
+    public required float Amount { get; init; }                  // the size of its effect, Civ/TechTree.cs says what it means per tech
 }

@@ -72,10 +72,10 @@ public partial class CoastKeeper : Node
         Player.IsOnLand   = Coast.IsOnLand(Player.GlobalPosition);
         Player.GroundLift = Player.IsOnLand ? Coast.SurfaceLift(Player.GlobalPosition, size) : 0f;
 
-        // Trunks block the way, the body slides around them
+        // Trunks and buildings block the way, the body slides around them
         if (Player.IsOnLand)
         {
-            Player.Position = Coast.PushOutOfTrees(Player.Position, size * TRUNK_CONTACT);
+            Player.Position = Coast.PushOutOfObstacles(Player.Position, size * TRUNK_CONTACT);
         }
     }
 

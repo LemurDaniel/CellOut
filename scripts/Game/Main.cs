@@ -439,6 +439,9 @@ public partial class Main : Node2D
                 TribePath path = _society.SettleTribe();
                 PlayStageCutscene(stage, "BANNER_TRIBE_TITLE", $"BANNER_TRIBE_TEXT_{path}".ToUpperInvariant());
                 break;
+            case Player.CIVILIZATION_STAGE:
+                PlayStageCutscene(stage, "BANNER_CIV_TITLE", "BANNER_CIV_TEXT");
+                break;
         }
     }
 
@@ -621,6 +624,9 @@ public partial class Main : Node2D
     //   Rivals       The neighbor tribes (Tribe/Rivals/RivalKeeper.cs).
     //   BuildingEditor   The village builder (Tribe/Building/Editor/BuildingEditor.cs).
     //   Hub          The hub bar: map, home button, counters (Tribe/TribeHub.cs).
+    //   Civ          The city of the civilization: knowledge and techs (Civ/CivKeeper.cs).
+    //   TechTree     The tech tree view of the city (Civ/TechTreeView.cs).
+    //   Scenery      Fields and pier the techs bring (Civ/CityScenery.cs).
     //   FollowCamera     The camera, for the strategy focus (World/FollowCamera.cs).
     //   Abilities        The abilities of the cell parts (Abilities/AbilityResolver.cs).
     //   CheatTo     F10 menu: jumps forward to a stage, the coast or more points.
@@ -635,6 +641,12 @@ public partial class Main : Node2D
     public PackEncounter Encounter => _society.Encounter;
 
     public TribeCommander Tribe => _society.Tribe;
+
+    public CivKeeper Civ => _society.Civ;
+
+    public TechTreeView TechTree => _society.TechTree;
+
+    public CityScenery Scenery => _society.Scenery;
 
     public RivalKeeper Rivals => _society.Rivals;
 
@@ -744,6 +756,10 @@ public partial class Main : Node2D
             case CheatTarget.Tribe:
                 CheatToLandAnimal();
                 Pack.CheatFoundTribe();
+                break;
+            case CheatTarget.Civilization:
+                CheatTo(CheatTarget.Tribe);
+                Civ.CheatFound();
                 break;
         }
         CloseCheatEditors();

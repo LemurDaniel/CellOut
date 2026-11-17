@@ -164,6 +164,7 @@ public partial class SaveKeeper : Node
             {
                 Pack   = Main.Pack.Save(),
                 Tribe  = Player.IsTribal ? Main.Tribe.Save() : null,
+                Civ    = Main.Civ.IsCity ? Main.Civ.Save() : null,
                 Rivals = Main.Rivals.Save(),
             } : null,
         };
@@ -185,7 +186,7 @@ public partial class SaveKeeper : Node
     // ===========================================================================
     //
     //   Begin     The protocell is born: a saved game takes over, none starts fresh.
-    //   Restore   Player, coast, pack, tribe, neighbors in this order, then the play time.
+    //   Restore   Player, coast, pack, tribe, city, neighbors in this order, then the play time.
     //
 
     /// <summary>The protocell is born: restores a saved game, if any.</summary>
@@ -216,6 +217,10 @@ public partial class SaveKeeper : Node
             if (null != save.Society.Tribe)
             {
                 Main.Tribe.Restore(save.Society.Tribe);
+            }
+            if (null != save.Society.Civ)
+            {
+                Main.Civ.Restore(save.Society.Civ);
             }
             Main.Rivals.Restore(save.Society.Rivals);
         }

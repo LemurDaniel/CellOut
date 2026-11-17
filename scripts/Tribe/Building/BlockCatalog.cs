@@ -25,7 +25,7 @@ namespace CellOut;
 // ===========================================================================
 //
 //   BlockKind    Every block of the builder, three per group.
-//   BlockGroup   Group of the palette: walls, roofs, frames, defense, trade, decoration.
+//   BlockGroup   Group of the palette: walls, roofs, frames, defense, trade, decoration, antique.
 //   BlockInfo    One block: group, cells it fills (width along X, height, depth along Z), default paint.
 //
 
@@ -37,9 +37,10 @@ public enum BlockKind
     Palisade, Torch, Banner,                // defense
     Stall, Awning, Crate,                   // trade
     Door, Totem, Horns,                     // decoration
+    Column, Steps, Pediment,                // antique
 }
 
-public enum BlockGroup { Wall, Roof, Frame, Defense, Trade, Decor }
+public enum BlockGroup { Wall, Roof, Frame, Defense, Trade, Decor, Antique }
 
 public readonly record struct BlockInfo(BlockKind Kind, BlockGroup Group, int Width, int Height, int Depth, int Paint);
 
@@ -108,6 +109,9 @@ public static class BlockCatalog
         new BlockInfo(BlockKind.Door,          BlockGroup.Decor,   1, 2, 2, WOOD),
         new BlockInfo(BlockKind.Totem,         BlockGroup.Decor,   2, 2, 2, OCHRE),
         new BlockInfo(BlockKind.Horns,         BlockGroup.Decor,   2, 1, 2, BONE),
+        new BlockInfo(BlockKind.Column,        BlockGroup.Antique, 1, 3, 1, BONE),
+        new BlockInfo(BlockKind.Steps,         BlockGroup.Antique, 4, 1, 4, BONE),
+        new BlockInfo(BlockKind.Pediment,      BlockGroup.Antique, 4, 2, 8, BONE),
     };
 
     /// <summary>The entry of a block. BLOCKS lists the kinds in enum order.</summary>

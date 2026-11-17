@@ -28,11 +28,12 @@ namespace CellOut;
 // ===========================================================================
 //
 //   BuildingKind   The function: dwelling (villagers), storehouse (food per fruit), market
-//                  (trade), totem (relation), watchtower (defense), barracks (the warrior hut: warriors).
+//                  (trade), totem (relation), watchtower (defense), barracks (the warrior hut: warriors),
+//                  hall (the headquarters on the fire of a city: knowledge, built once by founding the city).
 //   PlacedBlock    A block on the grid: the cell of its lowest corner, quarter turns, paint and pattern.
 //
 
-public enum BuildingKind { Dwelling, Storehouse, Market, Totem, Watchtower, Barracks }
+public enum BuildingKind { Dwelling, Storehouse, Market, Totem, Watchtower, Barracks, Hall }
 
 public readonly record struct PlacedBlock(BlockKind Kind, int X, int Y, int Z, int Turns, int Paint, int Pattern = 0);
 
@@ -276,4 +277,6 @@ public sealed class BuildingDesign
     public float RelationBonus => Tune.RelationBonus;
 
     public int FoodPerFruit => Tune.FoodPerFruit;
+
+    public float Knowledge => Tune.Knowledge;
 }

@@ -121,6 +121,7 @@ public sealed class CoastTerrain
     //   Pads       All foundations, the ground shader draws trampled earth on them.
     //   Revision   Counts up with every new foundation: ground, props and trees rebuild.
     //   AddPad     Levels the ground around a building at the height of its middle (or of a foundation it touches).
+    //   HasPadAt   Whether a foundation lies at a point already.
     //   IsOnPad    Whether a point lies on a foundation: no props, no trees there.
     //
 
@@ -134,6 +135,12 @@ public sealed class CoastTerrain
     public IReadOnlyList<Pad> Pads => _pads;
 
     public int Revision { get; private set; }
+
+    /// <summary>Whether a foundation lies at a point already (a save brought it back).</summary>
+    public bool HasPadAt(Vector2 center)
+    {
+        return _pads.Exists(pad => pad.Center.DistanceSquaredTo(center) < 0.01f);
+    }
 
     /// <summary>Levels the ground in a circle at the height of its middle, so a building stands flat on a slope.</summary>
     /// <param name="center">(Required) Plane point of the middle, on land.</param>

@@ -119,6 +119,8 @@ public partial class RivalTribe : Node2D
     //   Defeat       Marks it defeated and sends everyone away.
     //   _Ready       The den with the animals of the pack, or right away the village.
     //   Settle       The pack becomes a tribe: the fire is lit, huts on a ring, villagers up to Villagers.
+    //   BuildHall    The headquarters on its fire once the player founded the city.
+    //   PutUp        One building from a random template.
     //   Release      Hands one animal over to the player's pack (courted until it joined).
     //
 
@@ -184,6 +186,30 @@ public partial class RivalTribe : Node2D
         BuildVillage();
     }
 
+    /// <summary>The civilization reached the islands: the tribe raises its own headquarters on its fire.</summary>
+    public void BuildHall()
+    {
+        if (!IsSettled || IsDefeated || _huts.Exists(hut => IsInstanceValid(hut) && BuildingKind.Hall == hut.Design.Kind))
+        {
+            return;
+        }
+        PutUp(BuildingKind.Hall, Fire);
+        Nest.GiveWayToHall();
+        Log.Verbose("RivalTribe", $"Faction {Faction} raised its headquarters at {Fire}.");
+    }
+
+    /// <summary>A building of a function from a random template at a spot: leveled ground, it blocks the way.</summary>
+    private void PutUp(BuildingKind kind, Vector2 spot)
+    {
+        var hut = new Hut { Position = spot, Size = _coast.Unit * Hut.SCALE, GroundHeight = _coast.GroundHeight(spot) * _size };
+        hut.Setup(BuildingTemplates.Build(kind, Rand.Index(BuildingTemplates.Count(kind))), Faction);
+        _coast.AddPad(spot, hut.FoundationRadius);
+        hut.Destroyed += () => _huts.Remove(hut);
+        hut.BlockOn(_coast);
+        _huts.Add(hut);
+        AddChild(hut);
+    }
+
     /// <summary>Fire, huts on a ring and villagers around the fire, the animals of the pack count as villagers.</summary>
     private void BuildVillage()
     {
@@ -197,15 +223,9 @@ public partial class RivalTribe : Node2D
             {
                 continue;
             }
-            spot = _coast.PushOutOfTrees(spot, unit * Hut.SCALE);
-            var hut = new Hut { Position = spot, Size = unit * Hut.SCALE, GroundHeight = _coast.GroundHeight(spot) * _size };
-            // Dwellings first, the last building is what the tribe is known for; every one from a random template
+            // Dwellings first, the last building is what the tribe is known for
             BuildingKind kind = i < Tune.Huts - 1 ? BuildingKind.Dwelling : SIGNATURE_KINDS[Faction % SIGNATURE_KINDS.Length];
-            hut.Setup(BuildingTemplates.Build(kind, Rand.Index(BuildingTemplates.Count(kind))), Faction);
-            _coast.AddPad(spot, hut.FoundationRadius);
-            hut.Destroyed += () => _huts.Remove(hut);
-            _huts.Add(hut);
-            AddChild(hut);
+            PutUp(kind, _coast.PushOutOfTrees(spot, unit * Hut.SCALE));
         }
         for (int i = _kin.Count; i < Tune.Villagers; i++)
         {
@@ -236,7 +256,10 @@ public partial class RivalTribe : Node2D
     //   SpawnKin      One grown kin of the tribe at a spot with a role.
     //   SendTrader    A trader walks from the entry point to the player's fire.
     //   SendRaiders   Raiders walk from the entry point towards the player's village.
-    //   Update        Steers every kin, frees the ones that left, keeps fire and huts on the ground.
+    //   Update        Steers every kin, frees the ones that left, keeps fire, huts and a landed ship in place.
+    //   HasShips      The tribe sails (from the player's city on): its people land by ship.
+    //   LandShip      A ship off the entry while traders or raiders from over the sea are ashore.
+    //   UpdateLanding The landed ship rocks, it is gone with its people.
     //
 
     private readonly List<Kin> _kin = new();
@@ -259,6 +282,7 @@ public partial class RivalTribe : Node2D
     /// <param name="target">(Required) Plane point of the player's fire.</param>
     public Kin SendTrader(Vector2 target)
     {
+        LandShip();
         Kin trader = SpawnKin(Entry, KinRole.Trader);
         trader.JoinTribe(Entry);
         trader.OrderMove(target);
@@ -271,6 +295,7 @@ public partial class RivalTribe : Node2D
     /// <param name="count">(Required) Raiders sent.</param>
     public List<Kin> SendRaiders(Vector2 target, int count)
     {
+        LandShip();
         var raiders = new List<Kin>();
         for (int i = 0; i < count; i++)
         {
@@ -304,5 +329,57 @@ public partial class RivalTribe : Node2D
         {
             hut.GroundHeight = _coast.GroundHeight(hut.Position) * playerSize;
         }
+        UpdateLanding(dt, playerSize);
+    }
+
+    /// <summary>(Optional) The tribe sails like the player's city: traders and raiders from over the sea land with a ship. Defaults to false.</summary>
+    public bool HasShips { get; set; }
+
+    private const float LANDING_OUT = 3.5f;          // body sizes off the shore the ship lies
+    private const int LANDING_STEPS = 8;
+
+    private Node3D _landing;
+    private Vector2 _landingPoint;
+    private float _landingFacing;
+    private float _landingTime;
+
+    /*
+      A ship lands only for a tribe that sails and lives over the sea (its entry is a shore,
+      not its own fire). It lies off the entry, its bow towards the land, in the first spot
+      out there that is water.
+    */
+    private void LandShip()
+    {
+        if (!HasShips || Entry.IsEqualApprox(Fire))
+        {
+            return;
+        }
+        Vector2 seaward = (Fire - Entry).Normalized();
+        _landingPoint = Entry + seaward * _size * LANDING_OUT;
+        for (int i = 0; i < LANDING_STEPS && _coast.IsOnLand(_landingPoint); i++)
+        {
+            _landingPoint += seaward * _size;
+        }
+        _landingFacing = (Entry - _landingPoint).Angle();
+        if (null == _landing)
+        {
+            _landing = ShipModel.New(_tint);
+            AddChild(_landing);
+        }
+        _landing.Visible = true;
+        Log.Verbose("RivalTribe", $"Faction {Faction} lands a ship at {_landingPoint}.");
+    }
+
+    /// <summary>The landed ship rocks while traders or raiders of the tribe are on the player's island, it sails off once they are gone.</summary>
+    private void UpdateLanding(float dt, float playerSize)
+    {
+        if (null == _landing || !_landing.Visible)
+        {
+            return;
+        }
+        _landingTime += dt;
+        ShipModel.Place(_landing, _landingPoint, _landingFacing, playerSize, _landingTime + Faction);
+        bool isAshore = _kin.Exists(kin => KinRole.Villager != kin.Role);
+        _landing.Visible = isAshore;
     }
 }

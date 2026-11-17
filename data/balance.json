@@ -348,7 +348,8 @@
       "Market":     { "food": 6, "wood": 6, "health": 25, "tradeBonus": 0.5 },
       "Totem":      { "food": 3, "wood": 6, "health": 20, "relationBonus": 0.1 },
       "Watchtower": { "food": 4, "wood": 8, "health": 40, "defense": 20 },
-      "Barracks":   { "food": 6, "wood": 8, "health": 35, "warriors": 2 }
+      "Barracks":   { "food": 6, "wood": 8, "health": 35, "warriors": 2 },
+      "Hall":       { "food": 30, "wood": 30, "health": 150, "knowledge": 6 }
     },
     "rivals": {
       "count": 3,
@@ -404,6 +405,22 @@
       "killFood": 3,
       "courtPerSecond": 0.03,
       "startShift": 0.2
+    }
+  },
+
+  "civ": {
+    "foundBuildings": 5,
+    "knowledgePerVillager": 1,
+    "techs": {
+      "Pottery":    { "cost": 10, "amount": 1 },
+      "Bronze":     { "cost": 10, "amount": 1.5 },
+      "Farming":    { "cost": 10, "amount": 2 },
+      "Masonry":    { "cost": 25, "amount": 2 },
+      "Sailing":    { "cost": 25, "amount": 2.2 },
+      "Writing":    { "cost": 25, "amount": 1.5 },
+      "Philosophy": { "cost": 45, "amount": 1 },
+      "Navigation": { "cost": 45, "amount": 1.5 },
+      "Currency":   { "cost": 45, "amount": 2 }
     }
   },
 

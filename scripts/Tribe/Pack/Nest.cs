@@ -31,6 +31,7 @@ public partial class Nest : Node2D
     //   Glow           0..1 how high the fire burns, the tribe sets it from its stock.
     //   _Ready         The nest model, scaled to the player.
     //   LightFire      The fire pit model, flames and the light of the tribe.
+    //   GiveWayToHall  The headquarters of the city replaces nest and fire.
     //   _Process       Sits on the ground, the flames flicker.
     //
 
@@ -114,6 +115,13 @@ public partial class Nest : Node2D
             _flames.Scale      = new Vector3(1f, (GLOW_MIN_FLAME + GLOW_FLAME_RANGE * glow) * flicker, 1f);
             _light.LightEnergy = (GLOW_MIN_LIGHT + GLOW_LIGHT_RANGE * glow) * flicker;
         }
+    }
+
+    /// <summary>The headquarters of the city stands on the fire now (Civ/CivKeeper.cs): nest and fire disappear, the spot stays the home of the villagers.</summary>
+    public void GiveWayToHall()
+    {
+        _visual.Visible = false;
+        Log.Verbose("Nest", "Gave way to the headquarters of the city.");
     }
 
     /// <summary>On the ground at its plane point, scaled with the player, dropped with the planet.</summary>

@@ -17,6 +17,10 @@
 //   $env:CELLOUT_REEL_PLANET = 'RUBRA' # optional: the planet of the game (Core/Planets.cs keys), with the galaxy the one shown up close
 //   $env:CELLOUT_REEL_GALAXY_TOUR = '1' # optional, with the galaxy: a tour first, stills 70 (whole spiral), 100 (deep in an arm), 130 (Sgr A*), 142 (warp), 175 (planet), end with --quit-after 180
 //   $env:CELLOUT_REEL_PHASE = 'Pack'  # optional: starts like the galaxy menu in this phase (StartPhase), the jumps run by themselves (still 238)
+//   $env:CELLOUT_REEL_CIV = '1'       # optional, with the phase Civilization: buildings around the headquarters, four techs, the tech tree opens; the reel quits 130 frames after the city stands (stills: the last frame before the techs and the last frame)
+//   $env:CELLOUT_REEL_SAIL = '1'      # optional, with CELLOUT_REEL_CIV: instead of the tech tree the chieftain stands in the sea with its retinue: the ship (last frame)
+//   (CELLOUT_REEL_WIDE = '1' with CELLOUT_REEL_CIV: the chieftain looks at the headquarters from afar, zoomed out, no HUD)
+//   $env:CELLOUT_REEL_LANDING = '1'   # optional, with CELLOUT_REEL_CIV: raiders from over the sea land by ship, the chieftain watches from the shore
 //   $env:CELLOUT_REEL_WIDE = '1'      # optional, while rushing: the camera zooms all the way out and the HUD hides, for looking at the scenery
 //   $env:CELLOUT_REEL_MAP = '1'       # optional: the tribe opens the world map (rushing: still 198)
 //   $env:CELLOUT_REEL_MENU = '1'      # optional: the tribe opens the build menu (rushing: still 198)
@@ -77,6 +81,9 @@ public partial class GraphicsReel : Node
     private static readonly bool IS_SHOWING_GALAXY = "1" == OS.GetEnvironment("CELLOUT_REEL_GALAXY");
     private static readonly string GALAXY_PLANET = OS.GetEnvironment("CELLOUT_REEL_PLANET");
     private static readonly bool IS_TOURING_GALAXY = "1" == OS.GetEnvironment("CELLOUT_REEL_GALAXY_TOUR");
+    private static readonly bool IS_SHOWING_CIV = "1" == OS.GetEnvironment("CELLOUT_REEL_CIV");
+    private static readonly bool IS_SAILING = "1" == OS.GetEnvironment("CELLOUT_REEL_SAIL");
+    private static readonly bool IS_LANDING = "1" == OS.GetEnvironment("CELLOUT_REEL_LANDING");
     private static readonly StartPhase? START_PHASE = System.Enum.TryParse(OS.GetEnvironment("CELLOUT_REEL_PHASE"), true, out StartPhase phase) ? phase : null;
     private static readonly string TEMPLATE_KEY = OS.GetEnvironment("CELLOUT_REEL_TEMPLATE");
     private static readonly bool IS_SHOWING_ABILITIES = "1" == OS.GetEnvironment("CELLOUT_REEL_ABILITIES");
@@ -146,7 +153,12 @@ public partial class GraphicsReel : Node
                 _main.CreatureEditor.ChooseType(CreatureType.Fish);
                 _main.CreatureEditor.Finish();
             }
-            if (240 == _frame)
+            if (IS_SHOWING_CIV)
+            {
+                ShowCity();
+            }
+            bool isCityDone = IS_SHOWING_CIV && _cityFrame >= 0 && _frame - _cityFrame >= CITY_QUIT;
+            if (IS_SHOWING_CIV ? isCityDone : 240 == _frame)
             {
                 GetTree().Quit();
             }
@@ -443,5 +455,69 @@ public partial class GraphicsReel : Node
     private void MoveMouse(Vector2 at)
     {
         GetViewport().PushInput(new InputEventMouseMotion { Position = at, GlobalPosition = at });
+    }
+
+    private const int CITY_BUILD = 5;               // frames after the city stands: buildings around the headquarters
+    private const int CITY_RESEARCH = 60;           // four techs (the city still is the frame before)
+    private const int CITY_TREE = 90;               // the tech tree opens (still: 30 frames later)
+    private const int CITY_QUIT = 130;
+
+    private int _cityFrame = -1;
+
+    /// <summary>The city of the civilization phase: buildings around the headquarters, then four techs and the open tech tree.</summary>
+    private void ShowCity()
+    {
+        if (_cityFrame < 0 && _main.Civ.IsCity)
+        {
+            _cityFrame = _frame;
+        }
+        switch (_cityFrame < 0 ? -1 : _frame - _cityFrame)
+        {
+            case CITY_BUILD:
+                _main.CheatTo(CheatTarget.Resources);
+                _main.CheatTo(CheatTarget.Resources);
+                foreach (BuildingKind kind in new[] { BuildingKind.Dwelling, BuildingKind.Market, BuildingKind.Storehouse, BuildingKind.Watchtower })
+                {
+                    _main.Tribe.TryBuild(kind);
+                }
+                break;
+            case CITY_BUILD + 10 when IS_WIDE:
+                // Wide: the chieftain stands back and looks at the headquarters, the camera zooms out
+                Hut hall = _main.Tribe.Hall;
+                _main.Player.GlobalPosition = hall.Position + Vector2.Right.Rotated(0.6f) * (hall.BlockRadius + _main.Player.BodySize() * 7f);
+                _main.Player.Facing = (hall.Position - _main.Player.GlobalPosition).Angle();
+                _main.FollowCamera.ZoomBy(8);
+                _main.Hud.Visible = false;
+                break;
+            case CITY_BUILD + 20 when IS_LANDING:
+                // Raiders of a tribe from over the sea land by ship, the chieftain watches from the shore
+                RivalTribe over = _main.Rivals.Rivals.FirstOrDefault(rival => rival.IsSettled && !rival.Entry.IsEqualApprox(rival.Fire));
+                if (null != over)
+                {
+                    _main.Rivals.ForceRaid(over);
+                    Vector2 inland = (_main.Tribe.Hall.Position - over.Entry).Normalized();
+                    _main.Player.GlobalPosition = over.Entry + inland * _main.Player.BodySize() * 8f;
+                    _main.Player.Facing = (-inland).Angle();
+                }
+                break;
+            case CITY_RESEARCH:
+                _main.Civ.CheatKnowledge(80f);
+                foreach (TechKind kind in new[] { TechKind.Pottery, TechKind.Bronze, TechKind.Farming, TechKind.Sailing })
+                {
+                    _main.Civ.Research(kind);
+                }
+                break;
+            case CITY_TREE when !IS_SAILING:
+                _main.TechTree.Toggle();
+                break;
+            case CITY_TREE when IS_SAILING:
+                // The retinue follows, the chieftain stands in the sea off the shore of its island: the ship
+                _main.Pack.ToggleRetinue();
+                Coast.Island home = _main.Coast.Islands[0];
+                float angle = _main.Player.GlobalPosition.AngleToPoint(home.Center) + Mathf.Pi;
+                _main.Player.GlobalPosition = home.Center + Vector2.FromAngle(angle) * (Coast.IslandRadius(home, angle) + _main.Player.BodySize() * 4f);
+                _main.Player.Facing = angle;
+                break;
+        }
     }
 }

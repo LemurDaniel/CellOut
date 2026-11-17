@@ -60,13 +60,14 @@ public partial class Player : CellBody
     /// <summary>Every tunable number of the player from data/balance.json (player), the formulas are in Growth.</summary>
     private static PlayerBalance Tune => Balance.Current.Player;
 
-    public static readonly string[] STAGE_KEYS = { "STAGE_PROTOCELL", "STAGE_SINGLE", "STAGE_MULTI", "STAGE_ORGANISM", "STAGE_LAND", "STAGE_PACK", "STAGE_TRIBE" };
+    public static readonly string[] STAGE_KEYS = { "STAGE_PROTOCELL", "STAGE_SINGLE", "STAGE_MULTI", "STAGE_ORGANISM", "STAGE_LAND", "STAGE_PACK", "STAGE_TRIBE", "STAGE_CIV" };
     public const int SINGLE_STAGE = 1;
     public const int MULTICELLULAR_STAGE = 2;
     public const int ORGANISM_STAGE = 3;
     public const int LAND_STAGE = 4;
     public const int PACK_STAGE = 5;
     public const int TRIBE_STAGE = 6;
+    public const int CIVILIZATION_STAGE = 7;
 
     public int Stage { get; private set; }
     public int Level { get; private set; }
@@ -381,7 +382,7 @@ public partial class Player : CellBody
     //
     //   IsPackLeader   From stage 6 on: a nest with conspecifics that follow.
     //   IsTribal       Stage 7: the pack settled around a fire, the player is its chieftain and walks like the land animal.
-    //   FoundSociety   The PackKeeper advances to the pack or the tribe, one stage at a time.
+    //   FoundSociety   The PackKeeper advances to the pack or the tribe, the CivKeeper to the civilization, one stage at a time.
     //   Revive         A dead leader lives on in the body of a pack member (PackKeeper.TryTakeOver).
     //
 
@@ -389,15 +390,15 @@ public partial class Player : CellBody
 
     public bool IsTribal => Stage >= TRIBE_STAGE;
 
-    /// <summary>Advances to the pack (from the land animal) or the tribe (from the pack), with the stage bonus.</summary>
-    /// <param name="stage">(Required) PACK_STAGE or TRIBE_STAGE, the one right after the current stage.</param>
+    /// <summary>Advances to the pack (from the land animal), the tribe (from the pack) or the civilization (from the tribe, Civ/CivKeeper.cs), with the stage bonus.</summary>
+    /// <param name="stage">(Required) PACK_STAGE, TRIBE_STAGE or CIVILIZATION_STAGE, the one right after the current stage.</param>
     /// <example><code>player.FoundSociety(Player.PACK_STAGE);   // after the nest is built</code></example>
     public void FoundSociety(int stage)
     {
-        bool isSocial = PACK_STAGE == stage || TRIBE_STAGE == stage;
+        bool isSocial = PACK_STAGE == stage || TRIBE_STAGE == stage || CIVILIZATION_STAGE == stage;
         if (!isSocial || stage != Stage + 1)
         {
-            throw new System.InvalidOperationException($"stage must be the pack or the tribe right after stage {Stage}, got '{stage}'.");
+            throw new System.InvalidOperationException($"stage must be the pack, the tribe or the civilization right after stage {Stage}, got '{stage}'.");
         }
         Stage            = stage;
         EvolutionPoints += Tune.EpPerStage;
@@ -440,6 +441,7 @@ public partial class Player : CellBody
     // ===========================================================================
     //
     //   CurrentSpeed          Swim speed of the body size times the design bonus.
+    //   SailFactor            Speed on the water while sailing, instead of swimming.
     //   GoalProgress          Progress towards the next stage or level, 0..1.
     //   PreviewDiet           Diet value a design would give, for the editor.
     //   ContactDamageToward   Spike and jaw damage dealt to a cell touching from a direction.
@@ -449,10 +451,14 @@ public partial class Player : CellBody
     //   HasThorns             Whether any spike or jaw exists.
     //
 
+    /// <summary>(Optional) Speed on the water while the chieftain sails, 0 swims as the body can. Set by Civ/ShipKeeper.cs.</summary>
+    public float SailFactor { get; set; }
+
     /// <summary>Swim speed in the water, on land the walking (or crawling) speed of LAND.</summary>
     public float CurrentSpeed()
     {
-        return SwimSpeed(BodySize()) * (IsOnLand ? _traits.LandSpeed : _traits.Speed) * StunFactor * SlowFactor;
+        float water = SailFactor > 0f ? SailFactor : _traits.Speed;      // a ship of the city (Civ/ShipKeeper.cs) is as fast whatever the body
+        return SwimSpeed(BodySize()) * (IsOnLand ? _traits.LandSpeed : water) * StunFactor * SlowFactor;
     }
 
     public float GoalProgress()

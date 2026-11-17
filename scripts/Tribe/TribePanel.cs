@@ -58,6 +58,9 @@ public partial class TribePanel : CanvasLayer
     /// <param name="pack">(Required) The pack: offer, nest, the next step.</param>
     /// <param name="tribe">(Required) The tribe: stock, blueprints and buildings.</param>
     /// <param name="encounter">(Required) The encounters: the stranger close by.</param>
+    /// <summary>(Optional) The city: at the fire the panel says what a city still needs (CivKeeper.FoundHint).</summary>
+    public CivKeeper Civ { get; set; }
+
     public void Watch(PackKeeper pack, TribeCommander tribe, PackEncounter encounter)
     {
         _pack      = pack;
@@ -101,7 +104,7 @@ public partial class TribePanel : CanvasLayer
       > Before the land animal: everything hidden
       > Hint, only while there is something to do right now (the lasting goals sit in the
         TribeHub): placing a building, a stranger close by, else in the pack stage the next
-        step (find the kin, go inland, back to the nest)
+        step (find the kin, go inland, back to the nest), in the tribe at the fire what a city still needs
       > The offered action, the build menu while the tribe has it open
     */
     public override void _Process(double delta)
@@ -113,12 +116,13 @@ public partial class TribePanel : CanvasLayer
         bool   isTribe = _tribe.IsActive;
         string missing = _pack.OfferHint;
         bool   isStep  = !isTribe && null != missing && !SILENT_HINTS.Contains(missing);
+        string city    = isTribe ? Civ?.FoundHint() : null;
 
-        _hint.Visible = null != Placing || _encounter?.Target is not null || isStep;
+        _hint.Visible = null != Placing || _encounter?.Target is not null || isStep || null != city;
         _hint.Text    = null != Placing ? Tr("TRIBE_PLACE_HINT")
             : _encounter?.Target is not null ? WaysHint()
             : isStep ? Tr(missing)
-            : "";
+            : city ?? "";
 
         // The offered action pops in when it changes
         PackOffer offer = _pack.Offer;
@@ -130,6 +134,7 @@ public partial class TribePanel : CanvasLayer
                 PackOffer.Call       => Tr("PACK_CALL_BUTTON"),
                 PackOffer.Nest       => Tr("PACK_NEST_BUTTON"),
                 PackOffer.FoundTribe => Tr("TRIBE_FOUND_BUTTON"),
+                PackOffer.FoundCity  => Tr("CIV_FOUND_BUTTON"),
                 _                    => "",
             };
             if (PackOffer.None != offer)
@@ -248,6 +253,10 @@ public partial class TribePanel : CanvasLayer
 
         foreach (BuildingKind kind in System.Enum.GetValues<BuildingKind>())
         {
+            if (BuildingKind.Hall == kind)
+            {
+                continue;       // the headquarters is built once, by founding the city at the fire
+            }
             Button tile = NewTile(BUILD_ACCENT);
             var icon = new BuildingIcon(BUILD_ICON_PIXELS) { Position = new Vector2((BUILD_TILE_SIZE.X - BUILD_ICON_PIXELS) * 0.5f, 6) };
             tile.AddChild(icon);

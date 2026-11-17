@@ -179,6 +179,30 @@ public static class BuildingTemplates
                 new Drop(BlockKind.Banner, 7, 7, Paint: RED),
             }),
         },
+        [BuildingKind.Hall] = new[]
+        {
+            // A temple: steps, a room inside, a row of columns front and back, the roof lands on the columns
+            new Template("TEMPLATE_TEMPLE", new[]
+            {
+                new Drop(BlockKind.Steps, 2, 0),
+                new Drop(BlockKind.Steps, 2, 4),
+                new Drop(BlockKind.SquareRoom, 2, 2, Paint: BONE),
+                new Drop(BlockKind.Column, 2, 0), new Drop(BlockKind.Column, 3, 0), new Drop(BlockKind.Column, 4, 0), new Drop(BlockKind.Column, 5, 0),
+                new Drop(BlockKind.Column, 2, 7), new Drop(BlockKind.Column, 3, 7), new Drop(BlockKind.Column, 4, 7), new Drop(BlockKind.Column, 5, 7),
+                new Drop(BlockKind.Pediment, 2, 0),
+            }),
+            // A palace: four rooms on a wide base, towers at the corners, a temple roof over the middle
+            new Template("TEMPLATE_PALACE", new[]
+            {
+                new Drop(BlockKind.Steps, 0, 0), new Drop(BlockKind.Steps, 4, 0), new Drop(BlockKind.Steps, 0, 4), new Drop(BlockKind.Steps, 4, 4),
+                new Drop(BlockKind.SquareRoom, 0, 0, Paint: BONE), new Drop(BlockKind.SquareRoom, 4, 0, Paint: BONE),
+                new Drop(BlockKind.SquareRoom, 0, 4, Paint: BONE), new Drop(BlockKind.SquareRoom, 4, 4, Paint: BONE),
+                new Drop(BlockKind.RoundTower, 0, 0, Paint: STONE), new Drop(BlockKind.RoundTower, 6, 0, Paint: STONE),
+                new Drop(BlockKind.RoundTower, 0, 6, Paint: STONE), new Drop(BlockKind.RoundTower, 6, 6, Paint: STONE),
+                new Drop(BlockKind.Pediment, 2, 0, Paint: OCHRE),
+                new Drop(BlockKind.Banner, 0, 0, Paint: RED), new Drop(BlockKind.Banner, 7, 7, Paint: RED),
+            }),
+        },
         [BuildingKind.Watchtower] = new[]
         {
             // The ladders go up before the platform: listed after it they would land on top of it

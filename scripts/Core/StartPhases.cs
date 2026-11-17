@@ -15,7 +15,7 @@
 
 namespace CellOut;
 
-public enum StartPhase { RnaWorld, Protocell, SingleCell, Multicellular, Organism, LandAnimal, Pack, Tribe }
+public enum StartPhase { RnaWorld, Protocell, SingleCell, Multicellular, Organism, LandAnimal, Pack, Tribe, Civilization }
 
 public static class StartPhases
 {
@@ -31,7 +31,7 @@ public static class StartPhases
     //   NameKey   PHASE_<NAME> in locale/translations.csv.
     //
 
-    public const int COUNT = 8;
+    public const int COUNT = 9;
 
     /// <summary>The phase of a player stage: the protocell (stage 0) is phase 1, the tribe (stage 6) phase 7.</summary>
     /// <example><code>StartPhases.OfStage(Player.LAND_STAGE)  // StartPhase.LandAnimal</code></example>
@@ -60,6 +60,7 @@ public static class StartPhases
             StartPhase.LandAnimal    => CheatTarget.LandAnimal,
             StartPhase.Pack          => CheatTarget.Pack,
             StartPhase.Tribe         => CheatTarget.Tribe,
+            StartPhase.Civilization  => CheatTarget.Civilization,
             _                        => null,
         };
     }

@@ -111,7 +111,8 @@ public class PlanetTests
         Assert.Equal(StartPhase.Protocell, StartPhases.OfStage(0));
         Assert.Equal(StartPhase.LandAnimal, StartPhases.OfStage(Player.LAND_STAGE));
         Assert.Equal(StartPhase.Tribe, StartPhases.OfStage(Player.TRIBE_STAGE));
-        Assert.Equal(StartPhase.Tribe, StartPhases.OfStage(42));
+        Assert.Equal(StartPhase.Civilization, StartPhases.OfStage(Player.CIVILIZATION_STAGE));
+        Assert.Equal(StartPhase.Civilization, StartPhases.OfStage(42));
         Assert.Equal(StartPhases.COUNT, Enum.GetValues<StartPhase>().Length);
     }
 
@@ -122,6 +123,7 @@ public class PlanetTests
         Assert.Null(StartPhases.JumpOf(StartPhase.Protocell));
         Assert.Equal(CheatTarget.Organism, StartPhases.JumpOf(StartPhase.Organism));
         Assert.Equal(CheatTarget.Tribe, StartPhases.JumpOf(StartPhase.Tribe));
+        Assert.Equal(CheatTarget.Civilization, StartPhases.JumpOf(StartPhase.Civilization));
     }
 
     [Fact]

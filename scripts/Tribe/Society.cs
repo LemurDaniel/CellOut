@@ -1,8 +1,8 @@
 // NOTE:
 //   Coordinator of the social stages: owns the pack (PackKeeper), the encounters with
-//   foreign packs (PackEncounter), the tribe (TribeCommander), the neighbor tribes
+//   foreign packs (PackEncounter), the tribe (TribeCommander), its city (Civ/CivKeeper) with its ship (ShipKeeper) and scenery (CityScenery), the neighbor tribes
 //   (RivalKeeper) and the diplomacy of its path (RivalDiplomacy), the building placer,
-//   the village builder and the two HUD layers of the tribe (TribePanel, TribeHub). It
+//   the village builder, the HUD layers of the tribe (TribePanel, TribeHub) and the tech tree of the city. It
 //   wires them and advances them in the right order. Main creates it, routes input and
 //   frames to it and shows its banners; it never reaches up.
 //
@@ -55,6 +55,10 @@ public partial class Society : Node
     public BuildingEditor BuildingEditor { get; private set; }
     public TribePanel Panel { get; private set; }
     public TribeHub Hub { get; private set; }
+    public CivKeeper Civ { get; private set; }
+    public TechTreeView TechTree { get; private set; }
+    public ShipKeeper Ships { get; private set; }
+    public CityScenery Scenery { get; private set; }
     public IReadOnlyList<CanvasLayer> HudLayers => _hudLayers;
 
     /// <summary>Hands in the shared state, call before AddChild.</summary>
@@ -71,8 +75,8 @@ public partial class Society : Node
     // ===========================================================================
     //
     //   _Ready   1. Pack     The pack and the encounters with foreign packs.
-    //            2. Tribe    The tribe, the neighbors, placer and village builder.
-    //            3. HUD      The tribe panel and the hub bar.
+    //            2. Tribe    The tribe, the neighbors, the city, placer and village builder.
+    //            3. HUD      The tribe panel, the hub bar and the tech tree.
     //
 
     public override void _Ready()
@@ -121,6 +125,34 @@ public partial class Society : Node
         Placer.Setup(_session, Tribe);
         AddChild(Placer);
 
+        // The city grows from the tribe: founded at the fire, then knowledge and techs
+        Civ = new CivKeeper();
+        Civ.Setup(_session, Tribe);
+        Civ.TechResearched += kind => Banner("BANNER_TECH_TITLE", "BANNER_TECH_TEXT", Tr($"TECH_{kind}".ToUpperInvariant()), Tr($"TECH_{kind}_EFFECT".ToUpperInvariant()));
+        AddChild(Civ);
+        Pack.CanFoundCity   = () => Civ.CanFound;
+        Pack.CityRequested += () => Civ.Found();
+        Civ.CityFounded    += Rivals.BuildHalls;
+        Civ.Changed        += () => Tribe.Bonuses = Civ.Bonuses;
+
+        // With Sailing the chieftain becomes a ship on the water, the retinue on board
+        Ships = new ShipKeeper();
+        Ships.Setup(_session, Pack, Civ);
+        Ships.CastOff += () =>
+        {
+            if (!_hasSailed)
+            {
+                _hasSailed = true;
+                Banner("BANNER_SAIL_TITLE", "BANNER_SAIL_TEXT", Ships.Aboard.Count);
+            }
+        };
+        AddChild(Ships);
+
+        // Fields and the pier: the techs change the world around the city
+        Scenery = new CityScenery();
+        Scenery.Setup(_session, Tribe, Civ);
+        AddChild(Scenery);
+
         BuildingEditor = new BuildingEditor();
         BuildingEditor.Applied += session => Tribe.TakeDesigns(session.Result);
         AddChild(BuildingEditor);
@@ -133,6 +165,7 @@ public partial class Society : Node
         Panel = new TribePanel();
         _hudLayers.Add(Panel);
         Panel.Watch(Pack, Tribe, Encounter);
+        Panel.Civ = Civ;
         Panel.ActionPressed   += () => Pack.Act();
         Panel.BuildPressed    += kind => Placer.Begin(kind);
         Panel.DesignerPressed += () => BuilderRequested?.Invoke();
@@ -140,11 +173,20 @@ public partial class Society : Node
 
         Hub = new TribeHub();
         _hudLayers.Add(Hub);
-        Hub.Watch(_session, Pack, Tribe, Rivals);
+        Hub.Watch(_session, Pack, Tribe, Rivals, Civ);
         Hub.BuilderPressed += () => Panel.ToggleBuildMenu();     // the build menu, its first tile opens the builder
         Hub.GiftPressed    += rival => Rivals.Gift(rival);
         AddChild(Hub);
+
+        TechTree = new TechTreeView();
+        _hudLayers.Add(TechTree);
+        TechTree.Watch(Civ);
+        TechTree.ResearchPressed += kind => Civ.Research(kind);
+        Hub.ResearchPressed      += TechTree.Toggle;
+        AddChild(TechTree);
     }
+
+    private bool _hasSailed;                         // the first cast off of a game gets its banner
 
     private void Banner(string titleKey, string textKey, params object[] args)
     {
@@ -156,7 +198,7 @@ public partial class Society : Node
     // ===========================================================================
     //
     //   HandleInput   Placer, encounters and pack take the input in this order.
-    //   Update        Pack, encounters, tribe, placer, neighbors and their diplomacy, in this order.
+    //   Update        Pack, encounters, tribe, city, ship, scenery, placer, neighbors and their diplomacy, in this order.
     //   SettleTribe   The tribe was founded: the path locks, the packs become tribes.
     //   OnKinKilled   Meat in the pack stage, food for a warlike tribe.
     //
@@ -175,6 +217,9 @@ public partial class Society : Node
         Pack.Update(dt);
         Encounter.Update(dt);
         Tribe.Update(dt);
+        Civ.Update(dt);
+        Ships.Update(dt);
+        Scenery.Update();
         Placer.Update();
         Panel.Placing = Placer.Pending;
         Rivals.Update(dt);

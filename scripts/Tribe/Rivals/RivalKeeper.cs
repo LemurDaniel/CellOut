@@ -251,6 +251,7 @@ public partial class RivalKeeper : Node2D
     //   PayTribute    A respectful pack brings fruit and meat, a respectful tribe food and wood.
     //   SendTrade     A friendly tribe sends a trader every TradeInterval.
     //   SendRaid      A hostile tribe sends raiders every RaidInterval towards the nearest hut.
+    //   TraderReach   How close to the fire (or the walls of its headquarters) a trader hands over.
     //   Deliver       A trader at the fire hands over food and wood and walks home.
     //   Gift          The player gives food to a tribe, its relation rises.
     //   ForceRaid     Cheat and test: a raid of a tribe right now.
@@ -324,7 +325,7 @@ public partial class RivalKeeper : Node2D
             // Traders at the fire deliver, raiders raid for RaidSeconds then leave
             foreach (Kin kin in rival.Kin)
             {
-                if (KinRole.Trader == kin.Role && !kin.IsLeaving && kin.Position.DistanceTo(_pack.Nest.Position) <= size * Balance.Current.Tribe.Pack.NestRange)
+                if (KinRole.Trader == kin.Role && !kin.IsLeaving && kin.Position.DistanceTo(_pack.Nest.Position) <= TraderReach(size, kin))
                 {
                     Deliver(rival, kin);
                 }
@@ -361,11 +362,18 @@ public partial class RivalKeeper : Node2D
         EmitSignal(SignalName.RaidStarted, rival.NameKey);
     }
 
+    /// <summary>How close to the fire a trader hands over: the nest range, or the walls of a headquarters that stands on the fire.</summary>
+    private float TraderReach(float size, Kin trader)
+    {
+        float nest = size * Balance.Current.Tribe.Pack.NestRange;
+        return null == _tribe.Hall ? nest : Mathf.Max(nest, _tribe.Hall.ContactRadius + trader.Radius);
+    }
+
     /// <summary>The trader hands over food and wood (more with a market), the relation rises (more with a totem), then it walks home.</summary>
     private void Deliver(RivalTribe rival, Kin trader)
     {
-        int food = Mathf.RoundToInt(Tune.TradeFood * (1f + _tribe.TradeBonus));
-        int wood = Mathf.RoundToInt(Tune.TradeWood * (1f + _tribe.TradeBonus));
+        int food = Mathf.RoundToInt(Tune.TradeFood * (1f + _tribe.TradeBonus) * _tribe.Bonuses.Trade);
+        int wood = Mathf.RoundToInt(Tune.TradeWood * (1f + _tribe.TradeBonus) * _tribe.Bonuses.Trade);
         _tribe.Economy.AddFood(food);
         _tribe.Economy.AddWood(wood);
         rival.Shift(Tune.RelationPerTrade + _tribe.RelationBonus);
@@ -390,10 +398,12 @@ public partial class RivalKeeper : Node2D
             EmitSignal(SignalName.PackGave, rival, true);
             return;
         }
-        _tribe.Economy.AddFood(Tune.TradeFood);
-        _tribe.Economy.AddWood(Tune.TradeWood);
-        Log.Verbose("RivalKeeper", $"Faction {rival.Faction} pays tribute: {Tune.TradeFood} food, {Tune.TradeWood} wood.");
-        EmitSignal(SignalName.TributePaid, rival.NameKey, Tune.TradeFood, Tune.TradeWood);
+        int food = Mathf.RoundToInt(Tune.TradeFood * _tribe.Bonuses.Trade);
+        int wood = Mathf.RoundToInt(Tune.TradeWood * _tribe.Bonuses.Trade);
+        _tribe.Economy.AddFood(food);
+        _tribe.Economy.AddWood(wood);
+        Log.Verbose("RivalKeeper", $"Faction {rival.Faction} pays tribute: {food} food, {wood} wood.");
+        EmitSignal(SignalName.TributePaid, rival.NameKey, food, wood);
         EmitSignal(SignalName.Changed);
     }
 
@@ -435,7 +445,6 @@ public partial class RivalKeeper : Node2D
     //
 
     private const float CONTACT_SHARE = 1.15f;       // bodies this close (in sums of sizes) fight
-    private const float HUT_REACH = 1.3f;            // raiders this close to a hut (in hut radii) hurt it
     private const float PLAYER_DAMAGE = 2f;          // the leader fights with this many times the kin damage
 
     private void ResolveFights(float dt, float size)
@@ -497,7 +506,7 @@ public partial class RivalKeeper : Node2D
                 if (villager.Position.DistanceTo(enemy.Position) <= (villager.Radius + enemy.Radius) * CONTACT_SHARE)
                 {
                     villager.Hurt(damage * enemy.DamageScale);
-                    if (enemy.Hurt(damage * villager.DamageScale))
+                    if (enemy.Hurt(damage * villager.DamageScale * _tribe.Bonuses.Damage))
                     {
                         OnEnemyKilled(enemy);
                         break;
@@ -512,7 +521,7 @@ public partial class RivalKeeper : Node2D
             if (isPlayerFight && Player.GlobalPosition.DistanceTo(enemy.Position) <= (size + enemy.Radius) * CONTACT_SHARE)
             {
                 Player.Digest(damage, enemy.Position);
-                if (enemy.Hurt(damage * PLAYER_DAMAGE))
+                if (enemy.Hurt(damage * PLAYER_DAMAGE * _tribe.Bonuses.Damage))
                 {
                     OnEnemyKilled(enemy);
                     continue;
@@ -522,10 +531,10 @@ public partial class RivalKeeper : Node2D
             // Raiders at a hut hurt it, the defense of the village softens the blows
             if (KinRole.Raider == enemy.Role && !enemy.IsLeaving && null == enemy.AttackTarget)
             {
-                float softened = damage / Village.KinDamage * Tune.RaidDamage / (1f + _tribe.Defense / Tune.DefenseScale);
+                float softened = damage / Village.KinDamage * Tune.RaidDamage / (1f + _tribe.Defense / Tune.DefenseScale) / _tribe.Bonuses.BuildingHealth;
                 foreach (Hut hut in new List<Hut>(_tribe.Huts))
                 {
-                    if (hut.Position.DistanceTo(enemy.Position) <= hut.Size * Hut.RADIUS * HUT_REACH + enemy.Radius)
+                    if (hut.Position.DistanceTo(enemy.Position) <= hut.ContactRadius + enemy.Radius)
                     {
                         if (hut.Hurt(softened))
                         {
@@ -538,7 +547,7 @@ public partial class RivalKeeper : Node2D
                 if (null == enemy.OrderTarget && !enemy.IsLeaving && _tribe.Huts.Count > 0)
                 {
                     Hut next = _tribe.Huts[Rand.Index(_tribe.Huts.Count)];
-                    if (next.Position.DistanceTo(enemy.Position) > next.Size * Hut.RADIUS * HUT_REACH + enemy.Radius)
+                    if (next.Position.DistanceTo(enemy.Position) > next.ContactRadius + enemy.Radius)
                     {
                         enemy.OrderMove(next.Position);
                     }
@@ -563,7 +572,7 @@ public partial class RivalKeeper : Node2D
                 continue;
             }
             RivalTribe rival = _rivals.Find(tribe => tribe.Faction == building.Faction);
-            if (null == rival || kin.Position.DistanceTo(building.Position) > building.Size * Hut.RADIUS * HUT_REACH + kin.Radius)
+            if (null == rival || kin.Position.DistanceTo(building.Position) > building.ContactRadius + kin.Radius)
             {
                 continue;
             }
@@ -574,7 +583,7 @@ public partial class RivalKeeper : Node2D
                     defender.OrderAttack(kin);
                 }
             }
-            if (!building.Hurt(Tune.RazeDamage * kin.DamageScale * dt))
+            if (!building.Hurt(Tune.RazeDamage * kin.DamageScale * _tribe.Bonuses.Damage * dt))
             {
                 continue;
             }
@@ -598,7 +607,7 @@ public partial class RivalKeeper : Node2D
         {
             foreach (Hut hut in rival.Huts)
             {
-                if (!hut.IsQueuedForDeletion() && hut.Position.DistanceTo(point) <= hut.Size * Hut.RADIUS * HUT_REACH)
+                if (!hut.IsQueuedForDeletion() && hut.Position.DistanceTo(point) <= hut.ContactRadius)
                 {
                     return hut;
                 }
@@ -661,6 +670,7 @@ public partial class RivalKeeper : Node2D
     // =================================   SAVE   ================================
     // ===========================================================================
     //
+    //   BuildHalls  The civilization reaches the neighbors: a headquarters on every fire.
     //   Save      Relation, respect and defeat of every neighbor in order.
     //   Restore   The neighbors of a save: the packs settle around the nest again (new dens),
     //             from the tribe on they become tribes, then every one takes its saved standing;
@@ -671,6 +681,17 @@ public partial class RivalKeeper : Node2D
     public List<SaveRival> Save()
     {
         return _rivals.Select(rival => new SaveRival(rival.Relation, rival.Respect, rival.IsDefeated)).ToList();
+    }
+
+    /// <summary>The player founded the city: every settled neighbor raises its own headquarters on its fire and sails from now on.</summary>
+    public void BuildHalls()
+    {
+        foreach (RivalTribe rival in _rivals)
+        {
+            rival.BuildHall();
+            rival.HasShips = true;      // from now on its traders and raiders land by ship
+        }
+        EmitSignal(SignalName.Changed);
     }
 
     /// <summary>Takes over the neighbors of a save, the pack (nest) and the tribe are restored already.</summary>
@@ -695,6 +716,10 @@ public partial class RivalKeeper : Node2D
                 }
                 rival.Defeat();
             }
+        }
+        if (Player.Stage >= Player.CIVILIZATION_STAGE)
+        {
+            BuildHalls();     // the civilization reached the islands before the save
         }
         EmitSignal(SignalName.Changed);
         Log.Verbose("RivalKeeper", $"Neighbors restored: {_rivals.Count} ({saved.Count} saved).");

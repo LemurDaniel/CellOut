@@ -241,7 +241,7 @@ public partial class Kin : CellBody
         _chopTrunk   = null;
         AttackTarget = null;
         RazeTarget   = building;
-        OrderTarget  = building.Position + away * (building.Size * Hut.RADIUS + Radius * 0.9f);
+        OrderTarget  = building.Position + away * (building.BlockRadius + Radius * 0.9f);     // right at its wall, it blocks the way
     }
 
     /// <summary>Walks home and leaves the island once it arrives (traders and raiders).</summary>
@@ -388,7 +388,7 @@ public partial class Kin : CellBody
         }
         else if (isFree && KinMode.Following != Mode && !IsLeaving)
         {
-            desired = Roam(dt, size);
+            desired = Roam(dt, size, coast);
         }
 
         // ---------------------------------------------------------------------------
@@ -420,7 +420,7 @@ public partial class Kin : CellBody
         Vector2 next = Position + Velocity * dt;
         if (coast.IsOnLand(next))
         {
-            Position = coast.PushOutOfTrees(next, size * TRUNK_CONTACT);
+            Position = coast.PushOutOfObstacles(next, size * TRUNK_CONTACT);
         }
         else
         {
@@ -431,12 +431,13 @@ public partial class Kin : CellBody
     }
 
     /// <summary>A slow walk to a random point near home, a new one every few seconds or once arrived.</summary>
-    private Vector2 Roam(float dt, float size)
+    private Vector2 Roam(float dt, float size, Coast coast)
     {
         _roamTimer -= dt;
         if (_roamTimer <= 0f || Position.DistanceTo(_roamTarget) < size * 0.5f)
         {
-            _roamTarget = Home + Vector2.FromAngle(Rand.Angle()) * Tune.WanderRadius * size * Rand.Range(0.2f, 1f);
+            // Never a spot inside a building: the home of a city lies inside its headquarters
+            _roamTarget = coast.PushOutOfObstacles(Home + Vector2.FromAngle(Rand.Angle()) * Tune.WanderRadius * size * Rand.Range(0.2f, 1f), size);
             _roamTimer  = Rand.Range(3f, 7f);
         }
         Vector2 toTarget = _roamTarget - Position;

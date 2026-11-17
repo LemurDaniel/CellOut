@@ -5,7 +5,8 @@
 //   the tribes and the neighbors beside it: mood, relation, a gift button), the counters
 //   of the population, the food and the wood (the goal of the stage is the progress ring
 //   of the dial, Game/Ui/VitalsDial.cs). It grows with the stages: the map from the land
-//   animal on, the population with the pack, build button, food and wood with the tribe. The bar is a raised slab (light upper edge, shadow
+//   animal on, the population with the pack, build button, food and wood with the tribe,
+//   the research button (tech tree, Civ/TechTreeView.cs) and the knowledge with the city. The bar is a raised slab (light upper edge, shadow
 //   below), the map and the counters lie in wells sunk into it. Created by Society.
 //
 //   var hub = new TribeHub();
@@ -38,9 +39,14 @@ public partial class TribeHub : CanvasLayer
     //   _Process         Visibility by stage and the numbers of the counters.
     //   NewCounter       A drawn glyph and a number.
     //   DrawBuilder      The hut on the builder button.
+    //   DrawResearch     The scroll on the research button.
+    //   ResearchPressed  The research button was pressed, Society opens the tech tree.
     //
 
     [Signal] public delegate void BuilderPressedEventHandler();
+
+    /// <summary>The research button was pressed, Society opens the tech tree (Civ/TechTreeView.cs).</summary>
+    public event System.Action ResearchPressed;
 
     private const float BAR_LEFT = 10f;
     private const float BAR_BOTTOM = 8f;
@@ -53,30 +59,38 @@ public partial class TribeHub : CanvasLayer
     private static readonly Color PEOPLE_COLOR = new(0.98f, 0.5f, 0.45f);
     private static readonly Color FOOD_COLOR = new(0.9f, 0.35f, 0.3f);
     private static readonly Color WOOD_COLOR = new(0.62f, 0.42f, 0.22f);
+    private static readonly Color RESEARCH_ACCENT = new(0.55f, 0.75f, 0.95f);
+    private static readonly Color KNOWLEDGE_COLOR = new(0.7f, 0.85f, 1f);
 
-    private enum Glyph { People, Food, Wood }
+    private enum Glyph { People, Food, Wood, Knowledge }
 
     private WorldSession _session;
     private PackKeeper _pack;
     private TribeCommander _tribe;
     private RivalKeeper _rivals;
+    private CivKeeper _civ;
     private PanelContainer _bar;
     private Button _builder;
+    private Button _research;
     private Button _mapButton;
     private Control _people;
     private Control _food;
     private Control _wood;
+    private Control _knowledge;
     private Label _peopleCount;
     private Label _foodCount;
     private Label _woodCount;
+    private Label _knowledgeCount;
 
     /// <summary>Hands in what the hub shows, call before AddChild.</summary>
     /// <param name="session">(Required) Player and coast.</param>
     /// <param name="pack">(Required) The pack: nest and members.</param>
     /// <param name="tribe">(Required) The tribe: units and stock.</param>
     /// <param name="rivals">(Required) The rival tribes for the map and the neighbors beside it.</param>
-    public void Watch(WorldSession session, PackKeeper pack, TribeCommander tribe, RivalKeeper rivals)
+    /// <param name="civ">(Required) The city: knowledge and the research button.</param>
+    public void Watch(WorldSession session, PackKeeper pack, TribeCommander tribe, RivalKeeper rivals, CivKeeper civ)
     {
+        _civ       = civ;
         _session   = session;
         _pack      = pack;
         _tribe     = tribe;
@@ -103,6 +117,12 @@ public partial class TribeHub : CanvasLayer
         _builder.Pressed += () => EmitSignal(SignalName.BuilderPressed);
         _builder.Draw    += DrawBuilder;
         row.AddChild(_builder);
+
+        // The tech tree of the city: a round button with a drawn scroll (T acts through the view)
+        _research = NewRoundButton(RESEARCH_ACCENT);
+        _research.Pressed += () => ResearchPressed?.Invoke();
+        _research.Draw    += DrawResearch;
+        row.AddChild(_research);
 
         // The small map, the button over it opens the world map
         _mapButton = new Button
@@ -131,6 +151,7 @@ public partial class TribeHub : CanvasLayer
         (_people, _peopleCount) = NewCounter(counters, Glyph.People);
         (_food, _foodCount)     = NewCounter(counters, Glyph.Food);
         (_wood, _woodCount)     = NewCounter(counters, Glyph.Wood);
+        (_knowledge, _knowledgeCount) = NewCounter(counters, Glyph.Knowledge);
 
         BuildWorldMap();
     }
@@ -216,6 +237,11 @@ public partial class TribeHub : CanvasLayer
         _people.Visible      = hasPack || isTribe;
         _food.Visible        = isTribe;
         _wood.Visible        = isTribe;
+        _research.Visible    = _civ.IsCity;
+        _research.TooltipText = Tr("HUB_RESEARCH");
+        _knowledge.Visible   = _civ.IsCity;
+        _knowledge.TooltipText = Tr("HUB_KNOWLEDGE");
+        _knowledgeCount.Text = ((int)_civ.Knowledge).ToString();
         _people.TooltipText  = Tr("HUB_PEOPLE");
         _food.TooltipText    = Tr("HUB_FOOD");
         _wood.TooltipText    = Tr("HUB_WOOD");
@@ -252,7 +278,7 @@ public partial class TribeHub : CanvasLayer
         return (well, count);
     }
 
-    /// <summary>People: a head on shoulders. Food: a fruit with a leaf. Wood: two stacked logs.</summary>
+    /// <summary>People: a head on shoulders. Food: a fruit with a leaf. Wood: two stacked logs. Knowledge: a star of thought.</summary>
     private static void DrawGlyph(Control icon, Glyph glyph)
     {
         switch (glyph)
@@ -272,7 +298,24 @@ public partial class TribeHub : CanvasLayer
                 icon.DrawCircle(new Vector2(22, 7), 4f, WOOD_COLOR.Lightened(0.35f));
                 icon.DrawCircle(new Vector2(22, 17), 4f, WOOD_COLOR.Lightened(0.2f));
                 break;
+            case Glyph.Knowledge:
+                icon.DrawColoredPolygon(new[] { new Vector2(12, 1), new Vector2(15, 9), new Vector2(23, 12), new Vector2(15, 15), new Vector2(12, 23), new Vector2(9, 15), new Vector2(1, 12), new Vector2(9, 9) }, KNOWLEDGE_COLOR);
+                icon.DrawCircle(new Vector2(12, 12), 3f, Colors.White);
+                break;
 
+        }
+    }
+
+    /// <summary>A scroll: a sheet with two rolled ends and lines of writing.</summary>
+    private void DrawResearch()
+    {
+        Vector2 center = Vector2.One * BUTTON_SIZE * 0.5f;
+        _research.DrawRect(new Rect2(center + new Vector2(-14, -12), new Vector2(28, 24)), Colors.White);
+        _research.DrawCircle(center + new Vector2(-15, 0), 5f, RESEARCH_ACCENT.Darkened(0.4f));
+        _research.DrawCircle(center + new Vector2(15, 0), 5f, RESEARCH_ACCENT.Darkened(0.4f));
+        for (int i = 0; i < 3; i++)
+        {
+            _research.DrawLine(center + new Vector2(-8, -6 + i * 6), center + new Vector2(8, -6 + i * 6), RESEARCH_ACCENT.Darkened(0.5f), 2f, true);
         }
     }
 

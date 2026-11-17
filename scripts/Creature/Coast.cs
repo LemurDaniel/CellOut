@@ -23,6 +23,7 @@
 //     ARCHIPELAGO       The islands and the scattering of the archipelago.
 //     LAND AND SEA      Which side a point is on, how deep inside, the ground height.
 //     TREES             The seeded trees of a grid cell, trunks block the way.
+//     BLOCKERS          Standing buildings block the way like trunks.
 //     BUILD             Ground, water, props and forest as components in world space.
 //     FOLLOW            Keeps ground, water, props and trees around the player.
 //
@@ -157,6 +158,7 @@ public partial class Coast : Node3D
     //   GroundHeight   Ground height in player sizes: profile, rocky relief, dunes and the hill.
     //   SurfaceLift    How far the ground at a point lies above GROUND_HEIGHT, in world units.
     //   AddPad         Levels a flat foundation for a building.
+    //   HasPadAt       Whether a foundation lies at a point already.
     //   Save / FromSave  The archipelago as save data and back.
     //
     //   All of them delegate to World/CoastTerrain.cs.
@@ -228,6 +230,12 @@ public partial class Coast : Node3D
         return coast;
     }
 
+    /// <summary>Whether a foundation lies at a point already (a save brought it back).</summary>
+    public bool HasPadAt(Vector2 center)
+    {
+        return _terrain.HasPadAt(center);
+    }
+
     /// <summary>Levels a flat round foundation at the height of its middle, ground, props and trees follow on the next frame.</summary>
     /// <param name="center">(Required) Plane point of the middle, on land.</param>
     /// <param name="radius">(Required) Radius of the flat part in world units.</param>
@@ -278,6 +286,68 @@ public partial class Coast : Node3D
         return _trees.PushOutOfTrees(point, radius);
     }
 
+
+    // ===========================================================================
+    // ===============================   BLOCKERS   ==============================
+    // ===========================================================================
+    //
+    //   Blocker              A standing building as a circle nobody walks through.
+    //   AddBlocker           Registers one, the building removes it again when it is gone.
+    //   RemoveBlocker        Forgets one.
+    //   PushOutOfBuildings   A point moved out of every building it overlaps.
+    //   PushOutOfObstacles   Out of trunks and buildings: what walking bodies call.
+    //
+
+    public sealed class Blocker
+    {
+        public Vector2 Center { get; init; }
+        public float Radius { get; init; }
+    }
+
+    private readonly List<Blocker> _blockers = new();
+
+    /// <summary>A building nobody walks through from now on.</summary>
+    /// <param name="center">(Required) Plane point of its middle.</param>
+    /// <param name="radius">(Required) World units of its round footprint.</param>
+    /// <returns>The blocker, handed back to RemoveBlocker when the building is gone.</returns>
+    public Blocker AddBlocker(Vector2 center, float radius)
+    {
+        var blocker = new Blocker { Center = center, Radius = radius };
+        _blockers.Add(blocker);
+        return blocker;
+    }
+
+    /// <summary>Forgets a building, its ground is free again.</summary>
+    public void RemoveBlocker(Blocker blocker)
+    {
+        _blockers.Remove(blocker);
+    }
+
+    /// <summary>A point pushed out of every building it overlaps.</summary>
+    /// <param name="point">(Required) Plane point.</param>
+    /// <param name="radius">(Required) Radius of the body at the point.</param>
+    /// <returns>The point itself when it touches no building.</returns>
+    public Vector2 PushOutOfBuildings(Vector2 point, float radius)
+    {
+        foreach (Blocker blocker in _blockers)
+        {
+            Vector2 away  = point - blocker.Center;
+            float   reach = blocker.Radius + radius;
+            if (away.LengthSquared() >= reach * reach)
+            {
+                continue;
+            }
+            Vector2 outward = away.LengthSquared() > 0.0001f ? away.Normalized() : Vector2.Right;
+            point = blocker.Center + outward * reach;
+        }
+        return point;
+    }
+
+    /// <summary>A point pushed out of every trunk and every building, what walking bodies call.</summary>
+    public Vector2 PushOutOfObstacles(Vector2 point, float radius)
+    {
+        return PushOutOfBuildings(PushOutOfTrees(point, radius), radius);
+    }
     // ===========================================================================
     // ================================   BUILD   ================================
     // ===========================================================================
