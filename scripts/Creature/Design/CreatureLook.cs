@@ -326,4 +326,57 @@ public sealed class CreatureLook
         _lastStroke = other._lastStroke;
         PaintVersion++;
     }
+
+    /// <summary>The look as plain save data (Core/Save/SaveGame.cs).</summary>
+    public SaveLook Save()
+    {
+        return new SaveLook
+        {
+            Color        = SaveData.Of(Color),
+            Pattern      = Pattern.ToString(),
+            PatternColor = SaveData.Of(PatternColor),
+            Zones        = _zoneColors.ToDictionary(pair => pair.Key.ToString(), pair => SaveData.Of(pair.Value)),
+            Skin         = Skin.ToString(),
+            Pitch        = Pitch,
+            Hover        = Hover,
+            PatternScale = PatternScale,
+            PatternWraps = PatternWraps,
+            HasMouthLine = HasMouthLine,
+            MouthLevel   = MouthLevel,
+            MouthLength  = MouthLength,
+            WaveAmount   = WaveAmount,
+            WaveSpeed    = WaveSpeed,
+            IsBreathing  = IsBreathing,
+            Splats       = _splats.Select(splat => new SaveSplat(splat.T, splat.Angle, splat.Radius, SaveData.Of(splat.Color), splat.Stroke)).ToList(),
+            LastStroke   = _lastStroke,
+        };
+    }
+
+    /// <summary>Takes over a saved look as it was.</summary>
+    public void Load(SaveLook save)
+    {
+        Color        = SaveData.ToColor(save.Color);
+        Pattern      = System.Enum.Parse<CreaturePattern>(save.Pattern);
+        PatternColor = SaveData.ToColor(save.PatternColor);
+        _zoneColors.Clear();
+        foreach ((string zone, float[] color) in save.Zones ?? new())
+        {
+            _zoneColors[System.Enum.Parse<CreatureZone>(zone)] = SaveData.ToColor(color).Value;
+        }
+        Skin         = System.Enum.Parse<CreatureSkin>(save.Skin);
+        Pitch        = save.Pitch;
+        Hover        = save.Hover;
+        PatternScale = save.PatternScale;
+        PatternWraps = save.PatternWraps;
+        HasMouthLine = save.HasMouthLine;
+        MouthLevel   = save.MouthLevel;
+        MouthLength  = save.MouthLength;
+        WaveAmount   = save.WaveAmount;
+        WaveSpeed    = save.WaveSpeed;
+        IsBreathing  = save.IsBreathing;
+        _splats.Clear();
+        _splats.AddRange((save.Splats ?? new()).Select(splat => new PaintSplat(splat.T, splat.Angle, splat.Radius, SaveData.ToColor(splat.Color).Value, splat.Stroke)));
+        _lastStroke = save.LastStroke;
+        PaintVersion++;
+    }
 }

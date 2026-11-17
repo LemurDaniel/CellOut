@@ -28,6 +28,7 @@
 //
 
 using System.Collections.Generic;
+using System.Linq;
 using Godot;
 
 namespace CellOut;
@@ -156,6 +157,7 @@ public partial class Coast : Node3D
     //   GroundHeight   Ground height in player sizes: profile, rocky relief, dunes and the hill.
     //   SurfaceLift    How far the ground at a point lies above GROUND_HEIGHT, in world units.
     //   AddPad         Levels a flat foundation for a building.
+    //   Save / FromSave  The archipelago as save data and back.
     //
     //   All of them delegate to World/CoastTerrain.cs.
     //
@@ -193,6 +195,37 @@ public partial class Coast : Node3D
     public float SurfaceLift(Vector2 point, float size)
     {
         return _terrain.SurfaceLift(point, size);
+    }
+
+    /// <summary>The archipelago as plain save data (Core/Save/SaveGame.cs): unit, islands, landing and foundations in their order.</summary>
+    public SaveWorld Save()
+    {
+        return new SaveWorld
+        {
+            Unit    = Unit,
+            Islands = Islands.Select(island => new SaveIsland(SaveData.Of(island.Center), island.Radius, island.Seed)).ToList(),
+            Origin  = SaveData.Of(Origin),
+            Normal  = SaveData.Of(Normal),
+            Pads    = _terrain.Pads.Select(pad => new SavePad(SaveData.Of(pad.Center), pad.Radius)).ToList(),
+        };
+    }
+
+    /// <summary>The archipelago of a save, not yet in the tree: the same islands, landing and foundations (leveled again in their order).</summary>
+    /// <param name="save">(Required) The saved world.</param>
+    public static Coast FromSave(SaveWorld save)
+    {
+        var coast = new Coast { Unit = save.Unit };
+        foreach (SaveIsland island in save.Islands)
+        {
+            coast._terrain.AddIsland(new Island(SaveData.ToVector2(island.Center), island.Radius, island.Seed));
+        }
+        coast.Origin = SaveData.ToVector2(save.Origin);
+        coast.Normal = SaveData.ToVector2(save.Normal);
+        foreach (SavePad pad in save.Pads)
+        {
+            coast._terrain.AddPad(SaveData.ToVector2(pad.Center), pad.Radius);
+        }
+        return coast;
     }
 
     /// <summary>Levels a flat round foundation at the height of its middle, ground, props and trees follow on the next frame.</summary>

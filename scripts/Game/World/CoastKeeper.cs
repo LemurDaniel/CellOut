@@ -50,6 +50,7 @@ public partial class CoastKeeper : Node
     //
     //   Update       Spawns the coast once, keeps it around the player, tells the player where land is.
     //   SpawnCoast   An archipelago ahead of the player, its first shore far off or right in front.
+    //   RestoreCoast The archipelago of a save.
     //
 
     private const float TRUNK_CONTACT = 0.5f;        // the body touches a trunk this many sizes from its center
@@ -76,6 +77,22 @@ public partial class CoastKeeper : Node
         {
             Player.Position = Coast.PushOutOfTrees(Player.Position, size * TRUNK_CONTACT);
         }
+    }
+
+    /// <summary>The archipelago of a save instead of a new one (Game/Flow/SaveKeeper.cs).</summary>
+    /// <param name="save">(Required) The saved world.</param>
+    public Coast RestoreCoast(SaveWorld save)
+    {
+        if (null != Coast)
+        {
+            return Coast;
+        }
+        Coast coast = Coast.FromSave(save);
+        _session.AttachCoast(coast);
+        AddChild(coast);
+        coast.Follow(Player.GlobalPosition, Player.BodySize(), _camera.ViewRadius());
+        Log.Verbose("CoastKeeper", $"Coast restored with {save.Islands.Count} islands and {save.Pads.Count} foundations.");
+        return coast;
     }
 
     /// <summary>An archipelago ahead of the player (its facing), the landing island first.</summary>

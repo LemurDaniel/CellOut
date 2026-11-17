@@ -18,6 +18,7 @@
 //     SETTINGS   The session, the pack, the path, the stock and the blueprints.
 //     WORK       Villagers gather fruit and chop trees on their own.
 //     VILLAGE    Gathering, chopping, buildings and the villagers they raise, per physics frame.
+//     SAVE       The tribe as save data and back.
 //
 
 using System.Collections.Generic;
@@ -371,5 +372,51 @@ public partial class TribeCommander : Node3D
             }
         }
         return false;
+    }
+
+    // ===========================================================================
+    // =================================   SAVE   ================================
+    // ===========================================================================
+    //
+    //   Save      Path, stock, every blueprint and every standing building of the player.
+    //   Restore   The tribe of a save: no costs, the foundations come back with the coast.
+    //
+
+    /// <summary>The tribe as plain save data (Core/Save/SaveGame.cs).</summary>
+    public SaveTribe Save()
+    {
+        return new SaveTribe
+        {
+            Path    = Path.ToString(),
+            Food    = Economy.Food,
+            Wood    = Economy.Wood,
+            Built   = Economy.Huts,
+            Designs = System.Enum.GetValues<BuildingKind>().Select(kind => SaveData.Building(DesignOf(kind))).ToList(),
+            Huts    = _huts.Where(IsInstanceValid).Select(hut => new SaveHut(SaveData.Building(hut.Design), SaveData.Of(hut.Position), hut.Turn ?? 0f)).ToList(),
+        };
+    }
+
+    /// <summary>Takes over the tribe of a save, the pack (nest, villagers) and the coast are restored already.</summary>
+    /// <param name="save">(Required) The saved tribe.</param>
+    public void Restore(SaveTribe save)
+    {
+        Path = System.Enum.Parse<TribePath>(save.Path);
+        Economy.Restore(save.Food, save.Wood, save.Built);
+        foreach (SaveBuildingDesign design in save.Designs)
+        {
+            BuildingDesign loaded = SaveData.ToBuilding(design);
+            DesignOf(loaded.Kind).CopyFrom(loaded);
+        }
+        foreach (SaveHut saved in save.Huts)
+        {
+            Vector2 spot = SaveData.ToVector2(saved.Position);
+            var     hut  = new Hut { Position = spot, Size = Coast.Unit * Hut.SCALE, GroundHeight = Coast.GroundHeight(spot) * Player.BodySize(), Turn = saved.Turn };
+            hut.Setup(SaveData.ToBuilding(saved.Design), faction: 0);
+            hut.Destroyed += () => EmitSignal(SignalName.Changed);
+            _huts.Add(hut);
+            AddChild(hut);
+        }
+        EmitSignal(SignalName.Changed);
+        Log.Verbose("TribeCommander", $"Tribe restored: {Path}, {_huts.Count} building(s), {Economy.Food} food, {Economy.Wood} wood.");
     }
 }

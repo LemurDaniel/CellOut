@@ -19,6 +19,8 @@
 //   $env:CELLOUT_REEL_WIDE = '1'      # optional, while rushing: the camera zooms all the way out and the HUD hides, for looking at the scenery
 //   $env:CELLOUT_REEL_MAP = '1'       # optional: the tribe opens the world map (rushing: still 198)
 //   $env:CELLOUT_REEL_MENU = '1'      # optional: the tribe opens the build menu (rushing: still 198)
+//   $env:CELLOUT_REEL_SAVE = '1'      # optional, with the tribe: saves the game (set CELLOUT_SAVE_DIR to a scratch folder!)
+//   $env:CELLOUT_REEL_CONTINUE = 'TERRA' # optional: continues the saved game of that planet like the planet view (still 118), with CELLOUT_SAVE_DIR
 //   $env:CELLOUT_REEL_FAN = '1'       # optional: the tribe gets a roar sac and a ram brow, key 3 opens the fan of hunt (rushing: still 198)
 //   $env:CELLOUT_REEL_ABILITIES = '1' # optional: the single cell gets every ability and fires them (stills: frames 76, 86, 96, 104), end with --quit-after 118
 //   $env:CELLOUT_REEL_ENCOUNTER = '1' # optional, with CELLOUT_REEL_TRIBE: the pack meets a foreign pack, courts (still 80) and displays (still 104)
@@ -67,6 +69,8 @@ public partial class GraphicsReel : Node
     private static readonly bool IS_SHOWING_MAP = "1" == OS.GetEnvironment("CELLOUT_REEL_MAP");
     private static readonly bool IS_SHOWING_MENU = "1" == OS.GetEnvironment("CELLOUT_REEL_MENU");
     private static readonly bool IS_SHOWING_FAN = "1" == OS.GetEnvironment("CELLOUT_REEL_FAN");
+    private static readonly bool IS_SAVING = "1" == OS.GetEnvironment("CELLOUT_REEL_SAVE");
+    private static readonly string CONTINUE_PLANET = OS.GetEnvironment("CELLOUT_REEL_CONTINUE");
     private static readonly bool IS_LOOKING_UP = "1" == OS.GetEnvironment("CELLOUT_REEL_SKY");
     private static readonly bool IS_WIDE = "1" == OS.GetEnvironment("CELLOUT_REEL_WIDE");
     private static readonly bool IS_SHOWING_GALAXY = "1" == OS.GetEnvironment("CELLOUT_REEL_GALAXY");
@@ -110,6 +114,22 @@ public partial class GraphicsReel : Node
             return;
         }
         player.Invulnerable = 5f;   // nothing eats the model while it poses
+
+        // Continue a saved game like the planet view does, the still shows it restored
+        if (!string.IsNullOrEmpty(CONTINUE_PLANET))
+        {
+            if (2 == _frame)
+            {
+                _main.IsAnimationSkipped = true;
+                Planets.Choose(CONTINUE_PLANET);
+                _main.FindChildren("*", "", true, false).OfType<StartFlow>().First().Continue(SaveSlots.Read(CONTINUE_PLANET));
+            }
+            if (120 == _frame)
+            {
+                GetTree().Quit();
+            }
+            return;
+        }
 
         // A start phase of the galaxy menu: the game jumps there by itself, the creature is shaped with the first template
         if (null != START_PHASE)
@@ -244,6 +264,9 @@ public partial class GraphicsReel : Node
                 {
                     _main.Tribe.TryBuild(kind);
                 }
+                break;
+            case MAP_FRAME when IS_SAVING:
+                _main.Saves.SaveNow();
                 break;
             case MAP_FRAME when IS_SHOWING_FAN:
                 // Two parts of the wild tab, then key 3 opens the fan of hunt

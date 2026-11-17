@@ -310,6 +310,33 @@ public sealed class CellDesign
         Version++;
     }
 
+    /// <summary>The design as plain save data (Core/Save/SaveGame.cs).</summary>
+    public SaveCellDesign Save()
+    {
+        return new SaveCellDesign
+        {
+            Parts   = _parts.Select(part => new SaveCellPart(part.Kind.ToString(), SaveData.Of(part.Position), part.PaidCost, SaveData.Of(part.Offset), SaveData.Of(part.Rotation), part.Lift, part.Size)).ToList(),
+            Color   = SaveData.Of(Color),
+            Shape   = (float[])_shape.Clone(),
+            Heights = (float[])_heights.Clone(),
+        };
+    }
+
+    /// <summary>Takes over a saved design, parts exactly where they were.</summary>
+    /// <param name="save">(Required) The saved design.</param>
+    public void Load(SaveCellDesign save)
+    {
+        _parts.Clear();
+        foreach (SaveCellPart part in save.Parts)
+        {
+            _parts.Add(new PlacedPart(System.Enum.Parse<PartKind>(part.Kind), SaveData.ToVector2(part.Position), part.PaidCost, SaveData.ToVector3(part.Offset), SaveData.ToVector3(part.Rotation), part.Lift, part.Size));
+        }
+        Color = SaveData.ToColor(save.Color);
+        save.Shape?.CopyTo(_shape, 0);
+        save.Heights?.CopyTo(_heights, 0);
+        Version++;
+    }
+
     private const int MAX_CRITTER_EXTRAS = 3;       // extra parts of an NPC cell besides its signature part
 
     /*

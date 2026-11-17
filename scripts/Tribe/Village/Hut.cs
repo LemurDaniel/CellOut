@@ -93,7 +93,8 @@ public partial class Hut : Node2D
 
     public override void _Ready()
     {
-        _visual = new Node3D { Basis = new Basis(Vector3.Up, Turn ?? Rand.Angle()) };
+        Turn  ??= Rand.Angle();     // kept, a save brings the building back as it stood
+        _visual = new Node3D { Basis = new Basis(Vector3.Up, Turn.Value) };
         AddChild(_visual);
         var look = new BuildingVisual3D();
         look.Build(Design);

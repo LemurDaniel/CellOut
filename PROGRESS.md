@@ -89,6 +89,8 @@ Evolutionsspiel, lokal in Godot: als Protozelle in der Ursuppe starten und durch
 
 - **Fächer der Wege, Teil-Sperren, schönere Fähigkeits-Knöpfe** (2026-11-17, Wunsch des Users): siehe CLAUDE.md. Sperren: Heilmoos ab Landtier, Tintensack nach einmal Rudel, Rammstirn nach einmal Stamm (irgendein Planet). Reel: `CELLOUT_REEL_FAN`.
 
+- **Speichern** (2026-11-17, Wunsch des Users): siehe CLAUDE.md. Eine JSON je Planet, automatisch nach Stufenwechsel, alle 3 Minuten, beim Schließen und mit F5; Fortsetzen in der Planetenansicht. Bewusst nicht exakt: die Höhlen der fremden Rudel und Dörfer der Nachbarn entstehen beim Laden neu (Beziehung, Respekt, Niederlage bleiben), adoptierte fremde Tiere kommen im Körper des Spielers zurück, das Gefolge arbeitet nach dem Laden wieder im Dorf. Reels: `CELLOUT_REEL_SAVE`, `CELLOUT_REEL_CONTINUE`, `CELLOUT_SAVE_DIR`.
+
 ## Offen
 - Balancing nur grob getestet (Schadenswerte, Zoom im Mehrzeller, Futterdichte im Spätspiel).
 - Fliegen (Flügel tragen schon Gewicht/Auftrieb, Anzeige im Editor), Hände für Werkzeug-Stufe nutzen.

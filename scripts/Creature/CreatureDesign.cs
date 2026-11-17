@@ -1201,6 +1201,39 @@ public sealed class CreatureDesign
         Version++;
     }
 
+    /// <summary>The design as plain save data (Core/Save/SaveGame.cs): type, spine, look, parts and the sculpted shapes.</summary>
+    public SaveCreatureDesign Save()
+    {
+        return new SaveCreatureDesign
+        {
+            Type        = Type.ToString(),
+            Spine       = _spine.Save(),
+            Look        = _look.Save(),
+            Parts       = _parts.Select(SaveData.Part).ToList(),
+            LastId      = _lastId,
+            Shapes      = _shapes.Select(shape => new SaveShape(shape.Id, shape.Form.Save())).ToList(),
+            LastShapeId = _lastShapeId,
+        };
+    }
+
+    /// <summary>A design back from its save data, exactly as it was saved.</summary>
+    /// <param name="save">(Required) The saved design.</param>
+    public static CreatureDesign FromSave(SaveCreatureDesign save)
+    {
+        var design = new CreatureDesign { Type = System.Enum.Parse<CreatureType>(save.Type) };
+        design._spine.Load(save.Spine);
+        design._look.Load(save.Look);
+        design._parts.AddRange(save.Parts.Select(SaveData.ToPart));
+        design._lastId = save.LastId;
+        foreach (SaveShape shape in save.Shapes ?? new())
+        {
+            design._shapes.Add(new CustomShape(shape.Id, FromSave(shape.Form)));
+        }
+        design._lastShapeId = save.LastShapeId;
+        design.Version++;
+        return design;
+    }
+
     // ---------------------------------------------------------------------------
     // Body plans
     //   The clay blob, the starter bodies and the NPC creatures.

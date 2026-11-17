@@ -21,9 +21,11 @@
 //     SETTINGS     The session, the camera and the signals.
 //     KEEP PACK    Wild kin, steering, eating, the offer and the frame update.
 //     ACT          Call, nest, tribe, follow or stay, takeover and the cheats.
+//     SAVE         The pack as save data and back.
 //
 
 using System.Collections.Generic;
+using System.Linq;
 using Godot;
 
 namespace CellOut;
@@ -576,5 +578,58 @@ public partial class PackKeeper : Node2D
         }
         Player.AddBiomass(Mathf.Max(0f, TribeBiomass - Player.Biomass), BiomassSource.Raw);
         FoundTribe();
+    }
+
+    // ===========================================================================
+    // =================================   SAVE   ================================
+    // ===========================================================================
+    //
+    //   Save      Nest, its biomass, stay or follow and every member (wild kin come back on their own).
+    //   Restore   The pack of a save: nest, members in their modes, the fire of a tribe. No signals,
+    //             the foreign packs come from RivalKeeper.Restore. Adopted foreign animals come
+    //             back in the body plan of the player.
+    //
+
+    /// <summary>The pack as plain save data (Core/Save/SaveGame.cs).</summary>
+    public SavePack Save()
+    {
+        return new SavePack
+        {
+            Nest        = null == Nest ? null : SaveData.Of(Nest.Position),
+            NestBiomass = NestBiomass,
+            IsStaying   = IsStaying,
+            Kin         = _kin.Where(kin => KinMode.Wild != kin.Mode).Select(kin => new SaveKin(SaveData.Of(kin.Position), kin.Mode.ToString(), kin.IsPup)).ToList(),
+        };
+    }
+
+    /// <summary>Takes over the pack of a save, the player and the coast are restored already.</summary>
+    /// <param name="save">(Required) The saved pack.</param>
+    public void Restore(SavePack save)
+    {
+        if (null == Coast)
+        {
+            return;
+        }
+        float size = Player.BodySize();
+        if (null != save.Nest)
+        {
+            Vector2 spot = SaveData.ToVector2(save.Nest);
+            NestBiomass  = save.NestBiomass;
+            Nest = new Nest { Position = spot, Size = size, GroundHeight = Coast.GroundHeight(spot) * size };
+            AddChild(Nest);
+            if (Player.IsTribal)
+            {
+                Nest.LightFire();
+            }
+        }
+        foreach (SaveKin kin in save.Kin)
+        {
+            var mode = System.Enum.Parse<KinMode>(kin.Mode);
+            bool hasHome = null != Nest;
+            SpawnKin(SaveData.ToVector2(kin.Position), size, hasHome || KinMode.Following == mode ? mode : KinMode.Following, kin.IsPup);
+        }
+        IsStaying = save.IsStaying;
+        Offer     = ComputeOffer(size);
+        Log.Verbose("PackKeeper", $"Pack restored: nest {null != Nest}, {Members} member(s).");
     }
 }

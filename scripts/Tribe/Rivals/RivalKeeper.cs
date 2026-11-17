@@ -20,9 +20,11 @@
 //     SETTLE     Where the rival tribes live and where they enter the player's island.
 //     RELATE     Traders, raids, gifts and the relation drift, per physics frame.
 //     FIGHT      Fights between factions and raiders at the huts.
+//     SAVE       The neighbors as save data and back.
 //
 
 using System.Collections.Generic;
+using System.Linq;
 using Godot;
 
 namespace CellOut;
@@ -653,5 +655,48 @@ public partial class RivalKeeper : Node2D
             }
         }
         return hit;
+    }
+
+    // ===========================================================================
+    // =================================   SAVE   ================================
+    // ===========================================================================
+    //
+    //   Save      Relation, respect and defeat of every neighbor in order.
+    //   Restore   The neighbors of a save: the packs settle around the nest again (new dens),
+    //             from the tribe on they become tribes, then every one takes its saved standing;
+    //             a defeated one loses its buildings again.
+    //
+
+    /// <summary>The neighbors as plain save data (Core/Save/SaveGame.cs).</summary>
+    public List<SaveRival> Save()
+    {
+        return _rivals.Select(rival => new SaveRival(rival.Relation, rival.Respect, rival.IsDefeated)).ToList();
+    }
+
+    /// <summary>Takes over the neighbors of a save, the pack (nest) and the tribe are restored already.</summary>
+    /// <param name="saved">(Required) The saved neighbors in order.</param>
+    public void Restore(IReadOnlyList<SaveRival> saved)
+    {
+        SettlePacks();
+        if (Player.IsTribal)
+        {
+            Settle(_tribe.Path);
+        }
+        for (int i = 0; i < _rivals.Count && i < saved.Count; i++)
+        {
+            RivalTribe rival = _rivals[i];
+            rival.Shift(saved[i].Relation - rival.Relation);
+            rival.ShiftRespect(saved[i].Respect - rival.Respect);
+            if (saved[i].IsDefeated && !rival.IsDefeated)
+            {
+                foreach (Hut hut in rival.Huts.ToList())
+                {
+                    hut.Hurt(hut.MaxHp);
+                }
+                rival.Defeat();
+            }
+        }
+        EmitSignal(SignalName.Changed);
+        Log.Verbose("RivalKeeper", $"Neighbors restored: {_rivals.Count} ({saved.Count} saved).");
     }
 }

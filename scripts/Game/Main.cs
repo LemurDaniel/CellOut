@@ -56,6 +56,7 @@ public partial class Main : Node2D
     private CutsceneDirector _cutscenes;
     private StartFlow _startFlow;
     private PhaseStart _phaseStart;
+    private SaveKeeper _saves;
 
     public override void _Ready()
     {
@@ -162,6 +163,8 @@ public partial class Main : Node2D
         AddChild(_startFlow);
         _phaseStart = new PhaseStart { Main = this };
         AddChild(_phaseStart);
+        _saves = new SaveKeeper { Main = this };
+        AddChild(_saves);
 
         // ---------------------------------------------------------------------------
         // Menu
@@ -207,8 +210,13 @@ public partial class Main : Node2D
         Hud.Visible = true;
         _spawner.StartPopulating();
         _phaseStart.Begin(_startFlow.Phase);
+        _saves.Begin(_startFlow.PendingSave);
         Log.Verbose("Main", $"Populating: food patches outside the view, {Spawner.START_CRITTERS} cells over {Spawner.POPULATE_SECONDS} s.");
-        // The game title already opened the RNA prelude, the protocell gets its own stage banner
+        // A continued game shows no start banner; the game title already opened the RNA prelude, the protocell gets its own stage banner
+        if (null != _startFlow.PendingSave)
+        {
+            return;
+        }
         if (_startFlow.HasPlayedPrelude)
         {
             Hud.ShowBanner("BANNER_PROTOCELL_TITLE", "BANNER_PROTOCELL_TEXT");
@@ -258,7 +266,7 @@ public partial class Main : Node2D
     /// <example><code>main.OpenBuildingEditor();   // what B and the panel button do</code></example>
     public bool OpenBuildingEditor()
     {
-        bool isBusy = IsInMenu || IsEvolving || _cutscenes.IsShortPlaying || Editor.IsOpen || CreatureEditor.IsOpen || BuildingEditor.IsOpen;
+        bool isBusy = IsBusy;
         if (isBusy || !Tribe.IsActive)
         {
             return false;
@@ -366,7 +374,7 @@ public partial class Main : Node2D
     /// <example><code>main.OpenEditor();   // what Z and the HUD button do</code></example>
     public bool OpenEditor()
     {
-        bool isBusy = IsInMenu || IsEvolving || _cutscenes.IsShortPlaying || Editor.IsOpen || CreatureEditor.IsOpen || BuildingEditor.IsOpen;
+        bool isBusy = IsBusy;
         if (isBusy || Player.Stage < Player.SINGLE_STAGE)
         {
             return false;
@@ -637,6 +645,13 @@ public partial class Main : Node2D
     public TribeHub Hub => _society.Hub;
 
     public TribePanel TribePanel => _society.Panel;
+
+    public CoastKeeper CoastKeeper => _coast;
+
+    public SaveKeeper Saves => _saves;
+
+    /// <summary>A menu, the evolution, a short cutscene or an editor runs: no input to the world, no save.</summary>
+    public bool IsBusy => IsInMenu || IsEvolving || _cutscenes.IsShortPlaying || Editor.IsOpen || CreatureEditor.IsOpen || BuildingEditor.IsOpen;
 
     public FollowCamera FollowCamera => _followCamera;
 

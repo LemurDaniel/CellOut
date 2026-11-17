@@ -31,7 +31,8 @@ public static class PlanetProgress
     //   CountGame   One more game started.
     //
 
-    private const string FILE_PATH = "user://progress.cfg";
+    // Renders and tests keep their progress next to their saves (CELLOUT_SAVE_DIR), never in the player's file
+    private static string FILE_PATH => string.IsNullOrEmpty(OS.GetEnvironment("CELLOUT_SAVE_DIR")) ? "user://progress.cfg" : OS.GetEnvironment("CELLOUT_SAVE_DIR") + "/progress.cfg";
     private const string PLANETS = "planets";
     private const string TOTALS = "totals";
     private const string GAMES_KEY = "games";

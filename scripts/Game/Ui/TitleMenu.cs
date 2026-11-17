@@ -34,12 +34,14 @@ public partial class TitleMenu : CanvasLayer
     //   ShowPlanet        Flies onto a planet and shows it up close.
     //   ShowGalaxy        Back out to the whole galaxy.
     //   Start             Chooses the planet, fades out, raises StartPressed once and frees the menu.
+    //   ContinuePressed / Continue   A saved game of the planet view goes on (Core/Save/SaveSlots.cs).
     //   CycleGraphics     The graphics button: next tier (Core/GraphicsQuality.cs), remembered for the next start.
     //   _UnhandledInput   Enter and Space start in the planet view (open the first planet in the galaxy), Escape goes back, F10 opens every phase.
     //   _Notification     Re-translates after a locale change.
     //
 
     public event System.Action<StartPhase> StartPressed;
+    public event System.Action<SaveGame> ContinuePressed;
 
     [Signal] public delegate void LanguagePressedEventHandler();
 
@@ -84,6 +86,23 @@ public partial class TitleMenu : CanvasLayer
         fade.TweenProperty(_root, "modulate:a", 0f, FADE_SECONDS);
         fade.Chain().TweenCallback(Callable.From(QueueFree));
         StartPressed?.Invoke(phase);
+    }
+
+    /// <summary>Continues a saved game: its planet becomes current, the menu fades out, ContinuePressed fires once.</summary>
+    /// <param name="save">(Required) The saved game.</param>
+    public void Continue(SaveGame save)
+    {
+        if (_isStarting || null == save)
+        {
+            return;
+        }
+        _isStarting = true;
+        Planets.Choose(save.Meta.Planet);
+        Log.Verbose("TitleMenu", $"Continue on {save.Meta.Planet} at stage {save.Meta.Stage}.");
+        Tween fade = CreateTween().SetPauseMode(Tween.TweenPauseMode.Process);
+        fade.TweenProperty(_root, "modulate:a", 0f, FADE_SECONDS);
+        fade.TweenCallback(Callable.From(QueueFree));
+        ContinuePressed?.Invoke(save);
     }
 
     /// <summary>Switches to the next graphics tier and remembers it.</summary>
@@ -217,7 +236,8 @@ public partial class TitleMenu : CanvasLayer
         _galaxy.PlanetPicked += ShowPlanet;
         _root.AddChild(_galaxy);
         _planet = new PlanetView();
-        _planet.StartPressed += Start;
+        _planet.StartPressed    += Start;
+        _planet.ContinuePressed += Continue;
         _planet.BackPressed  += ShowGalaxy;
         _root.AddChild(_planet);
 

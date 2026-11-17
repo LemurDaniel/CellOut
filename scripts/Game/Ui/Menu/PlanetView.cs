@@ -30,11 +30,13 @@ public partial class PlanetView : Control
     // ===========================================================================
     //
     //   StartPressed   Start on the shown planet in the chosen phase (C# events: an enum is kept as it is).
+    //   ContinuePressed   Continue the saved game of the planet (Core/Save/SaveSlots.cs), shown only with a save.
     //   BackPressed    Back to the galaxy.
     //   Start          Starts with the chosen phase, also from the keyboard (TitleMenu).
     //
 
     public event System.Action<StartPhase> StartPressed;
+    public event System.Action<SaveGame> ContinuePressed;
     public event System.Action BackPressed;
 
     /// <summary>Starts with the chosen phase.</summary>
@@ -65,6 +67,8 @@ public partial class PlanetView : Control
     {
         Planet   = planet;
         _reached = PlanetProgress.Reached(planet.Key);
+        _save    = SaveSlots.Read(planet.Key);
+        _continueButton.Visible = null != _save;
         _globe.Show(planet);
         _system.Show(planet, GLOBE_CENTER);
         PickPhase(StartPhase.RnaWorld);
@@ -123,7 +127,12 @@ public partial class PlanetView : Control
             _phaseButtons[i].Text        = Tr(StartPhases.NameKey(phase));
             _phaseButtons[i].TooltipText = StartPhases.IsOpen(phase, _reached) ? "" : Tr("MENU_PHASE_LOCKED");
         }
-        _startButton.Text = Tr("MENU_START");
+        _startButton.Text = Tr(null == _save ? "MENU_START" : "MENU_NEW_GAME");
+        if (null != _save)
+        {
+            string when = System.DateTime.TryParse(_save.Meta.SavedAt, out System.DateTime saved) ? saved.ToString("dd.MM. HH:mm") : "";
+            _continueButton.Text = string.Format(Tr("MENU_CONTINUE"), Tr(Player.STAGE_KEYS[Mathf.Clamp(_save.Meta.Stage, 0, Player.STAGE_KEYS.Length - 1)]), when);
+        }
         _backButton.Text  = Tr("MENU_BACK");
     }
 
@@ -149,6 +158,9 @@ public partial class PlanetView : Control
     private Label _traits;
     private Label _phaseTitle;
     private Button _startButton;
+    private Button _continueButton;
+    private SaveGame _save;
+    private static readonly Color CONTINUE_ACCENT = new(0.6f, 0.9f, 0.6f);
     private Button _backButton;
 
     public override void _Ready()
@@ -214,6 +226,11 @@ public partial class PlanetView : Control
         _startButton.Pressed      += Start;
         _startButton.MouseEntered += () => EditorStyle.ScaleTo(_startButton, 1.06f);
         _startButton.MouseExited  += () => EditorStyle.ScaleTo(_startButton, 1f);
+        _continueButton = new Button { CustomMinimumSize = new Vector2(PANEL_WIDTH - 60f, 52), FocusMode = FocusModeEnum.None, AutoTranslateMode = AutoTranslateModeEnum.Disabled, Visible = false };
+        _continueButton.AddThemeFontSizeOverride("font_size", 18);
+        EditorStyle.ApplyButton(_continueButton, CONTINUE_ACCENT);
+        _continueButton.Pressed += () => ContinuePressed?.Invoke(_save);
+        column.AddChild(_continueButton);
         startRow.AddChild(_startButton);
 
         // Back to the galaxy, bottom left

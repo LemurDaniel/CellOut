@@ -75,6 +75,16 @@ public sealed class DietTracker
         _meat  *= factor;
     }
 
+    /// <summary>Plant and meat eaten, weighted, for a save (Core/Save/SaveGame.cs).</summary>
+    public (float Plant, float Meat) Totals => (_plant, _meat);
+
+    /// <summary>Takes over saved totals.</summary>
+    public void Load(float plant, float meat)
+    {
+        _plant = plant;
+        _meat  = meat;
+    }
+
     public void Reset()
     {
         _plant = 0f;

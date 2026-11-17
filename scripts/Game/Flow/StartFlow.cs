@@ -73,6 +73,19 @@ public partial class StartFlow : Node
     /// <summary>The phase the last start was chosen in, later ones jump there after the birth (Flow/PhaseStart.cs).</summary>
     public StartPhase Phase { get; private set; }
 
+    /// <summary>The saved game the last start continues (Flow/SaveKeeper.cs restores it after the birth), null for a new game.</summary>
+    public SaveGame PendingSave { get; private set; }
+
+    /// <summary>Leaves the title menu into a saved game: born at once, then the save takes over.</summary>
+    /// <param name="save">(Required) The saved game, its planet is current already.</param>
+    public void Continue(SaveGame save)
+    {
+        _continued = save;
+        Start(isInstant: true);
+    }
+
+    private SaveGame _continued;
+
     private TitleMenu _menu;
     private RnaWorld _prelude;
     private bool _isIntroRunning;
@@ -93,6 +106,7 @@ public partial class StartFlow : Node
         _menu = new TitleMenu();
         AddChild(_menu);
         _menu.StartPressed    += StartIn;
+        _menu.ContinuePressed += Continue;
         _menu.LanguagePressed += () => EmitSignal(SignalName.LanguagePressed);
         Log.Verbose("StartFlow", "Title menu shown, game paused.");
     }
@@ -125,6 +139,8 @@ public partial class StartFlow : Node
         HasPlayedPrelude = false;
         Phase            = _requested ?? (isPreludeSkipped ? StartPhase.Protocell : StartPhase.RnaWorld);
         _requested       = null;
+        PendingSave      = _continued;
+        _continued       = null;
         Planets.Use();
         PlanetProgress.CountGame();
         if (isInstant)

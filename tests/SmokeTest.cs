@@ -77,6 +77,7 @@ public partial class SmokeTest : Node
     private bool _isCheatPointsOk;
     private bool _isPackOk;
     private bool _isTribeOk;
+    private bool _isSaveOk;
     private bool _isThirdPersonOk;       // probed before the tribe, the strategy view takes the chase camera over
     private bool _isFoodHabitatsOk;      // probed at the shore before the pack cheat moves the player inland, where no patch finds the sea
     private bool _hasFoodSpawned;
@@ -228,6 +229,7 @@ public partial class SmokeTest : Node
         {
             _isThirdPersonOk = ProbeThirdPerson();
             _isTribeOk       = ProbeTribe(player);
+            _isSaveOk        = ProbeSave(player);
         }
         _hasFoodSpawned = _hasFoodSpawned || _main.FoodLayer.GetChildCount() > 0;
         // The creatures pop up in real time after the evolution, the check waits for them (at most CHECK_DEADLINE)
@@ -663,6 +665,7 @@ public partial class SmokeTest : Node
             ("Hirn", ProbeBrain()),
             ("Rudel", _isPackOk),
             ("Stamm", _isTribeOk),
+            ("Speichern", _isSaveOk),
             ("Teil-Modelle", ProbeModels()),
             ("Grafikstufen", ProbeGraphicsTiers()),
             ("Wasserfarben", ProbeWater()),
@@ -713,6 +716,7 @@ public partial class SmokeTest : Node
     //   ProbeBrain            EP of one level up with and without a big brain.
     //   ProbePack             Cheat to the pack: stage 6, nest, members, pups, a takeover instead of game over.
     //   ProbeEncounter        The foreign packs and the three ways court, display and hunt on one of their animals.
+    //   ProbeSave             The tribe saved and its JSON read back: world, society and creature complete, the player restored unchanged.
     //   ProbeTribe            Cheat to the tribe: stage 7, fire, the retinue, a hut from a full stock, the packs became tribes on the path of the diet.
     //   ProbeModels           Every entry of CreatureVisual3D.MODELS and CellVisual3D.CELL_MODELS: meshes and
     //                         the named animation, every editor part has a cell model.
@@ -822,6 +826,28 @@ public partial class SmokeTest : Node
             GD.Print($"  encounter: target {hasTarget}, court {isCourted}, display {isShown}, hunt {isHunted}, ability parts {isGifted}");
         }
         return hasTarget && isCourted && isShown && isHunted && isGifted;
+    }
+
+    /// <summary>
+    /// The tribe saved: islands, foundations, members, buildings and neighbors are in the save and come back out of its JSON;
+    /// the player restored from it keeps stage, biomass, points and the parts of its creature.
+    /// </summary>
+    private bool ProbeSave(Player player)
+    {
+        SaveGame saved = _main.Saves.Capture();
+        SaveGame back  = SaveCodec.FromJson(SaveCodec.ToJson(saved));
+        bool isComplete = null != back.World && back.World.Islands.Count == _main.Coast.Islands.Count && back.World.Pads.Count > 0
+            && null != back.Society?.Tribe && back.Society.Tribe.Huts.Count == _main.Tribe.Huts.Count
+            && back.Society.Pack.Kin.Count == _main.Pack.Members && back.Society.Rivals.Count == _main.Rivals.Rivals.Count
+            && back.Player.Creature.Parts.Count == player.Creature.Parts.Count;
+
+        int   parts   = player.Creature.Parts.Count;
+        float biomass = player.Biomass;
+        int   points  = player.EvolutionPoints;
+        player.Restore(back.Player);
+        bool isRestored = Player.TRIBE_STAGE == player.Stage && Mathf.IsEqualApprox(biomass, player.Biomass)
+            && points == player.EvolutionPoints && parts == player.Creature.Parts.Count && player.IsOrganism;
+        return isComplete && isRestored;
     }
 
     private bool ProbeTribe(Player player)

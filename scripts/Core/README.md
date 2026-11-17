@@ -19,3 +19,4 @@ Shared helpers without game rules.
 | `Galaxy.cs` | Every system of the Milky Way: the playable ones and 150 wild ones along the spiral arms of the galaxy shader. |
 | `StartPhases.cs` | The phases a game can start in, which are open, the jump into each. |
 | `PlanetProgress.cs` | `user://progress.cfg`: the furthest phase per planet, the games played. |
+| `Save/` | Saved games: plain data records (`SaveGame.cs`), JSON codec with version and migration, slot files per planet (atomic, headless writes nothing). |

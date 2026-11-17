@@ -36,6 +36,14 @@ public sealed class TribeEconomy
     public int Wood { get; private set; }
     public int Huts { get; private set; }
 
+    /// <summary>Takes over a saved stock and count of buildings (Core/Save/SaveGame.cs).</summary>
+    public void Restore(int food, int wood, int huts)
+    {
+        Food = food;
+        Wood = wood;
+        Huts = huts;
+    }
+
     public bool CanAfford(BuildingDesign design)
     {
         return Food >= design.FoodCost && Wood >= design.WoodCost;

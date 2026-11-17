@@ -32,6 +32,7 @@
 //
 
 using System.Collections.Generic;
+using System.Linq;
 using Godot;
 
 namespace CellOut;
@@ -659,6 +660,8 @@ public partial class Player : CellBody
     // ===========================================================================
     //
     //   ApplyMutations Traits, EP and protocell hue from the mutations of the RNA prelude.
+    //   SaveTotals     Level start and diet totals for a save.
+    //   Restore        Takes over a saved player at once.
     //   AdvanceStage   Nucleus at stage 1, multicellular at stage 2 (from Divide), EP bonus on both.
     //   ApplyDesign    Renews every trait from the placed parts (or the creature) and the divisions,
     //                  takes the custom color of the design.
@@ -702,6 +705,49 @@ public partial class Player : CellBody
         _stageColor = tinted;
         ApplyDesign();
         Log.Verbose("Player", $"Mutations from the prelude: {string.Join(", ", mutations)} -> {EvolutionPoints} EP, hue {tinted.H:F2}.");
+        EmitSignal(SignalName.StatsChanged);
+    }
+
+    /// <summary>Where the current level began and the plant and meat eaten, for a save (Game/Flow/SaveKeeper.cs).</summary>
+    public (float LevelStart, float Plant, float Meat) SaveTotals => (_levelStart, _diet.Totals.Plant, _diet.Totals.Meat);
+
+    /// <summary>Takes over a saved player at once: no cutscene, no banner, no stage signal, the look of its stage.</summary>
+    /// <param name="save">(Required) The saved player.</param>
+    public void Restore(SavePlayer save)
+    {
+        Stage           = save.Stage;
+        Level           = save.Level;
+        Biomass         = save.Biomass;
+        NextLevelAt     = save.NextLevelAt;
+        _levelStart     = save.LevelStart;
+        EvolutionPoints = save.EvolutionPoints;
+        EvolvedAt       = save.EvolvedAt;
+        CellCount       = save.CellCount;
+        IsProtocell     = 0 == Stage;
+        _diet.Load(save.DietPlant, save.DietMeat);
+        _mutations.Clear();
+        _mutations.AddRange(save.Mutations.Select(System.Enum.Parse<MutationKind>));
+        _stageColor = SINGLE_CELL_COLOR;
+        if (IsProtocell)
+        {
+            _stageColor   = PROTOCELL_COLOR;
+            _stageColor.H = Mathf.Wrap(PROTOCELL_COLOR.H + MUTATION_HUE_SHIFT * _mutations.Count, 0f, 1f);
+        }
+        Design.Load(save.Cell);
+        Creature = null == save.Creature ? Creature : CreatureDesign.FromSave(save.Creature);
+        Position = SaveData.ToVector2(save.Position);
+        Facing   = save.Facing;
+        UpdateRadius();
+        ApplyDesign();
+        Hp = Mathf.Clamp(save.Hp, 1f, MaxHp);
+        if (IsOrganism)
+        {
+            ShowCreature();
+        }
+        else if (!IsProtocell)
+        {
+            RegenOrganelles();
+        }
         EmitSignal(SignalName.StatsChanged);
     }
 

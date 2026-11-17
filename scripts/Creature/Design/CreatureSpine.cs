@@ -149,6 +149,26 @@ public sealed class CreatureSpine
         _xs.AddRange(other._xs);
     }
 
+    /// <summary>The spine as plain save data (Core/Save/SaveGame.cs).</summary>
+    public SaveSpine Save()
+    {
+        return new SaveSpine
+        {
+            Girths = _girths.ToArray(), Lifts = _lifts.ToArray(), Sways = _sways.ToArray(), Heights = _heights.ToArray(),
+            Widths = _widths.ToArray(), Crowns = _crowns.ToArray(), Bellies = _bellies.ToArray(), Xs = _xs.ToArray(),
+        };
+    }
+
+    /// <summary>Takes over a saved spine as it was.</summary>
+    public void Load(SaveSpine save)
+    {
+        foreach ((List<float> list, float[] values) in new[] { (_girths, save.Girths), (_lifts, save.Lifts), (_sways, save.Sways), (_heights, save.Heights), (_widths, save.Widths), (_crowns, save.Crowns), (_bellies, save.Bellies), (_xs, save.Xs) })
+        {
+            list.Clear();
+            list.AddRange(values ?? System.Array.Empty<float>());
+        }
+    }
+
     // ---------------------------------------------------------------------------
     // Girth
     //   Sets the girth of one vertebra.
